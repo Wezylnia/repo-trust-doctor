@@ -19,9 +19,12 @@ public sealed class AnalyzerExecutor
         var started = DateTimeOffset.UtcNow;
         var stopwatch = Stopwatch.StartNew();
 
+        using var timeoutCts = new CancellationTokenSource(analyzer.Timeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
         try
         {
-            var result = await analyzer.AnalyzeAsync(context, cancellationToken);
+            var result = await analyzer.AnalyzeAsync(context, linkedCts.Token);
 
             foreach (var artifact in result.Artifacts ?? [])
             {
@@ -46,6 +49,15 @@ public sealed class AnalyzerExecutor
                     completed,
                     result.Findings.Count,
                     result.ErrorMessage));
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+            var result = new AnalyzerResult(ModuleStatus.TimedOut, []);
+            return new AnalyzerExecutionResult(
+                analyzer,
+                result,
+                new ScanModule(analyzer.Id, analyzer.DisplayName, analyzer.Category, ModuleStatus.TimedOut, started, started.Add(stopwatch.Elapsed), 0, $"Analyzer timed out after {analyzer.Timeout.TotalSeconds}s."));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

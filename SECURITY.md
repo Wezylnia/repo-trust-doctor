@@ -4,12 +4,14 @@ Repository Trust Doctor analyzes untrusted repositories, so security reports are
 
 ## Reporting a Vulnerability
 
-Please do not open a public issue for a confirmed vulnerability. Contact the maintainer privately and include:
+Please do not open a public issue for a confirmed vulnerability. Use GitHub private vulnerability reporting at https://github.com/Wezylnia/repo-trust-doctor/security/advisories/new and include:
 
 - affected version or commit,
 - reproduction steps,
 - expected impact,
 - any relevant logs or sample files with secrets removed.
+
+The maintainer will acknowledge valid reports within 7 days, share status updates during remediation, and target coordinated disclosure within 90 days unless an actively exploited issue requires a faster advisory.
 
 ## Scanner Safety Baseline
 
@@ -33,8 +35,8 @@ Current safeguards:
 
 Current non-goals:
 
-- The project does not accept arbitrary uploaded files.
+- The project does not accept arbitrary uploaded files or archives. It accepts repository paths and public HTTP(S) Git repository URLs only.
 - The project does not execute package installation, build, test, Docker build, or repository scripts by default.
 - The current CLI does not provide hosted scanning or multi-user file intake.
 
-Future hosted or API-based scanning must add explicit upload policy, repository size limits, per-scan timeouts, workspace isolation, and abuse controls before accepting user-provided archives or files.
+Future upload or hosted scanning support must define explicit size limits, archive extraction policy, path traversal defenses (Zip Slip), malware scanning expectations, per-scan timeouts, workspace isolation, and cleanup before accepting user-provided archives or files.

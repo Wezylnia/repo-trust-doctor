@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\RepoTrustDoctor.Domain\RepoTrustDoctor.Domain.csproj" />
@@ -11,6 +11,7 @@
     <ProjectReference Include="..\..\Analyzers\CiCd\RepoTrustDoctor.Analyzers.GitHubActions\RepoTrustDoctor.Analyzers.GitHubActions.csproj" />
     <ProjectReference Include="..\..\Analyzers\Security\RepoTrustDoctor.Analyzers.Secrets\RepoTrustDoctor.Analyzers.Secrets.csproj" />
     <ProjectReference Include="..\..\Analyzers\Containers\RepoTrustDoctor.Analyzers.Docker\RepoTrustDoctor.Analyzers.Docker.csproj" />
+    <ProjectReference Include="..\..\Analyzers\Dependencies\RepoTrustDoctor.Analyzers.DependencyInventory\RepoTrustDoctor.Analyzers.DependencyInventory.csproj" />
     <ProjectReference Include="..\..\Infrastructure\RepoTrustDoctor.Infrastructure.Git\RepoTrustDoctor.Infrastructure.Git.csproj" />
   </ItemGroup>
 
@@ -20,5 +21,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="RepoTrustDoctor.UnitTests" />
+  </ItemGroup>
 
 </Project>

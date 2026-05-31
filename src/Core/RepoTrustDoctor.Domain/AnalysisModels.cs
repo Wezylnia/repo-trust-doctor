@@ -99,14 +99,37 @@ public sealed record FinalDecision(
     FinalDecisionKind Kind,
     IReadOnlyList<string> Reasons);
 
+public sealed record FindingSummary(
+    int Total,
+    int Critical,
+    int High,
+    int Medium,
+    int Low,
+    int Info,
+    int Blocking)
+{
+    public static FindingSummary From(IReadOnlyList<Finding> findings) => new(
+        Total: findings.Count,
+        Critical: findings.Count(f => f.Severity == Severity.Critical),
+        High: findings.Count(f => f.Severity == Severity.High),
+        Medium: findings.Count(f => f.Severity == Severity.Medium),
+        Low: findings.Count(f => f.Severity == Severity.Low),
+        Info: findings.Count(f => f.Severity == Severity.Info),
+        Blocking: findings.Count(f => f.IsBlocking));
+}
+
 public sealed record RepositoryScan(
     Guid Id,
     string Target,
     AnalysisDepth Depth,
     string TrustProfile,
+    string ToolVersion,
     ModuleStatus Status,
     DateTimeOffset StartedAt,
     DateTimeOffset CompletedAt,
     IReadOnlyList<ScanModule> Modules,
     IReadOnlyList<Finding> Findings,
-    TrustScore Score);
+    TrustScore Score)
+{
+    public FindingSummary Summary => FindingSummary.From(Findings);
+}
