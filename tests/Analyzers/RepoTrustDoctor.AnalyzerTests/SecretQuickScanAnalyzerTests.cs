@@ -24,4 +24,69 @@ public sealed class SecretQuickScanAnalyzerTests
         Assert.Equal(2, evidence.LineNumber);
         Assert.Equal("[redacted]", evidence.Value);
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsRedactedSlackWebhook()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var rawWebhook = "https://hooks.slack.com/services/" + "T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX";
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), $"""
+        slack_url={rawWebhook}
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-SECRET006");
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Equal(1, evidence.LineNumber);
+        Assert.Equal("https://hooks.slack.com/services/[redacted]", evidence.Value);
+        Assert.DoesNotContain("T00000000", evidence.Value);
+        Assert.DoesNotContain("B00000000", evidence.Value);
+        Assert.DoesNotContain("XXXXXXXXXXXXXXXXXXXXXXXX", evidence.Value);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsRedactedDiscordWebhook()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var rawWebhook1 = "https://discord.com/api/webhooks/123456789/abcdef";
+        var rawWebhook2 = "https://discordapp.com/api/webhooks/987654321/fedcba";
+        File.WriteAllText(Path.Combine(fixture.Path, "config1.txt"), $"""
+        discord_url1={rawWebhook1}
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "config2.txt"), $"""
+        discord_url2={rawWebhook2}
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Equal(2, result.Findings.Count(finding => finding.RuleId == "TRUST-SECRET007"));
+
+        var finding1 = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-SECRET007" && finding.Evidence[0].Value is string v1 && v1.Contains("https://discord.com"));
+        var evidence1 = Assert.Single(finding1.Evidence);
+        Assert.Equal("https://discord.com/api/webhooks/[redacted]", evidence1.Value);
+        Assert.DoesNotContain("123456789", evidence1.Value ?? "");
+
+        var finding2 = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-SECRET007" && finding.Evidence[0].Value is string v2 && v2.Contains("https://discordapp.com"));
+        var evidence2 = Assert.Single(finding2.Evidence);
+        Assert.Equal("https://discordapp.com/api/webhooks/[redacted]", evidence2.Value);
+        Assert.DoesNotContain("987654321", evidence2.Value ?? "");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportNormalUrl()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), $"""
+        normal_url=https://github.com/owner/repo
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+    }
 }
+
