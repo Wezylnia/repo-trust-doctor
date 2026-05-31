@@ -24,3 +24,4 @@ The initial catalog covers the v0.1 static analyzers.
 - [GitHub Actions](github-actions.md)
 - [Secrets](secrets.md)
 - [Docker](docker.md)
+- [Dependencies](dependencies.md)

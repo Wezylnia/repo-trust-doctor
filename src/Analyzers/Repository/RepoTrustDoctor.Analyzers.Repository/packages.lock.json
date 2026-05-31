@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "repotrustdoctor.analysis.abstractions": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.domain": {
+        "type": "Project"
+      }
+    }
+  }
+}

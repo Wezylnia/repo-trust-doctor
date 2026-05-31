@@ -59,3 +59,39 @@ Detects `uses: owner/action@tag` references that are not pinned to a full commit
 Why it matters: tags can move or be compromised, causing workflows to execute different code without a repository change.
 
 Recommendation: pin third-party GitHub Actions to a full commit SHA.
+
+## TRUST-GHA006: Workflow Uses Self-Hosted Runner
+
+- Category: CI/CD
+- Default severity: Medium
+- Default confidence: High
+
+Detects workflows specifying `runs-on: self-hosted`, lists containing `self-hosted`, or list elements matching `self-hosted`.
+
+Why it matters: self-hosted runners run on user-owned infrastructure. If untrusted pull request code is executed on a self-hosted runner, it can access the environment, secrets, or internal network.
+
+Recommendation: ensure self-hosted runners are isolated and do not run untrusted pull request code.
+
+## TRUST-GHA007: Checkout May Persist Credentials
+
+- Category: CI/CD
+- Default severity: Low
+- Default confidence: Medium
+
+Detects `uses: actions/checkout@...` steps that do not specify `persist-credentials: false` in the nearby lines.
+
+Why it matters: by default, `actions/checkout` persists the GitHub token in the local git configuration. If subsequent steps run untrusted code or upload artifacts, they might read or expose this token.
+
+Recommendation: set `persist-credentials: false` when checkout is only used for building or testing.
+
+## TRUST-GHA008: Workflow May Interpolate GitHub Event Data in Shell
+
+- Category: CI/CD
+- Default severity: High
+- Default confidence: Medium
+
+Detects `run:` steps containing inline shell interpolation of `github.event.*`, `github.head_ref`, or `github.ref_name`.
+
+Why it matters: if an attacker modifies fields like a pull request title, issue description, or git branch name, direct interpolation within a shell script run block can execute arbitrary shell commands inside the workflow runner.
+
+Recommendation: avoid direct inline shell interpolation of event data. Pass event data as environment variables instead, and read them using shell environment variables.
