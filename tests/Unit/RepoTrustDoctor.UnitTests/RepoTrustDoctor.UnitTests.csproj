@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Core\RepoTrustDoctor.Domain\RepoTrustDoctor.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Engine\RepoTrustDoctor.Scoring\RepoTrustDoctor.Scoring.csproj" />
+    <ProjectReference Include="..\..\..\src\Infrastructure\RepoTrustDoctor.Infrastructure.Git\RepoTrustDoctor.Infrastructure.Git.csproj" />
   </ItemGroup>
 
 </Project>

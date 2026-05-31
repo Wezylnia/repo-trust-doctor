@@ -22,15 +22,16 @@ The first usable scanner will not execute repository code by default.
 
 ## CLI
 
-The current skeleton supports local path scans:
+The current skeleton supports local path scans and shallow cloning for public HTTP(S) Git repository URLs:
 
 ```text
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan .
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan https://github.com/owner/repo
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format json
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown
 ```
 
-Planned CLI commands:
+Planned packaged CLI commands:
 
 ```text
 repo-trust-doctor scan .
@@ -48,6 +49,7 @@ The architecture separates detection from interpretation:
 - `src/Engine` contains analyzer abstractions, execution, orchestration, scoring, policies, and reporting.
 - `src/Analyzers` contains independent analyzer modules.
 - `src/Infrastructure` will contain Git, GitHub, package registry, persistence, security feed, caching, and background job integrations.
+- `src/Infrastructure/RepoTrustDoctor.Infrastructure.Git` currently prepares local workspaces and shallow-clones public HTTP(S) Git URLs.
 - `tests` contains unit, analyzer, integration, and fixture-based tests.
 
 Read the public architecture overview in [docs/architecture.md](docs/architecture.md).

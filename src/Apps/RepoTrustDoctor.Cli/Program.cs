@@ -6,6 +6,7 @@ using RepoTrustDoctor.Analyzers.GitHubActions;
 using RepoTrustDoctor.Analyzers.Repository;
 using RepoTrustDoctor.Analyzers.Secrets;
 using RepoTrustDoctor.Domain;
+using RepoTrustDoctor.Infrastructure.Git;
 using RepoTrustDoctor.Reporting;
 using RepoTrustDoctor.Scoring;
 
@@ -33,19 +34,6 @@ internal static class CliProgram
         var format = ReadOption(args, "--format") ?? "console";
         var depth = ParseDepth(ReadOption(args, "--depth") ?? "fast");
 
-        if (target.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || target.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-        {
-            Console.Error.WriteLine("Remote repository cloning is planned for v0.1, but this skeleton currently scans local paths only.");
-            return 2;
-        }
-
-        var repositoryPath = Path.GetFullPath(target);
-        if (!Directory.Exists(repositoryPath))
-        {
-            Console.Error.WriteLine($"Repository path does not exist: {repositoryPath}");
-            return 2;
-        }
-
         IRepositoryAnalyzer[] analyzers =
         [
             new RepositoryHealthAnalyzer(),
@@ -54,8 +42,9 @@ internal static class CliProgram
             new DockerBasicAnalyzer()
         ];
 
+        using var workspace = await PrepareWorkspaceAsync(target, cancellationToken);
         var orchestrator = new ScanOrchestrator(analyzers, new AnalyzerExecutor(), new TrustScorer());
-        var scan = await orchestrator.RunAsync(target, repositoryPath, depth, "ProductionDependency", cancellationToken);
+        var scan = await orchestrator.RunAsync(target, workspace.Path, depth, "ProductionDependency", cancellationToken);
 
         var output = format.ToLowerInvariant() switch
         {
@@ -67,6 +56,16 @@ internal static class CliProgram
 
         Console.WriteLine(output);
         return scan.Score.Decision.Kind == FinalDecisionKind.AvoidAsProductionDependency ? 3 : 0;
+    }
+
+    private static Task<RepositoryWorkspace> PrepareWorkspaceAsync(string target, CancellationToken cancellationToken)
+    {
+        if (target.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || target.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return RepositoryWorkspace.CloneFromUrlAsync(target, cancellationToken);
+        }
+
+        return Task.FromResult(RepositoryWorkspace.ForLocalPath(target));
     }
 
     private static string? ReadOption(string[] args, string name)
@@ -122,7 +121,7 @@ internal static class CliProgram
         Repository Trust Doctor
 
         Usage:
-          repo-trust-doctor scan <path> [--format console|json|markdown] [--depth fast|standard|deep]
+          repo-trust-doctor scan <path-or-url> [--format console|json|markdown] [--depth fast|standard|deep]
         """);
     }
 }

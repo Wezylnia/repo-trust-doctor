@@ -70,6 +70,15 @@ Analyzers detect evidence and emit structured findings. They do not calculate fi
 
 `v0.1` starts with static-only local scanning and the foundation required for future scan modes.
 
+## Repository Workspace Preparation
+
+`RepoTrustDoctor.Infrastructure.Git` prepares the repository workspace before analysis:
+
+- local paths are scanned in place,
+- HTTP(S) repository URLs are cloned into a temporary directory with `git clone --depth 1 --no-tags`,
+- temporary clone directories are deleted after the scan,
+- repository code is not executed during preparation.
+
 ## Security Baseline
 
 Repository code is untrusted input. Hosted scans should only allow static file reads and safe network metadata lookups unless execution is explicitly enabled in a sandboxed mode.

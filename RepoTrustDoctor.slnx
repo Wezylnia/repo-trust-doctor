@@ -30,6 +30,9 @@
     <Project Path="src/Engine/RepoTrustDoctor.Reporting/RepoTrustDoctor.Reporting.csproj" />
     <Project Path="src/Engine/RepoTrustDoctor.Scoring/RepoTrustDoctor.Scoring.csproj" />
   </Folder>
+  <Folder Name="/src/Infrastructure/">
+    <Project Path="src/Infrastructure/RepoTrustDoctor.Infrastructure.Git/RepoTrustDoctor.Infrastructure.Git.csproj" />
+  </Folder>
   <Folder Name="/tests/" />
   <Folder Name="/tests/Analyzers/">
     <Project Path="tests/Analyzers/RepoTrustDoctor.AnalyzerTests/RepoTrustDoctor.AnalyzerTests.csproj" />

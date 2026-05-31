@@ -27,6 +27,7 @@ The foundation milestone includes:
 - basic severity-based scoring,
 - JSON and Markdown report writers,
 - CLI command entry point,
+- local path scans and shallow-cloned public HTTP(S) Git URL scans,
 - fixture-based tests.
 
 Initial analyzers:

@@ -26,6 +26,12 @@ dotnet test
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format console
 ```
 
+To scan a public Git repository URL:
+
+```powershell
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan https://github.com/owner/repo --format console
+```
+
 ## Design Rules
 
 - Keep domain models free of infrastructure concerns.
