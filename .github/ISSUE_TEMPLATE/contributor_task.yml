@@ -1,0 +1,71 @@
+name: Contributor task
+description: Request a well-scoped implementation, test, or documentation task for contributors.
+title: "task: "
+labels:
+  - help wanted
+  - contributor-ready
+  - needs-triage
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the task.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why is this useful for RepoTrustDoctor users or contributors?
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Likely files
+      description: List likely files or folders. It is okay if the final PR touches fewer files.
+      placeholder: |
+        - src/...
+        - tests/...
+        - docs/...
+  - type: textarea
+    id: checklist
+    attributes:
+      label: Implementation checklist
+      description: Break the task into concrete steps.
+      placeholder: |
+        - [ ] Add...
+        - [ ] Update...
+        - [ ] Test...
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Tests and validation
+      description: Which tests or commands should verify the work?
+      placeholder: |
+        - [ ] dotnet build RepoTrustDoctor.slnx --no-restore
+        - [ ] dotnet test RepoTrustDoctor.slnx --no-build
+    validations:
+      required: true
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: Difficulty
+      options:
+        - Beginner
+        - Intermediate
+        - Advanced
+    validations:
+      required: true
+  - type: checkboxes
+    id: contributor
+    attributes:
+      label: Contributor notes
+      options:
+        - label: This can be done with synthetic fixtures or public sample data.
+          required: true
+        - label: This task should not require secrets or private repository access.
+          required: true

@@ -1,0 +1,80 @@
+name: Analyzer rule proposal
+description: Propose a new static analyzer rule or an improvement to an existing rule.
+title: "rule: "
+labels:
+  - enhancement
+  - area:security
+  - static-analysis
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Analyzer rules must be evidence-based, static by default, and careful about false positives.
+  - type: input
+    id: rule-id
+    attributes:
+      label: Rule ID or category
+      placeholder: TRUST-DEP012, TRUST-SUPPLY001, dependencies, GitHub Actions, etc.
+  - type: textarea
+    id: rule-idea
+    attributes:
+      label: Rule idea
+      description: What should the analyzer detect?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence to detect
+      description: Which files, fields, or static patterns should be inspected?
+      placeholder: package.json scripts, NuGet.config packageSources, Dockerfile USER, etc.
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Suggested severity
+      options:
+        - Info
+        - Low
+        - Medium
+        - High
+        - Critical
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: confidence
+    attributes:
+      label: Suggested confidence
+      options:
+        - Low
+        - Medium
+        - High
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Recommendation text
+      description: What should the report tell users to do?
+    validations:
+      required: true
+  - type: textarea
+    id: fixtures
+    attributes:
+      label: Positive and negative fixtures
+      description: Describe safe synthetic examples that should and should not trigger the rule.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checklist
+      options:
+        - label: The rule can run without executing repository code, package managers, build scripts, or Docker builds.
+          required: true
+        - label: Evidence can be reported with repository-relative paths and without raw secrets.
+          required: true
+        - label: The wording can avoid claiming malicious intent unless evidence is definitive.
+          required: true
