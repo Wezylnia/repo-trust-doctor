@@ -6,23 +6,56 @@ The project is intentionally evidence-based: analyzers produce findings with rul
 
 ## Current Status
 
-This repository is at the start of the `v0.1` foundation milestone.
+This repository is at the `v0.1.0-alpha` pre-release milestone. It is an early CLI-first static scanner intended for local experimentation, repository hardening, and analyzer development.
 
-The first milestone focuses on:
+Implemented in this alpha:
 
 - a clean .NET solution structure,
 - pure domain models,
 - analyzer abstractions,
 - static-only scan orchestration,
-- JSON and Markdown report output,
+- console, JSON, and Markdown report output,
 - a CLI-first workflow,
-- fixture-based analyzer tests.
+- repository health, GitHub Actions, secret quick scan, Docker, and dependency lockfile analyzers,
+- npm, NuGet, and Python lockfile coverage checks,
+- typed trust profiles recorded in reports,
+- stable finding fingerprints for report output,
+- fixture-based analyzer tests,
+- public rule, architecture, security, and contributor documentation.
 
-The first usable scanner will not execute repository code by default.
+The scanner does not execute repository code by default. Package metadata lookup, vulnerability lookup, license analysis, SARIF output, API/worker hosting, persistence, and web UI are planned future work.
+
+## Requirements
+
+- .NET 10 SDK or newer.
+- Git.
+
+## Install From Source
+
+```text
+git clone https://github.com/Wezylnia/repo-trust-doctor.git
+cd repo-trust-doctor
+dotnet restore
+dotnet build
+```
+
+## Quick Start
+
+Run a local static scan:
+
+```text
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format console
+```
+
+Export a Markdown report:
+
+```text
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
+```
 
 ## CLI
 
-The current skeleton supports local path scans and shallow cloning for public HTTP(S) Git repository URLs:
+The CLI supports local path scans and shallow cloning for public HTTP(S) Git repository URLs:
 
 ```text
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan .
@@ -45,7 +78,7 @@ Supported trust profiles are `Personal`, `ProductionDependency`, `EnterpriseDepe
 | `2`  | Input/output error (e.g. refusing to overwrite an existing report) |
 | `3`  | Scan completed with `AvoidAsProductionDependency` decision |
 
-Planned packaged CLI commands:
+Future packaged CLI commands:
 
 ```text
 repo-trust-doctor scan .
@@ -105,6 +138,7 @@ See [docs/roadmap.md](docs/roadmap.md) for milestone details.
 - [Report format](docs/report-format.md)
 - [Trust profiles](docs/policies/trust-profiles.md)
 - [Rule catalog](docs/rules/README.md)
+- [Changelog](CHANGELOG.md)
 
 ## Repository Governance
 

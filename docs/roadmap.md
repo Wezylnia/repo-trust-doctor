@@ -2,6 +2,12 @@
 
 Repository Trust Doctor will grow by stabilizing the analyzer platform first, then adding analysis depth.
 
+## Current Alpha Release
+
+`v0.1.0-alpha` is an early CLI-first static scanner. It includes the foundation platform, first static analyzers, dependency lockfile coverage checks, typed trust profile recording, stable finding fingerprints, and public rule/security documentation.
+
+Package metadata lookup, vulnerability lookup, license analysis, package origin analysis, SARIF output, API/worker hosting, persistence, and web UI remain future work.
+
 ## Milestones
 
 | Version | Goal |
