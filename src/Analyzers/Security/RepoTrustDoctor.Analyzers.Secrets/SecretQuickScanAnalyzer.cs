@@ -30,6 +30,8 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
         new("TRUST-SECRET003", "Possible GitHub token found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "A GitHub token-like value was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
         new("TRUST-SECRET004", "Possible AWS access key found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "An AWS access key-like value was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
         new("TRUST-SECRET005", "Possible database connection string found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "A connection string-like value was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
+        new("TRUST-SECRET006", "Possible Slack webhook found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "A Slack webhook-like URL was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
+        new("TRUST-SECRET007", "Possible Discord webhook found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "A Discord webhook-like URL was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -74,12 +76,26 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             {
                 findings.Add(CreateFinding("TRUST-SECRET005", "Possible database connection string found", Severity.High, Confidence.Medium, relativePath, "A connection string-like value was found and redacted.", GetLineNumber(content, connectionStringMatch.Index)));
             }
+
+            if (SlackWebhookPattern().Match(content) is { Success: true } slackWebhookMatch)
+            {
+                findings.Add(CreateFinding("TRUST-SECRET006", "Possible Slack webhook found", Severity.High, Confidence.Medium, relativePath, "A Slack webhook-like URL was found.", GetLineNumber(content, slackWebhookMatch.Index), redactedValue: "https://hooks.slack.com/services/[redacted]"));
+            }
+
+            if (DiscordWebhookPattern().Match(content) is { Success: true } discordWebhookMatch)
+            {
+                var matchedUrl = discordWebhookMatch.Value;
+                var prefix = matchedUrl.StartsWith("https://discordapp.com", StringComparison.OrdinalIgnoreCase)
+                    ? "https://discordapp.com/api/webhooks/"
+                    : "https://discord.com/api/webhooks/";
+                findings.Add(CreateFinding("TRUST-SECRET007", "Possible Discord webhook found", Severity.High, Confidence.Medium, relativePath, "A Discord webhook-like URL was found.", GetLineNumber(content, discordWebhookMatch.Index), redactedValue: $"{prefix}[redacted]"));
+            }
         }
 
         return AnalyzerResult.Completed(findings);
     }
 
-    private static Finding CreateFinding(string ruleId, string title, Severity severity, Confidence confidence, string filePath, string evidence, int? lineNumber = null, bool isBlocking = false)
+    private static Finding CreateFinding(string ruleId, string title, Severity severity, Confidence confidence, string filePath, string evidence, int? lineNumber = null, bool isBlocking = false, string redactedValue = "[redacted]")
     {
         return new Finding(
             ruleId,
@@ -88,7 +104,7 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             severity,
             confidence,
             title,
-            [new Evidence("secret-pattern", evidence, filePath, lineNumber, "[redacted]")],
+            [new Evidence("secret-pattern", evidence, filePath, lineNumber, redactedValue)],
             new Recommendation("Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
             isBlocking);
     }
@@ -123,4 +139,10 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?i)(Server|Host|Data Source)\s*=.+;(User Id|Username|Uid)\s*=.+;(Password|Pwd)\s*=")]
     private static partial Regex ConnectionStringPattern();
+
+    [GeneratedRegex(@"https://hooks\.slack\.com/services/[A-Za-z0-9_/]+")]
+    private static partial Regex SlackWebhookPattern();
+
+    [GeneratedRegex(@"https://discord(?:app)?\.com/api/webhooks/[A-Za-z0-9_/]+")]
+    private static partial Regex DiscordWebhookPattern();
 }
