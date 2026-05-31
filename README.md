@@ -103,6 +103,7 @@ See [docs/roadmap.md](docs/roadmap.md) for milestone details.
 - [Development guide](docs/development.md)
 - [Analyzer authoring guide](docs/analyzer-authoring.md)
 - [Report format](docs/report-format.md)
+- [Trust profiles](docs/policies/trust-profiles.md)
 - [Rule catalog](docs/rules/README.md)
 
 ## Repository Governance
