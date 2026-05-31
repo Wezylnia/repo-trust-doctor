@@ -95,7 +95,7 @@ See [docs/roadmap.md](docs/roadmap.md) for milestone details.
 
 ## Repository Governance
 
-The public repository uses protected `main`, required pull request review, required CI status checks, CodeQL, OSSF Scorecard, Dependabot, and Copilot review instructions.
+The public repository uses protected `main`, required pull request review for non-admin contributors, required CI status checks, CodeQL, OSSF Scorecard, Dependabot, and Copilot review instructions. Repository admins can bypass branch protection for urgent maintenance.
 
 ## License
 
