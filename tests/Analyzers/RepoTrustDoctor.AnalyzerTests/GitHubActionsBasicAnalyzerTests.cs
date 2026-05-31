@@ -117,4 +117,50 @@ public sealed class GitHubActionsBasicAnalyzerTests
 
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-GHA007");
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsShellInjection()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - run: echo "${{ github.event.pull_request.title }}"
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-GHA008");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportSafeShellVariables()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - env:
+                  PR_TITLE: ${{ github.event.pull_request.title }}
+                run: echo "$PR_TITLE"
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-GHA008");
+    }
 }

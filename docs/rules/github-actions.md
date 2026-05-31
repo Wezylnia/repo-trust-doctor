@@ -83,3 +83,15 @@ Detects `uses: actions/checkout@...` steps that do not specify `persist-credenti
 Why it matters: by default, `actions/checkout` persists the GitHub token in the local git configuration. If subsequent steps run untrusted code or upload artifacts, they might read or expose this token.
 
 Recommendation: set `persist-credentials: false` when checkout is only used for building or testing.
+
+## TRUST-GHA008: Workflow May Interpolate GitHub Event Data in Shell
+
+- Category: CI/CD
+- Default severity: High
+- Default confidence: Medium
+
+Detects `run:` steps containing inline shell interpolation of `github.event.*`, `github.head_ref`, or `github.ref_name`.
+
+Why it matters: if an attacker modifies fields like a pull request title, issue description, or git branch name, direct interpolation within a shell script run block can execute arbitrary shell commands inside the workflow runner.
+
+Recommendation: avoid direct inline shell interpolation of event data. Pass event data as environment variables instead, and read them using shell environment variables.
