@@ -32,6 +32,38 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
 
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
-        return Task.FromResult(AnalyzerResult.Completed([]));
+        var findings = new List<Finding>();
+
+        // Detect npm manifests and lockfiles
+        var packageJsons = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "package.json").ToArray();
+        foreach (var manifest in packageJsons)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var directory = Path.GetDirectoryName(manifest);
+            if (directory == null)
+            {
+                continue;
+            }
+
+            var hasLockfile = File.Exists(Path.Combine(directory, "package-lock.json")) ||
+                              File.Exists(Path.Combine(directory, "pnpm-lock.yaml")) ||
+                              File.Exists(Path.Combine(directory, "yarn.lock"));
+
+            if (!hasLockfile)
+            {
+                var relativePath = Path.GetRelativePath(context.RepositoryPath, manifest);
+                findings.Add(new Finding(
+                    "TRUST-DEP001",
+                    "npm manifest exists without lockfile",
+                    AnalysisCategory.Dependencies,
+                    Severity.Medium,
+                    Confidence.High,
+                    "npm manifest exists without lockfile",
+                    [new Evidence("package-manifest", "A package.json file exists but no lockfile was found.", relativePath)],
+                    new Recommendation("Commit package-lock.json, pnpm-lock.yaml, or yarn.lock to the repository.")));
+            }
+        }
+
+        return Task.FromResult(AnalyzerResult.Completed(findings));
     }
 }
