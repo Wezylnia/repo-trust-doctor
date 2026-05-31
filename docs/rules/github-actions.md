@@ -59,3 +59,15 @@ Detects `uses: owner/action@tag` references that are not pinned to a full commit
 Why it matters: tags can move or be compromised, causing workflows to execute different code without a repository change.
 
 Recommendation: pin third-party GitHub Actions to a full commit SHA.
+
+## TRUST-GHA006: Workflow Uses Self-Hosted Runner
+
+- Category: CI/CD
+- Default severity: Medium
+- Default confidence: High
+
+Detects workflows specifying `runs-on: self-hosted`, lists containing `self-hosted`, or list elements matching `self-hosted`.
+
+Why it matters: self-hosted runners run on user-owned infrastructure. If untrusted pull request code is executed on a self-hosted runner, it can access the environment, secrets, or internal network.
+
+Recommendation: ensure self-hosted runners are isolated and do not run untrusted pull request code.

@@ -27,6 +27,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         new("TRUST-GHA003", "Workflow uses pull_request_target", AnalysisCategory.CiCd, Severity.High, Confidence.High, "The workflow uses pull_request_target trigger.", "Review pull_request_target usage carefully and avoid running untrusted pull request code with repository privileges."),
         new("TRUST-GHA004", "Workflow pipes downloaded scripts into a shell", AnalysisCategory.CiCd, Severity.High, Confidence.High, "A curl/wget pipe-to-shell pattern was found.", "Download scripts separately, verify integrity, and avoid piping remote content directly into a shell."),
         new("TRUST-GHA005", "Third-party action is not pinned by SHA", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "A third-party action is referenced by tag instead of full commit SHA.", "Pin third-party GitHub Actions to a full commit SHA."),
+        new("TRUST-GHA006", "Workflow uses self-hosted runner", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "The workflow runs on a self-hosted runner.", "Ensure self-hosted runners are isolated and do not run untrusted pull request code."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -82,6 +83,11 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
                     AddFinding(findings, "TRUST-GHA005", "Third-party action is not pinned by SHA", Severity.Medium, "Pin third-party GitHub Actions to a full commit SHA.", relativePath, $"Action '{action}@{version}' is not pinned to a full commit SHA.", GetLineNumber(content, match.Index));
                 }
             }
+
+            if (SelfHostedPattern().Match(content) is { Success: true } selfHostedMatch)
+            {
+                AddFinding(findings, "TRUST-GHA006", "Workflow uses self-hosted runner", Severity.Medium, "Ensure self-hosted runners are isolated and do not run untrusted pull request code.", relativePath, "self-hosted runner was found.", GetLineNumber(content, selfHostedMatch.Index));
+            }
         }
 
         return AnalyzerResult.Completed(findings);
@@ -136,4 +142,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"^[a-f0-9]{40}$", RegexOptions.IgnoreCase)]
     private static partial Regex ShaPattern();
+
+    [GeneratedRegex(@"(?mi)(?:^\s*runs-on\s*:\s*(?:['""]*self-hosted['""]*|\[[^\]]*\bself-hosted\b[^\]]*\])|^\s*-\s*['""]*self-hosted['""]*\s*$)")]
+    private static partial Regex SelfHostedPattern();
 }
