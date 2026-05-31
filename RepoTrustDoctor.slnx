@@ -7,6 +7,9 @@
   <Folder Name="/src/Analyzers/Containers/">
     <Project Path="src/Analyzers/Containers/RepoTrustDoctor.Analyzers.Docker/RepoTrustDoctor.Analyzers.Docker.csproj" />
   </Folder>
+  <Folder Name="/src/Analyzers/Dependencies/">
+    <Project Path="src/Analyzers/Dependencies/RepoTrustDoctor.Analyzers.DependencyInventory/RepoTrustDoctor.Analyzers.DependencyInventory.csproj" />
+  </Folder>
   <Folder Name="/src/Analyzers/Repository/">
     <Project Path="src/Analyzers/Repository/RepoTrustDoctor.Analyzers.Repository/RepoTrustDoctor.Analyzers.Repository.csproj" />
   </Folder>
