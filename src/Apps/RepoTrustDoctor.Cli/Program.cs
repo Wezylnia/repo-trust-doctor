@@ -5,6 +5,7 @@ using RepoTrustDoctor.Analyzers.Docker;
 using RepoTrustDoctor.Analyzers.GitHubActions;
 using RepoTrustDoctor.Analyzers.Repository;
 using RepoTrustDoctor.Analyzers.Secrets;
+using RepoTrustDoctor.Analyzers.DependencyInventory;
 using RepoTrustDoctor.Domain;
 using RepoTrustDoctor.Infrastructure.Git;
 using RepoTrustDoctor.Reporting;
@@ -70,7 +71,8 @@ internal static class CliProgram
             new RepositoryHealthAnalyzer(),
             new GitHubActionsBasicAnalyzer(),
             new SecretQuickScanAnalyzer(),
-            new DockerBasicAnalyzer()
+            new DockerBasicAnalyzer(),
+            new DependencyInventoryAnalyzer()
         ];
 
         using var workspace = await PrepareWorkspaceAsync(options.Target, cancellationToken);
