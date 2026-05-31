@@ -79,6 +79,8 @@ Analyzers detect evidence and emit structured findings. They do not calculate fi
 - temporary clone directories are deleted after the scan,
 - repository code is not executed during preparation.
 
+Static analyzers may skip local-only or generated directories such as `.git`, `bin`, `obj`, `node_modules`, `.repo-trust`, and this repository's ignored `private-docs` source notes when scanning for secret patterns.
+
 ## Security Baseline
 
 Repository code is untrusted input. Hosted scans should only allow static file reads and safe network metadata lookups unless execution is explicitly enabled in a sandboxed mode.

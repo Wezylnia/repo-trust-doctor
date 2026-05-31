@@ -8,6 +8,7 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 {
     private static readonly string[] SensitiveFileNames = [".env", ".env.production", "id_rsa"];
     private static readonly string[] SensitiveExtensions = [".pem", ".key"];
+    private static readonly string[] ExcludedDirectoryNames = [".git", "bin", "obj", "node_modules", ".repo-trust", "private-docs"];
 
     public string Id => "secret-quick-scan";
 
@@ -25,8 +26,7 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
     {
         var findings = new List<Finding>();
 
-        foreach (var file in Directory.EnumerateFiles(context.RepositoryPath, "*", SearchOption.AllDirectories)
-                     .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}.git{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)))
+        foreach (var file in EnumerateCandidateFiles(context.RepositoryPath))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var relativePath = Path.GetRelativePath(context.RepositoryPath, file);
@@ -46,31 +46,31 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             }
 
             var content = await File.ReadAllTextAsync(file, cancellationToken);
-            if (PrivateKeyPattern().IsMatch(content))
+            if (PrivateKeyPattern().Match(content) is { Success: true } privateKeyMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET002", "Possible private key marker found", Severity.Critical, Confidence.High, relativePath, "A private key block marker was found.", isBlocking: true));
+                findings.Add(CreateFinding("TRUST-SECRET002", "Possible private key marker found", Severity.Critical, Confidence.High, relativePath, "A private key block marker was found.", GetLineNumber(content, privateKeyMatch.Index), isBlocking: true));
             }
 
-            if (GitHubTokenPattern().IsMatch(content))
+            if (GitHubTokenPattern().Match(content) is { Success: true } gitHubTokenMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET003", "Possible GitHub token found", Severity.High, Confidence.Medium, relativePath, "A GitHub token-like value was found and redacted."));
+                findings.Add(CreateFinding("TRUST-SECRET003", "Possible GitHub token found", Severity.High, Confidence.Medium, relativePath, "A GitHub token-like value was found and redacted.", GetLineNumber(content, gitHubTokenMatch.Index)));
             }
 
-            if (AwsAccessKeyPattern().IsMatch(content))
+            if (AwsAccessKeyPattern().Match(content) is { Success: true } awsAccessKeyMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET004", "Possible AWS access key found", Severity.High, Confidence.Medium, relativePath, "An AWS access key-like value was found and redacted."));
+                findings.Add(CreateFinding("TRUST-SECRET004", "Possible AWS access key found", Severity.High, Confidence.Medium, relativePath, "An AWS access key-like value was found and redacted.", GetLineNumber(content, awsAccessKeyMatch.Index)));
             }
 
-            if (ConnectionStringPattern().IsMatch(content))
+            if (ConnectionStringPattern().Match(content) is { Success: true } connectionStringMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET005", "Possible database connection string found", Severity.High, Confidence.Medium, relativePath, "A connection string-like value was found and redacted."));
+                findings.Add(CreateFinding("TRUST-SECRET005", "Possible database connection string found", Severity.High, Confidence.Medium, relativePath, "A connection string-like value was found and redacted.", GetLineNumber(content, connectionStringMatch.Index)));
             }
         }
 
         return AnalyzerResult.Completed(findings);
     }
 
-    private static Finding CreateFinding(string ruleId, string title, Severity severity, Confidence confidence, string filePath, string evidence, bool isBlocking = false)
+    private static Finding CreateFinding(string ruleId, string title, Severity severity, Confidence confidence, string filePath, string evidence, int? lineNumber = null, bool isBlocking = false)
     {
         return new Finding(
             ruleId,
@@ -79,9 +79,36 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             severity,
             confidence,
             title,
-            [new Evidence("secret-pattern", evidence, filePath, Value: "[redacted]")],
+            [new Evidence("secret-pattern", evidence, filePath, lineNumber, "[redacted]")],
             new Recommendation("Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
             isBlocking);
+    }
+
+    private static IEnumerable<string> EnumerateCandidateFiles(string root)
+    {
+        var options = new EnumerationOptions
+        {
+            RecurseSubdirectories = true,
+            IgnoreInaccessible = true
+        };
+
+        return Directory.EnumerateFiles(root, "*", options)
+            .Where(file => !file.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .Any(part => ExcludedDirectoryNames.Contains(part, StringComparer.OrdinalIgnoreCase)));
+    }
+
+    private static int GetLineNumber(string content, int matchIndex)
+    {
+        var line = 1;
+        for (var index = 0; index < matchIndex && index < content.Length; index++)
+        {
+            if (content[index] == '\n')
+            {
+                line++;
+            }
+        }
+
+        return line;
     }
 
     [GeneratedRegex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----")]

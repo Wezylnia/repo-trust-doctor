@@ -39,19 +39,22 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
                 AddFinding(findings, "TRUST-GHA001", "Workflow permissions are not declared", Severity.Medium, "Declare least-privilege workflow permissions explicitly.", relativePath, "No top-level or job-level permissions key was found.");
             }
 
-            if (WriteAllPattern().IsMatch(content))
+            if (WriteAllPattern().Match(content) is { Success: true } writeAllMatch)
             {
-                AddFinding(findings, "TRUST-GHA002", "Workflow uses permissions: write-all", Severity.High, "Replace write-all with the narrowest permissions required by each job.", relativePath, "permissions: write-all was found.");
+                AddFinding(findings, "TRUST-GHA002", "Workflow uses permissions: write-all", Severity.High, "Replace write-all with the narrowest permissions required by each job.", relativePath, "permissions: write-all was found.", GetLineNumber(content, writeAllMatch.Index));
             }
 
-            if (PullRequestTargetPattern().IsMatch(content))
+            if (PullRequestTargetPattern().Match(content) is { Success: true } pullRequestTargetMatch)
             {
-                AddFinding(findings, "TRUST-GHA003", "Workflow uses pull_request_target", Severity.High, "Review pull_request_target usage carefully and avoid running untrusted pull request code with repository privileges.", relativePath, "pull_request_target trigger was found.");
+                AddFinding(findings, "TRUST-GHA003", "Workflow uses pull_request_target", Severity.High, "Review pull_request_target usage carefully and avoid running untrusted pull request code with repository privileges.", relativePath, "pull_request_target trigger was found.", GetLineNumber(content, pullRequestTargetMatch.Index));
             }
 
-            if (CurlPipeShellPattern().IsMatch(content) || WgetPipeShellPattern().IsMatch(content))
+            var curlPipeShellMatch = CurlPipeShellPattern().Match(content);
+            var wgetPipeShellMatch = WgetPipeShellPattern().Match(content);
+            if (curlPipeShellMatch.Success || wgetPipeShellMatch.Success)
             {
-                AddFinding(findings, "TRUST-GHA004", "Workflow pipes downloaded scripts into a shell", Severity.High, "Download scripts separately, verify integrity, and avoid piping remote content directly into a shell.", relativePath, "A curl/wget pipe-to-shell pattern was found.");
+                var match = curlPipeShellMatch.Success ? curlPipeShellMatch : wgetPipeShellMatch;
+                AddFinding(findings, "TRUST-GHA004", "Workflow pipes downloaded scripts into a shell", Severity.High, "Download scripts separately, verify integrity, and avoid piping remote content directly into a shell.", relativePath, "A curl/wget pipe-to-shell pattern was found.", GetLineNumber(content, match.Index));
             }
 
             foreach (Match match in UsesPattern().Matches(content))
@@ -60,7 +63,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
                 var version = match.Groups["version"].Value;
                 if (!IsPinnedToSha(version) && !action.StartsWith("./", StringComparison.Ordinal))
                 {
-                    AddFinding(findings, "TRUST-GHA005", "Third-party action is not pinned by SHA", Severity.Medium, "Pin third-party GitHub Actions to a full commit SHA.", relativePath, $"Action '{action}@{version}' is not pinned to a full commit SHA.");
+                    AddFinding(findings, "TRUST-GHA005", "Third-party action is not pinned by SHA", Severity.Medium, "Pin third-party GitHub Actions to a full commit SHA.", relativePath, $"Action '{action}@{version}' is not pinned to a full commit SHA.", GetLineNumber(content, match.Index));
                 }
             }
         }
@@ -70,7 +73,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
     private static bool IsPinnedToSha(string value) => ShaPattern().IsMatch(value);
 
-    private static void AddFinding(List<Finding> findings, string ruleId, string title, Severity severity, string recommendation, string filePath, string evidence)
+    private static void AddFinding(List<Finding> findings, string ruleId, string title, Severity severity, string recommendation, string filePath, string evidence, int? lineNumber = null)
     {
         findings.Add(new Finding(
             ruleId,
@@ -79,8 +82,22 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
             severity,
             Confidence.High,
             title,
-            [new Evidence("workflow", evidence, filePath)],
+            [new Evidence("workflow", evidence, filePath, lineNumber)],
             new Recommendation(recommendation)));
+    }
+
+    private static int GetLineNumber(string content, int matchIndex)
+    {
+        var line = 1;
+        for (var index = 0; index < matchIndex && index < content.Length; index++)
+        {
+            if (content[index] == '\n')
+            {
+                line++;
+            }
+        }
+
+        return line;
     }
 
     [GeneratedRegex(@"(?m)^\s*permissions\s*:")]
