@@ -30,6 +30,8 @@ public sealed class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         new("TRUST-REPO007", "Issue template is missing", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "The repository does not contain an issue template.", "Add issue templates to collect enough information from users."),
         new("TRUST-REPO008", "Pull request template is missing", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "The repository does not contain a pull request template.", "Add a pull request template to make review expectations clear."),
         new("TRUST-REPO009", "CHANGELOG is missing", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "The repository does not contain a CHANGELOG file.", "Add a changelog to document user-facing changes in each release."),
+        new("TRUST-REPO010", "README lacks installation guidance", AnalysisCategory.RepositoryHealth, Severity.Low, Confidence.Medium, "The README file does not appear to contain installation instructions.", "Add installation instructions or a getting started section to the README."),
+        new("TRUST-REPO011", "README lacks usage guidance", AnalysisCategory.RepositoryHealth, Severity.Low, Confidence.Medium, "The README file does not appear to contain usage instructions or examples.", "Add usage instructions or examples to the README."),
     ];
 
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -46,7 +48,62 @@ public sealed class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         CheckRequiredFile(context.RepositoryPath, [".github/PULL_REQUEST_TEMPLATE.md", "PULL_REQUEST_TEMPLATE.md"], "TRUST-REPO008", "Pull request template is missing", "Add a pull request template to make review expectations clear.", findings, Severity.Info);
         CheckRequiredFile(context.RepositoryPath, ["CHANGELOG.md", "CHANGELOG", "HISTORY.md", "RELEASES.md"], "TRUST-REPO009", "CHANGELOG is missing", "Add a changelog to document user-facing changes in each release.", findings, Severity.Info);
 
+        var readmePath = MatchReadme(context.RepositoryPath);
+        if (readmePath != null)
+        {
+            var content = File.ReadAllText(readmePath);
+            CheckReadmeSections(content, readmePath, context.RepositoryPath, findings);
+        }
+
         return Task.FromResult(AnalyzerResult.Completed(findings));
+    }
+
+    private static string? MatchReadme(string root)
+    {
+        var paths = new[] { "README.md", "README" };
+        foreach (var p in paths)
+        {
+            var fullPath = Path.Combine(root, p);
+            if (File.Exists(fullPath))
+            {
+                return fullPath;
+            }
+        }
+        return null;
+    }
+
+    private static void CheckReadmeSections(string content, string filePath, string rootPath, List<Finding> findings)
+    {
+        var installKeywords = new[] { "install", "installation", "getting started", "setup" };
+        var usageKeywords = new[] { "usage", "example", "quick start", "how to use" };
+
+        var relativePath = Path.GetRelativePath(rootPath, filePath);
+
+        if (!installKeywords.Any(kw => content.Contains(kw, StringComparison.OrdinalIgnoreCase)))
+        {
+            findings.Add(new Finding(
+                "TRUST-REPO010",
+                "README lacks installation guidance",
+                AnalysisCategory.RepositoryHealth,
+                Severity.Low,
+                Confidence.Medium,
+                "README lacks installation guidance",
+                [new Evidence("readme-content", "No installation keywords found in README.", relativePath)],
+                new Recommendation("Add installation instructions or a 'getting started' section to the README.")));
+        }
+
+        if (!usageKeywords.Any(kw => content.Contains(kw, StringComparison.OrdinalIgnoreCase)))
+        {
+            findings.Add(new Finding(
+                "TRUST-REPO011",
+                "README lacks usage guidance",
+                AnalysisCategory.RepositoryHealth,
+                Severity.Low,
+                Confidence.Medium,
+                "README lacks usage guidance",
+                [new Evidence("readme-content", "No usage keywords found in README.", relativePath)],
+                new Recommendation("Add usage instructions or examples to the README.")));
+        }
     }
 
     private static void CheckRequiredFile(
