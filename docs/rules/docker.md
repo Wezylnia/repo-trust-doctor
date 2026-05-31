@@ -47,3 +47,15 @@ Detects Dockerfiles without `HEALTHCHECK`.
 Why it matters: orchestration systems may have less reliable signal for detecting unhealthy containers.
 
 Recommendation: add an appropriate `HEALTHCHECK` for long-running services.
+
+## TRUST-DOCKER005: Dockerfile May Define Secret-Like ENV
+
+- Category: Containers
+- Default severity: High
+- Default confidence: Medium
+
+Detects `ENV` instructions in Dockerfiles that define values for secret-like keys (e.g. `PASSWORD`, `TOKEN`, `SECRET`, `API_KEY`).
+
+Why it matters: environment variables set in Dockerfiles persist in the image layers and can be retrieved by anyone with access to the image.
+
+Recommendation: avoid defining secrets in ENV variables. Use Docker build secrets or pass secrets at runtime instead.

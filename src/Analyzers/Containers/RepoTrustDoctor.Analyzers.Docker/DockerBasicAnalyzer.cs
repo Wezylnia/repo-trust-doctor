@@ -26,6 +26,7 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         new("TRUST-DOCKER002", "Docker base image uses latest tag", AnalysisCategory.Containers, Severity.Medium, Confidence.High, "A FROM instruction uses the latest tag.", "Pin Docker base images by digest or a specific version tag."),
         new("TRUST-DOCKER003", "Dockerfile does not declare a non-root USER", AnalysisCategory.Containers, Severity.Medium, Confidence.High, "No USER instruction was found.", "Add a USER instruction to run as a non-root user."),
         new("TRUST-DOCKER004", "Dockerfile does not declare HEALTHCHECK", AnalysisCategory.Containers, Severity.Low, Confidence.High, "No HEALTHCHECK instruction was found.", "Add a HEALTHCHECK for container orchestration."),
+        new("TRUST-DOCKER005", "Dockerfile may define secret-like ENV", AnalysisCategory.Containers, Severity.High, Confidence.Medium, "The Dockerfile defines a secret-like environment variable.", "Avoid defining secrets in ENV variables. Use Docker build secrets or pass secrets at runtime instead."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -69,6 +70,22 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
             {
                 findings.Add(CreateFinding("TRUST-DOCKER004", "Dockerfile does not declare HEALTHCHECK", Severity.Low, relativePath, "No HEALTHCHECK instruction was found."));
             }
+
+            foreach (Match match in SecretEnvPattern().Matches(content))
+            {
+                var key = match.Groups["key"].Value;
+                var redactedLine = $"ENV {key}=[redacted]";
+                var evidenceText = $"Dockerfile defines secret-like ENV variable '{key}' with value redacted.";
+                findings.Add(new Finding(
+                    "TRUST-DOCKER005",
+                    "Dockerfile may define secret-like ENV",
+                    AnalysisCategory.Containers,
+                    Severity.High,
+                    Confidence.Medium,
+                    "Dockerfile may define secret-like ENV",
+                    [new Evidence("dockerfile", evidenceText, relativePath, GetLineNumber(content, match.Index), redactedLine)],
+                    new Recommendation("Avoid defining secrets in ENV variables. Use Docker build secrets or pass secrets at runtime instead.")));
+            }
         }
 
         return AnalyzerResult.Completed(findings);
@@ -87,6 +104,19 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
             new Recommendation("Review the Dockerfile for reproducibility and runtime hardening."));
     }
 
+    private static int GetLineNumber(string content, int matchIndex)
+    {
+        var line = 1;
+        for (var index = 0; index < matchIndex && index < content.Length; index++)
+        {
+            if (content[index] == '\n')
+            {
+                line++;
+            }
+        }
+        return line;
+    }
+
     [GeneratedRegex(@"(?mi)^\s*FROM\s+\S+:latest\b")]
     private static partial Regex LatestImagePattern();
 
@@ -95,4 +125,7 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?mi)^\s*HEALTHCHECK\b")]
     private static partial Regex HealthcheckPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*ENV\s+(?<key>PASSWORD|TOKEN|SECRET|API_KEY)\b\s*(?:=\s*|\s+)(?<value>\S+)", RegexOptions.IgnoreCase)]
+    private static partial Regex SecretEnvPattern();
 }
