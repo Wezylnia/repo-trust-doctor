@@ -29,6 +29,7 @@ public sealed class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         new("TRUST-REPO006", "CODEOWNERS is missing", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "The repository does not contain a CODEOWNERS file.", "Add CODEOWNERS when ownership review should be explicit."),
         new("TRUST-REPO007", "Issue template is missing", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "The repository does not contain an issue template.", "Add issue templates to collect enough information from users."),
         new("TRUST-REPO008", "Pull request template is missing", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "The repository does not contain a pull request template.", "Add a pull request template to make review expectations clear."),
+        new("TRUST-REPO009", "CHANGELOG is missing", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "The repository does not contain a CHANGELOG file.", "Add a changelog to document user-facing changes in each release."),
     ];
 
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -43,6 +44,7 @@ public sealed class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         CheckRequiredFile(context.RepositoryPath, [".github/CODEOWNERS", "CODEOWNERS"], "TRUST-REPO006", "CODEOWNERS is missing", "Add CODEOWNERS when ownership review should be explicit.", findings, Severity.Info);
         CheckRequiredFile(context.RepositoryPath, [".github/ISSUE_TEMPLATE", ".github/ISSUE_TEMPLATE.md"], "TRUST-REPO007", "Issue template is missing", "Add issue templates to collect enough information from users.", findings, Severity.Info);
         CheckRequiredFile(context.RepositoryPath, [".github/PULL_REQUEST_TEMPLATE.md", "PULL_REQUEST_TEMPLATE.md"], "TRUST-REPO008", "Pull request template is missing", "Add a pull request template to make review expectations clear.", findings, Severity.Info);
+        CheckRequiredFile(context.RepositoryPath, ["CHANGELOG.md", "CHANGELOG", "HISTORY.md", "RELEASES.md"], "TRUST-REPO009", "CHANGELOG is missing", "Add a changelog to document user-facing changes in each release.", findings, Severity.Info);
 
         return Task.FromResult(AnalyzerResult.Completed(findings));
     }
