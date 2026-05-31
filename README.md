@@ -20,7 +20,17 @@ The first milestone focuses on:
 
 The first usable scanner will not execute repository code by default.
 
-## Planned CLI
+## CLI
+
+The current skeleton supports local path scans:
+
+```text
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan .
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format json
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown
+```
+
+Planned CLI commands:
 
 ```text
 repo-trust-doctor scan .
@@ -77,4 +87,4 @@ See [docs/roadmap.md](docs/roadmap.md) for milestone details.
 
 ## License
 
-This project is currently prepared for a public repository. A license file will be added before the first tagged release.
+Repository Trust Doctor is licensed under the [MIT License](LICENSE).

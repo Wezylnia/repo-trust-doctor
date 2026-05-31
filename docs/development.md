@@ -20,6 +20,12 @@ dotnet build
 dotnet test
 ```
 
+## Local CLI Smoke Test
+
+```powershell
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format console
+```
+
 ## Design Rules
 
 - Keep domain models free of infrastructure concerns.
