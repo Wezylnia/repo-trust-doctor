@@ -1,3 +1,4 @@
+using System.Text.Json;
 using RepoTrustDoctor.Domain;
 using RepoTrustDoctor.Reporting;
 
@@ -115,6 +116,97 @@ public sealed class ReportWriterTests
         Assert.Contains("summary", json);
     }
 
+    [Fact]
+    public void JsonReport_ProducesStableFindingFingerprintAcrossReportWrites()
+    {
+        var finding = CreateFinding(
+            "TRUST-SECRET005",
+            Severity.High,
+            AnalysisCategory.Security,
+            evidenceKind: "secret-pattern",
+            filePath: "src/appsettings.json",
+            lineNumber: 42);
+        var scan = CreateMinimalScan() with { Findings = [finding] };
+        var writer = new JsonReportWriter();
+
+        var firstFingerprint = ExtractFirstFindingFingerprint(writer.Write(scan));
+        var secondFingerprint = ExtractFirstFindingFingerprint(writer.Write(scan));
+
+        Assert.Matches("^[a-f0-9]{64}$", firstFingerprint);
+        Assert.Equal(firstFingerprint, secondFingerprint);
+    }
+
+    [Fact]
+    public void MarkdownReport_IncludesFindingFingerprint()
+    {
+        var finding = CreateFinding(
+            "TRUST-GHA007",
+            Severity.Low,
+            AnalysisCategory.CiCd,
+            evidenceKind: "workflow-step",
+            filePath: ".github/workflows/ci.yml",
+            lineNumber: 12);
+        var scan = CreateMinimalScan() with { Findings = [finding] };
+
+        var markdown = new MarkdownReportWriter().Write(scan);
+
+        Assert.Contains("Fingerprint", markdown);
+        Assert.Contains(FindingFingerprinter.Compute(finding), markdown);
+    }
+
+    [Fact]
+    public void FindingFingerprint_ChangesWhenLineNumberChanges()
+    {
+        var first = CreateFinding(
+            "TRUST-GHA007",
+            Severity.Low,
+            AnalysisCategory.CiCd,
+            evidenceKind: "workflow-step",
+            filePath: ".github/workflows/ci.yml",
+            lineNumber: 12);
+        var second = CreateFinding(
+            "TRUST-GHA007",
+            Severity.Low,
+            AnalysisCategory.CiCd,
+            evidenceKind: "workflow-step",
+            filePath: ".github/workflows/ci.yml",
+            lineNumber: 13);
+
+        Assert.NotEqual(FindingFingerprinter.Compute(first), FindingFingerprinter.Compute(second));
+    }
+
+    [Fact]
+    public void FindingFingerprint_IgnoresEvidenceValues()
+    {
+        var first = CreateFinding(
+            "TRUST-SECRET005",
+            Severity.High,
+            AnalysisCategory.Security,
+            evidenceKind: "secret-pattern",
+            filePath: "src/appsettings.json",
+            lineNumber: 42,
+            evidenceValue: "postgres://user:raw-secret-one@example/db");
+        var second = CreateFinding(
+            "TRUST-SECRET005",
+            Severity.High,
+            AnalysisCategory.Security,
+            evidenceKind: "secret-pattern",
+            filePath: "src/appsettings.json",
+            lineNumber: 42,
+            evidenceValue: "postgres://user:raw-secret-two@example/db");
+
+        Assert.Equal(FindingFingerprinter.Compute(first), FindingFingerprinter.Compute(second));
+    }
+
+    private static string ExtractFirstFindingFingerprint(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement
+            .GetProperty("findings")[0]
+            .GetProperty("fingerprint")
+            .GetString()!;
+    }
+
     private static RepositoryScan CreateMinimalScan()
     {
         return new RepositoryScan(
@@ -131,7 +223,15 @@ public sealed class ReportWriterTests
             new TrustScore(100, [], new FinalDecision(FinalDecisionKind.SafeToTry, ["No findings."])));
     }
 
-    private static Finding CreateFinding(string ruleId, Severity severity, AnalysisCategory category, bool isBlocking = false)
+    private static Finding CreateFinding(
+        string ruleId,
+        Severity severity,
+        AnalysisCategory category,
+        bool isBlocking = false,
+        string evidenceKind = "test",
+        string? filePath = null,
+        int? lineNumber = null,
+        string? evidenceValue = null)
     {
         return new Finding(
             ruleId,
@@ -140,7 +240,7 @@ public sealed class ReportWriterTests
             severity,
             Confidence.High,
             $"Message for {ruleId}",
-            [new Evidence("test", "test evidence")],
+            [new Evidence(evidenceKind, "test evidence", filePath, lineNumber, evidenceValue)],
             new Recommendation("Fix it."),
             isBlocking);
     }

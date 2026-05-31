@@ -22,12 +22,15 @@ Each finding includes:
 - category,
 - severity,
 - confidence,
+- stable fingerprint,
 - message,
 - evidence,
 - recommendation,
 - blocking flag.
 
 Reports should be readable in Markdown and deterministic in JSON.
+
+Finding fingerprints are lowercase SHA-256 hex strings. They are computed from the rule ID, category, evidence kind, evidence file path, and evidence line number when present. Evidence messages, evidence values, and secret-like content are not fingerprint inputs.
 
 ## CLI Export
 

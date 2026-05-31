@@ -15,7 +15,7 @@ public sealed class JsonReportWriter
 
     public string Write(RepositoryScan scan)
     {
-        var sorted = scan with { Findings = SortFindings(scan.Findings) };
+        var sorted = scan with { Findings = SortFindings(FindingFingerprinter.AddFingerprints(scan.Findings)) };
         return JsonSerializer.Serialize(sorted, Options);
     }
 
@@ -75,19 +75,21 @@ public sealed class MarkdownReportWriter
 
         builder.AppendLine();
         builder.AppendLine("## Findings");
-        if (scan.Findings.Count == 0)
+        var findings = JsonReportWriter.SortFindings(FindingFingerprinter.AddFingerprints(scan.Findings));
+        if (findings.Count == 0)
         {
             builder.AppendLine("No findings were produced by the completed modules.");
         }
         else
         {
-            foreach (var finding in JsonReportWriter.SortFindings(scan.Findings))
+            foreach (var finding in findings)
             {
                 builder.AppendLine($"### {finding.RuleId} - {finding.Title}");
                 builder.AppendLine();
                 builder.AppendLine($"- Severity: `{finding.Severity}`");
                 builder.AppendLine($"- Confidence: `{finding.Confidence}`");
                 builder.AppendLine($"- Category: `{finding.Category}`");
+                builder.AppendLine($"- Fingerprint: `{finding.Fingerprint}`");
                 builder.AppendLine($"- Message: {finding.Message}");
                 builder.AppendLine($"- Recommendation: {finding.Recommendation.Message}");
                 foreach (var evidence in finding.Evidence)

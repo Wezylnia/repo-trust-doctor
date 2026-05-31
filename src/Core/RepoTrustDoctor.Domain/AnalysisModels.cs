@@ -85,7 +85,8 @@ public sealed record Finding(
     IReadOnlyList<Evidence> Evidence,
     Recommendation Recommendation,
     bool IsBlocking = false,
-    IReadOnlyList<string>? Tags = null);
+    IReadOnlyList<string>? Tags = null,
+    string? Fingerprint = null);
 
 public sealed record ScanModule(
     string ModuleId,
