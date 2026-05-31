@@ -1,5 +1,12 @@
 # Repository Trust Doctor
 
+[![CI](https://github.com/Wezylnia/repo-trust-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/Wezylnia/repo-trust-doctor/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Wezylnia/repo-trust-doctor/actions/workflows/codeql.yml/badge.svg)](https://github.com/Wezylnia/repo-trust-doctor/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/Wezylnia/repo-trust-doctor?include_prereleases)](https://github.com/Wezylnia/repo-trust-doctor/releases)
+[![Good First Issues](https://img.shields.io/github/issues/Wezylnia/repo-trust-doctor/good%20first%20issue)](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22)
+[![Help Wanted](https://img.shields.io/github/issues/Wezylnia/repo-trust-doctor/help%20wanted)](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22help%20wanted%22)
+[![License](https://img.shields.io/github/license/Wezylnia/repo-trust-doctor)](LICENSE)
+
 Repository Trust Doctor is a modular repository analysis platform for deciding whether an open-source repository is healthy, maintainable, and trustworthy enough to use, contribute to, or depend on.
 
 The project is intentionally evidence-based: analyzers produce findings with rule IDs, severity, confidence, evidence, and recommendations. Scoring and policy evaluation interpret those findings without hiding serious risks behind an average score.
@@ -52,6 +59,17 @@ Export a Markdown report:
 ```text
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
 ```
+
+## Contributing
+
+Contributor help is very welcome. The project has a set of scoped `v0.3` dependency inventory and reporting issues ready for external contributors:
+
+- [good first issue](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22)
+- [help wanted](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22help%20wanted%22)
+- [contributor-ready](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3Acontributor-ready)
+- [v0.3 dependency workstream](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3Aphase%3Av0.3)
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, safety rules, validation commands, and pull request expectations. Use [Discussions](https://github.com/Wezylnia/repo-trust-doctor/discussions) for questions or help choosing an issue.
 
 ## CLI
 

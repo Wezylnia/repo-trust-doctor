@@ -1,0 +1,79 @@
+name: Bug report
+description: Report incorrect scanner behavior, crashes, or confusing output.
+title: "bug: "
+labels:
+  - bug
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Please do not include real secrets, private repository contents, or sensitive logs.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+      placeholder: The scanner reports... / The CLI exits with...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Give the smallest reproduction you can share safely.
+      placeholder: |
+        1. Run `dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan ...`
+        2. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should RepoTrustDoctor do instead?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Paste sanitized output only. Redact secrets and private paths.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.0-alpha or commit SHA
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11, Ubuntu 24.04, macOS 15, etc.
+  - type: input
+    id: dotnet
+    attributes:
+      label: .NET SDK
+      placeholder: Output of `dotnet --version`
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - Analyzer output
+        - Reporting
+        - Git/GitHub input handling
+        - Documentation
+        - I am not sure
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed real secrets, tokens, private URLs, and private repository contents from this report.
+          required: true

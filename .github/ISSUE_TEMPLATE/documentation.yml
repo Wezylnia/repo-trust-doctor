@@ -1,0 +1,40 @@
+name: Documentation improvement
+description: Improve README, rule docs, contributor docs, or architecture docs.
+title: "docs: "
+labels:
+  - documentation
+  - area:docs
+  - needs-triage
+body:
+  - type: textarea
+    id: page
+    attributes:
+      label: Page or topic
+      description: Which document should change?
+      placeholder: README, CONTRIBUTING, docs/rules/dependencies.md, etc.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is unclear or missing?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed improvement
+      description: Include example wording if you already have it.
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Primary audience
+      options:
+        - New contributor
+        - Analyzer author
+        - Security reviewer
+        - CLI user
+        - Maintainer
+        - Other
+    validations:
+      required: true

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contributor help and project discussion
+    url: https://github.com/Wezylnia/repo-trust-doctor/discussions
+    about: Ask questions, discuss implementation ideas, or get help choosing an issue.
+  - name: Security vulnerability report
+    url: https://github.com/Wezylnia/repo-trust-doctor/security/advisories/new
+    about: Report confirmed vulnerabilities privately. Do not open public issues for confirmed vulnerabilities.
+  - name: Contributor guide
+    url: https://github.com/Wezylnia/repo-trust-doctor/blob/main/CONTRIBUTING.md
+    about: Read the setup, safety, testing, and pull request expectations before contributing.

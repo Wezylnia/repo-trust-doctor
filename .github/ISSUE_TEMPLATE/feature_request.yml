@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose a focused product or developer-experience improvement.
+title: "feature: "
+labels:
+  - enhancement
+  - needs-triage
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What user problem would this solve?
+      placeholder: As a maintainer evaluating a repository, I need...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the smallest useful version of the change.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional, but helpful if there are tradeoffs.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Dependencies
+        - Security analysis
+        - GitHub Actions analysis
+        - Docker/container analysis
+        - Reporting
+        - CLI
+        - Documentation
+        - Architecture
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Safety boundaries
+      options:
+        - label: This feature can be designed without executing untrusted repository code by default.
+          required: true
+        - label: This feature can be tested with synthetic fixtures or sanitized samples.
+          required: true
