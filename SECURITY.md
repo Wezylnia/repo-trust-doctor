@@ -4,12 +4,14 @@ Repository Trust Doctor analyzes untrusted repositories, so security reports are
 
 ## Reporting a Vulnerability
 
-Please do not open a public issue for a confirmed vulnerability. Contact the maintainer privately and include:
+Please do not open a public issue for a confirmed vulnerability. Use GitHub private vulnerability reporting at https://github.com/Wezylnia/repo-trust-doctor/security/advisories/new and include:
 
 - affected version or commit,
 - reproduction steps,
 - expected impact,
 - any relevant logs or sample files with secrets removed.
+
+The maintainer will acknowledge valid reports within 7 days, share status updates during remediation, and target coordinated disclosure within 90 days unless an actively exploited issue requires a faster advisory.
 
 ## Scanner Safety Baseline
 

@@ -1,3 +1,5 @@
+using System.Globalization;
+using FsCheck.Xunit;
 using RepoTrustDoctor.Domain;
 
 namespace RepoTrustDoctor.UnitTests;
@@ -121,5 +123,17 @@ public sealed class ScanCommandOptionsTests
 
         Assert.True(ok);
         Assert.Equal(expected, options.TrustProfile);
+    }
+
+    [Property(MaxTest = 100)]
+    public void TryParseScanOptions_GeneratedRelativeTarget_RoundTrips(int value)
+    {
+        var target = $"repo-{value.ToString(CultureInfo.InvariantCulture)}";
+        var args = new[] { "scan", target };
+
+        var ok = CliProgram.TryParseScanOptions(args, out var options, out _);
+
+        Assert.True(ok);
+        Assert.Equal(target, options.Target);
     }
 }
