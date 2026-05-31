@@ -20,8 +20,7 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
-        var dockerfiles = Directory.EnumerateFiles(context.RepositoryPath, "Dockerfile*", SearchOption.AllDirectories)
-            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}.git{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+        var dockerfiles = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "Dockerfile*")
             .ToArray();
 
         if (dockerfiles.Length == 0)
@@ -38,6 +37,11 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         foreach (var dockerfile in dockerfiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!RepositoryFileSystem.CanReadAsText(dockerfile))
+            {
+                continue;
+            }
+
             var content = await File.ReadAllTextAsync(dockerfile, cancellationToken);
             var relativePath = Path.GetRelativePath(context.RepositoryPath, dockerfile);
 

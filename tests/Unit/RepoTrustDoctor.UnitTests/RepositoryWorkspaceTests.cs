@@ -21,4 +21,11 @@ public sealed class RepositoryWorkspaceTests
         await Assert.ThrowsAsync<ArgumentException>(() =>
             RepositoryWorkspace.CloneFromUrlAsync("file:///tmp/repo", CancellationToken.None));
     }
+
+    [Fact]
+    public async Task CloneFromUrlAsync_RejectsUrlsWithCredentials()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            RepositoryWorkspace.CloneFromUrlAsync("https://token@example.com/owner/repo.git", CancellationToken.None));
+    }
 }

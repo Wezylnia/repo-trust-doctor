@@ -8,7 +8,6 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 {
     private static readonly string[] SensitiveFileNames = [".env", ".env.production", "id_rsa"];
     private static readonly string[] SensitiveExtensions = [".pem", ".key"];
-    private static readonly string[] ExcludedDirectoryNames = [".git", "bin", "obj", "node_modules", ".repo-trust", "private-docs"];
 
     public string Id => "secret-quick-scan";
 
@@ -39,8 +38,7 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
-            var info = new FileInfo(file);
-            if (info.Length > 512 * 1024)
+            if (!RepositoryFileSystem.CanReadAsText(file))
             {
                 continue;
             }
@@ -86,15 +84,7 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 
     private static IEnumerable<string> EnumerateCandidateFiles(string root)
     {
-        var options = new EnumerationOptions
-        {
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true
-        };
-
-        return Directory.EnumerateFiles(root, "*", options)
-            .Where(file => !file.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                .Any(part => ExcludedDirectoryNames.Contains(part, StringComparer.OrdinalIgnoreCase)));
+        return RepositoryFileSystem.EnumerateFiles(root);
     }
 
     private static int GetLineNumber(string content, int matchIndex)

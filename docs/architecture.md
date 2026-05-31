@@ -76,10 +76,13 @@ Analyzers detect evidence and emit structured findings. They do not calculate fi
 
 - local paths are scanned in place,
 - HTTP(S) repository URLs are cloned into a temporary directory with `git clone --depth 1 --no-tags`,
+- repository URLs containing credentials or fragments are rejected,
+- clone disables `file` and `ext` protocols and does not recurse into submodules,
 - temporary clone directories are deleted after the scan,
 - repository code is not executed during preparation.
 
 Static analyzers may skip local-only or generated directories such as `.git`, `bin`, `obj`, `node_modules`, `.repo-trust`, and this repository's ignored `private-docs` source notes when scanning for secret patterns.
+Static analyzers also apply bounded text reads so unusually large files are not read wholesale during quick static checks.
 
 ## Security Baseline
 

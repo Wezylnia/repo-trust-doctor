@@ -30,6 +30,7 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan https://github.com/own
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format json
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md --force
 ```
 
 Planned packaged CLI commands:
@@ -80,6 +81,8 @@ See [docs/roadmap.md](docs/roadmap.md) for milestone details.
 - Redact possible secrets in evidence.
 - Isolate analyzer failures so partial reports remain useful.
 - Use cautious language for heuristic findings.
+- Do not accept arbitrary uploaded files without an explicit intake policy.
+- Refuse report overwrites unless `--force` is provided.
 
 ## Documentation
 

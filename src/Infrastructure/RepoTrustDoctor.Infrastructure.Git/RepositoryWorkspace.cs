@@ -32,10 +32,7 @@ public sealed class RepositoryWorkspace : IDisposable
         string repositoryUrl,
         CancellationToken cancellationToken)
     {
-        if (!IsHttpGitUrl(repositoryUrl))
-        {
-            throw new ArgumentException("Only http and https repository URLs are supported.", nameof(repositoryUrl));
-        }
+        var uri = ValidateRepositoryUrl(repositoryUrl);
 
         var workspaceRoot = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "repo-trust-doctor");
         Directory.CreateDirectory(workspaceRoot);
@@ -43,7 +40,19 @@ public sealed class RepositoryWorkspace : IDisposable
 
         try
         {
-            await RunGitAsync(["clone", "--depth", "1", "--no-tags", repositoryUrl, clonePath], cancellationToken);
+            await RunGitAsync([
+                "-c",
+                "protocol.file.allow=never",
+                "-c",
+                "protocol.ext.allow=never",
+                "clone",
+                "--depth",
+                "1",
+                "--no-tags",
+                "--recurse-submodules=no",
+                uri.AbsoluteUri,
+                clonePath
+            ], cancellationToken);
             return new RepositoryWorkspace(repositoryUrl, clonePath, ownsDirectory: true);
         }
         catch
@@ -61,9 +70,26 @@ public sealed class RepositoryWorkspace : IDisposable
         }
     }
 
-    private static bool IsHttpGitUrl(string value) =>
-        Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
-        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+    private static Uri ValidateRepositoryUrl(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new ArgumentException("Only absolute http and https repository URLs are supported.", nameof(value));
+        }
+
+        if (!string.IsNullOrEmpty(uri.UserInfo))
+        {
+            throw new ArgumentException("Repository URLs must not include usernames, passwords, or tokens.", nameof(value));
+        }
+
+        if (!string.IsNullOrEmpty(uri.Fragment))
+        {
+            throw new ArgumentException("Repository URLs must not include URL fragments.", nameof(value));
+        }
+
+        return uri;
+    }
 
     private static async Task RunGitAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
@@ -95,7 +121,7 @@ public sealed class RepositoryWorkspace : IDisposable
         {
             var output = string.Join(Environment.NewLine, [standardOutput.Trim(), standardError.Trim()])
                 .Trim();
-            throw new InvalidOperationException($"git {string.Join(' ', arguments)} failed with exit code {process.ExitCode}: {output}");
+            throw new InvalidOperationException($"git clone failed with exit code {process.ExitCode}: {output}");
         }
     }
 

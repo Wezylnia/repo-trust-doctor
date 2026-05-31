@@ -39,3 +39,4 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --
 ```
 
 When `--output` is provided, the CLI creates the parent directory if needed and writes the selected report format to that file.
+If the file already exists, the CLI refuses to overwrite it unless `--force` is supplied.

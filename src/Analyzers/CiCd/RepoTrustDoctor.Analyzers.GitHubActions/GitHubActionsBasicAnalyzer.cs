@@ -27,10 +27,15 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         }
 
         var findings = new List<Finding>();
-        foreach (var file in Directory.EnumerateFiles(workflowRoot, "*.*", SearchOption.TopDirectoryOnly)
+        foreach (var file in RepositoryFileSystem.EnumerateFiles(workflowRoot, "*.*", SearchOption.TopDirectoryOnly)
                      .Where(file => file.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase)))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!RepositoryFileSystem.CanReadAsText(file))
+            {
+                continue;
+            }
+
             var content = await File.ReadAllTextAsync(file, cancellationToken);
             var relativePath = Path.GetRelativePath(context.RepositoryPath, file);
 

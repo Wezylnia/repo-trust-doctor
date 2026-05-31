@@ -38,6 +38,8 @@ To write a report to disk:
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
 ```
 
+Existing report files are not overwritten unless `--force` is supplied.
+
 ## Design Rules
 
 - Keep domain models free of infrastructure concerns.

@@ -33,6 +33,7 @@ internal static class CliProgram
         var target = args.Length > 1 ? args[1] : ".";
         var format = ReadOption(args, "--format") ?? "console";
         var outputPath = ReadOption(args, "--output");
+        var forceOutput = HasFlag(args, "--force");
         var depth = ParseDepth(ReadOption(args, "--depth") ?? "fast");
 
         IRepositoryAnalyzer[] analyzers =
@@ -68,6 +69,13 @@ internal static class CliProgram
                 Directory.CreateDirectory(outputDirectory);
             }
 
+            if (File.Exists(fullOutputPath) && !forceOutput)
+            {
+                Console.Error.WriteLine($"Refusing to overwrite existing report: {fullOutputPath}");
+                Console.Error.WriteLine("Use --force to overwrite it.");
+                return 2;
+            }
+
             await File.WriteAllTextAsync(fullOutputPath, output, cancellationToken);
             Console.WriteLine($"Report written to {fullOutputPath}");
         }
@@ -96,6 +104,11 @@ internal static class CliProgram
         }
 
         return null;
+    }
+
+    private static bool HasFlag(string[] args, string name)
+    {
+        return args.Any(argument => string.Equals(argument, name, StringComparison.OrdinalIgnoreCase));
     }
 
     private static AnalysisDepth ParseDepth(string value) => value.ToLowerInvariant() switch
@@ -138,7 +151,7 @@ internal static class CliProgram
         Repository Trust Doctor
 
         Usage:
-          repo-trust-doctor scan <path-or-url> [--format console|json|markdown] [--output file] [--depth fast|standard|deep]
+          repo-trust-doctor scan <path-or-url> [--format console|json|markdown] [--output file] [--force] [--depth fast|standard|deep]
         """);
     }
 }
