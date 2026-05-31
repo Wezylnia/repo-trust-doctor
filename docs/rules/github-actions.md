@@ -71,3 +71,15 @@ Detects workflows specifying `runs-on: self-hosted`, lists containing `self-host
 Why it matters: self-hosted runners run on user-owned infrastructure. If untrusted pull request code is executed on a self-hosted runner, it can access the environment, secrets, or internal network.
 
 Recommendation: ensure self-hosted runners are isolated and do not run untrusted pull request code.
+
+## TRUST-GHA007: Checkout May Persist Credentials
+
+- Category: CI/CD
+- Default severity: Low
+- Default confidence: Medium
+
+Detects `uses: actions/checkout@...` steps that do not specify `persist-credentials: false` in the nearby lines.
+
+Why it matters: by default, `actions/checkout` persists the GitHub token in the local git configuration. If subsequent steps run untrusted code or upload artifacts, they might read or expose this token.
+
+Recommendation: set `persist-credentials: false` when checkout is only used for building or testing.

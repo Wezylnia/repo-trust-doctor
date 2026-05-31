@@ -28,6 +28,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         new("TRUST-GHA004", "Workflow pipes downloaded scripts into a shell", AnalysisCategory.CiCd, Severity.High, Confidence.High, "A curl/wget pipe-to-shell pattern was found.", "Download scripts separately, verify integrity, and avoid piping remote content directly into a shell."),
         new("TRUST-GHA005", "Third-party action is not pinned by SHA", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "A third-party action is referenced by tag instead of full commit SHA.", "Pin third-party GitHub Actions to a full commit SHA."),
         new("TRUST-GHA006", "Workflow uses self-hosted runner", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "The workflow runs on a self-hosted runner.", "Ensure self-hosted runners are isolated and do not run untrusted pull request code."),
+        new("TRUST-GHA007", "Checkout may persist credentials", AnalysisCategory.CiCd, Severity.Low, Confidence.Medium, "The workflow uses actions/checkout without setting persist-credentials to false.", "Set persist-credentials: false to avoid exposing github token to subsequent steps."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -88,6 +89,30 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
             {
                 AddFinding(findings, "TRUST-GHA006", "Workflow uses self-hosted runner", Severity.Medium, "Ensure self-hosted runners are isolated and do not run untrusted pull request code.", relativePath, "self-hosted runner was found.", GetLineNumber(content, selfHostedMatch.Index));
             }
+
+            var lines = content.Split(['\r', '\n'], StringSplitOptions.None);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (UsesCheckoutPattern().IsMatch(line))
+                {
+                    var hasPersistCredentialsFalse = false;
+                    var checkLimit = Math.Min(i + 9, lines.Length);
+                    for (int j = i + 1; j < checkLimit; j++)
+                    {
+                        if (PersistCredentialsFalsePattern().IsMatch(lines[j]))
+                        {
+                            hasPersistCredentialsFalse = true;
+                            break;
+                        }
+                    }
+
+                    if (!hasPersistCredentialsFalse)
+                    {
+                        AddFinding(findings, "TRUST-GHA007", "Checkout may persist credentials", Severity.Low, "Set persist-credentials: false when checkout is only used for building or testing.", relativePath, "actions/checkout is used without persist-credentials: false.", i + 1);
+                    }
+                }
+            }
         }
 
         return AnalyzerResult.Completed(findings);
@@ -145,4 +170,10 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?mi)(?:^\s*runs-on\s*:\s*(?:['""]*self-hosted['""]*|\[[^\]]*\bself-hosted\b[^\]]*\])|^\s*-\s*['""]*self-hosted['""]*\s*$)")]
     private static partial Regex SelfHostedPattern();
+
+    [GeneratedRegex(@"\buses\s*:\s*actions/checkout@", RegexOptions.IgnoreCase)]
+    private static partial Regex UsesCheckoutPattern();
+
+    [GeneratedRegex(@"\bpersist-credentials\s*:\s*['""]?false['""]?", RegexOptions.IgnoreCase)]
+    private static partial Regex PersistCredentialsFalsePattern();
 }
