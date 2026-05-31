@@ -40,6 +40,17 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --
 
 Existing report files are not overwritten unless `--force` is supplied.
 
+Trust profile values are normalized by the CLI. Canonical values are `Personal`, `ProductionDependency`, `EnterpriseDependency`, `CiCdTool`, `SecuritySensitiveDependency`, and `ContainerDependency`; common aliases such as `production`, `enterprise`, `ci-cd`, `security`, and `container` are also accepted.
+
+## CLI Exit Codes
+
+| Code | Meaning |
+| ---- | ------- |
+| `0`  | Scan completed, no blocking decision |
+| `1`  | CLI usage error |
+| `2`  | Input/output error |
+| `3`  | Scan completed with `AvoidAsProductionDependency` |
+
 ## Design Rules
 
 - Keep domain models free of infrastructure concerns.

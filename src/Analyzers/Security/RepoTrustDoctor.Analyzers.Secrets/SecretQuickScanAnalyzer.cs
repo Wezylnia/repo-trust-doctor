@@ -21,6 +21,19 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 
+    public TimeSpan Timeout => TimeSpan.FromSeconds(30);
+
+    public IReadOnlyCollection<RuleMetadata> Rules =>
+    [
+        new("TRUST-SECRET001", "Sensitive-looking file is committed", AnalysisCategory.Security, Severity.High, Confidence.High, "A sensitive-looking file was found in the repository.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
+        new("TRUST-SECRET002", "Possible private key marker found", AnalysisCategory.Security, Severity.Critical, Confidence.High, "A private key block marker was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
+        new("TRUST-SECRET003", "Possible GitHub token found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "A GitHub token-like value was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
+        new("TRUST-SECRET004", "Possible AWS access key found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "An AWS access key-like value was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
+        new("TRUST-SECRET005", "Possible database connection string found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "A connection string-like value was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
+        new("TRUST-SECRET006", "Possible Slack webhook found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "A Slack webhook-like URL was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
+        new("TRUST-SECRET007", "Possible Discord webhook found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "A Discord webhook-like URL was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
+    ];
+
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var findings = new List<Finding>();
@@ -43,6 +56,11 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
+            if (IsExampleFixturePath(relativePath))
+            {
+                continue;
+            }
+
             var content = await File.ReadAllTextAsync(file, cancellationToken);
             if (PrivateKeyPattern().Match(content) is { Success: true } privateKeyMatch)
             {
@@ -51,24 +69,34 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 
             if (GitHubTokenPattern().Match(content) is { Success: true } gitHubTokenMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET003", "Possible GitHub token found", Severity.High, Confidence.Medium, relativePath, "A GitHub token-like value was found and redacted.", GetLineNumber(content, gitHubTokenMatch.Index)));
+                findings.Add(CreateFinding("TRUST-SECRET003", "Possible GitHub token found", Severity.High, Confidence.Medium, relativePath, "A GitHub token-like value was found and redacted.", GetLineNumber(content, gitHubTokenMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(gitHubTokenMatch.Value)));
             }
 
             if (AwsAccessKeyPattern().Match(content) is { Success: true } awsAccessKeyMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET004", "Possible AWS access key found", Severity.High, Confidence.Medium, relativePath, "An AWS access key-like value was found and redacted.", GetLineNumber(content, awsAccessKeyMatch.Index)));
+                findings.Add(CreateFinding("TRUST-SECRET004", "Possible AWS access key found", Severity.High, Confidence.Medium, relativePath, "An AWS access key-like value was found and redacted.", GetLineNumber(content, awsAccessKeyMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(awsAccessKeyMatch.Value)));
             }
 
             if (ConnectionStringPattern().Match(content) is { Success: true } connectionStringMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET005", "Possible database connection string found", Severity.High, Confidence.Medium, relativePath, "A connection string-like value was found and redacted.", GetLineNumber(content, connectionStringMatch.Index)));
+                findings.Add(CreateFinding("TRUST-SECRET005", "Possible database connection string found", Severity.High, Confidence.Medium, relativePath, "A connection string-like value was found and redacted.", GetLineNumber(content, connectionStringMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(connectionStringMatch.Value)));
+            }
+
+            if (SlackWebhookPattern().Match(content) is { Success: true } slackWebhookMatch)
+            {
+                findings.Add(CreateFinding("TRUST-SECRET006", "Possible Slack webhook found", Severity.High, Confidence.Medium, relativePath, "A Slack webhook-like URL was found.", GetLineNumber(content, slackWebhookMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(slackWebhookMatch.Value)));
+            }
+
+            if (DiscordWebhookPattern().Match(content) is { Success: true } discordWebhookMatch)
+            {
+                findings.Add(CreateFinding("TRUST-SECRET007", "Possible Discord webhook found", Severity.High, Confidence.Medium, relativePath, "A Discord webhook-like URL was found.", GetLineNumber(content, discordWebhookMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(discordWebhookMatch.Value)));
             }
         }
 
         return AnalyzerResult.Completed(findings);
     }
 
-    private static Finding CreateFinding(string ruleId, string title, Severity severity, Confidence confidence, string filePath, string evidence, int? lineNumber = null, bool isBlocking = false)
+    private static Finding CreateFinding(string ruleId, string title, Severity severity, Confidence confidence, string filePath, string evidence, int? lineNumber = null, bool isBlocking = false, string redactedValue = "[redacted]")
     {
         return new Finding(
             ruleId,
@@ -77,7 +105,7 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             severity,
             confidence,
             title,
-            [new Evidence("secret-pattern", evidence, filePath, lineNumber, "[redacted]")],
+            [new Evidence("secret-pattern", evidence, filePath, lineNumber, redactedValue)],
             new Recommendation("Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
             isBlocking);
     }
@@ -101,6 +129,14 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
         return line;
     }
 
+    private static bool IsExampleFixturePath(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/');
+        return normalized.Contains("tests/Fixtures/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("testdata/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("docs/examples/", StringComparison.OrdinalIgnoreCase);
+    }
+
     [GeneratedRegex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----")]
     private static partial Regex PrivateKeyPattern();
 
@@ -112,4 +148,10 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?i)(Server|Host|Data Source)\s*=.+;(User Id|Username|Uid)\s*=.+;(Password|Pwd)\s*=")]
     private static partial Regex ConnectionStringPattern();
+
+    [GeneratedRegex(@"https://hooks\.slack\.com/services/[A-Za-z0-9_/]+")]
+    private static partial Regex SlackWebhookPattern();
+
+    [GeneratedRegex(@"https://discord(?:app)?\.com/api/webhooks/[A-Za-z0-9_/]+")]
+    private static partial Regex DiscordWebhookPattern();
 }
