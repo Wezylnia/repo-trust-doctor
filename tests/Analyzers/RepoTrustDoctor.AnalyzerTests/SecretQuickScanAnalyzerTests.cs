@@ -124,5 +124,33 @@ public sealed class SecretQuickScanAnalyzerTests
 
         Assert.Empty(result.Findings);
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_SkipsSecretFindings_InExampleFixturePaths()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var fakeToken = "ghp_" + "abcdefghijklmnopqrstuvwxyz123456";
+
+        // Create a directory matching fixture path
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "tests", "Fixtures"));
+        File.WriteAllText(Path.Combine(fixture.Path, "tests", "Fixtures", "sample.txt"), $"""
+        token={fakeToken}
+        """);
+
+        // Create a normal directory path
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "src"));
+        File.WriteAllText(Path.Combine(fixture.Path, "src", "sample.txt"), $"""
+        token={fakeToken}
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        // Should report exactly one token finding, which is in the src directory, and none in tests/Fixtures/
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET003");
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Contains("src/sample.txt", evidence.FilePath?.Replace('\\', '/'));
+    }
 }
+
 

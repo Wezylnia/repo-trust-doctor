@@ -84,3 +84,13 @@ Why it matters: exposed Discord webhooks allow posting messages or executing act
 
 Recommendation: manually verify the finding, revoke or rotate the webhook URL if confirmed, and remove it from repository history.
 
+## False-Positive Suppression
+
+To avoid noise in automated testing and documentation, the secret scanner ignores internal secret pattern matches (such as API keys, webhooks, or tokens) within files residing in the following paths:
+- `tests/Fixtures/`
+- `testdata/`
+- `docs/examples/`
+
+Note that files under these paths are still checked for general repository metadata or container settings where appropriate, but pattern-based secret rules will not fire.
+
+
