@@ -13,7 +13,22 @@ public sealed class JsonReportWriter
         Converters = { new JsonStringEnumConverter() }
     };
 
-    public string Write(RepositoryScan scan) => JsonSerializer.Serialize(scan, Options);
+    public string Write(RepositoryScan scan)
+    {
+        var sorted = scan with { Findings = SortFindings(scan.Findings) };
+        return JsonSerializer.Serialize(sorted, Options);
+    }
+
+    public static IReadOnlyList<Finding> SortFindings(IReadOnlyList<Finding> findings)
+    {
+        return findings
+            .OrderByDescending(f => f.Severity)
+            .ThenBy(f => f.Category)
+            .ThenBy(f => f.RuleId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(f => f.Evidence.FirstOrDefault()?.FilePath, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(f => f.Evidence.FirstOrDefault()?.LineNumber)
+            .ToArray();
+    }
 }
 
 public sealed class MarkdownReportWriter
@@ -24,10 +39,25 @@ public sealed class MarkdownReportWriter
         builder.AppendLine($"# Repository Trust Report");
         builder.AppendLine();
         builder.AppendLine($"- Target: `{scan.Target}`");
+        builder.AppendLine($"- Tool version: `{scan.ToolVersion}`");
         builder.AppendLine($"- Scan mode: `{scan.Depth}`");
         builder.AppendLine($"- Trust profile: `{scan.TrustProfile}`");
         builder.AppendLine($"- Overall score: `{scan.Score.Overall}/100`");
         builder.AppendLine($"- Decision: `{scan.Score.Decision.Kind}`");
+        builder.AppendLine();
+
+        var summary = scan.Summary;
+        builder.AppendLine("## Finding Summary");
+        builder.AppendLine();
+        builder.AppendLine($"| Severity | Count |");
+        builder.AppendLine($"| -------- | ----- |");
+        builder.AppendLine($"| Critical | {summary.Critical} |");
+        builder.AppendLine($"| High     | {summary.High} |");
+        builder.AppendLine($"| Medium   | {summary.Medium} |");
+        builder.AppendLine($"| Low      | {summary.Low} |");
+        builder.AppendLine($"| Info     | {summary.Info} |");
+        builder.AppendLine($"| **Total**    | **{summary.Total}** |");
+        builder.AppendLine($"| Blocking | {summary.Blocking} |");
         builder.AppendLine();
 
         builder.AppendLine("## Decision Reasons");
@@ -51,7 +81,7 @@ public sealed class MarkdownReportWriter
         }
         else
         {
-            foreach (var finding in scan.Findings.OrderByDescending(finding => finding.Severity))
+            foreach (var finding in JsonReportWriter.SortFindings(scan.Findings))
             {
                 builder.AppendLine($"### {finding.RuleId} - {finding.Title}");
                 builder.AppendLine();

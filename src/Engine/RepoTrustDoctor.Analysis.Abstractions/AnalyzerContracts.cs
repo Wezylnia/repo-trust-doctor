@@ -12,6 +12,15 @@ public enum AnalyzerExecutionSafety
 
 public sealed record AnalyzerArtifact(string Key, object Value);
 
+public sealed record RuleMetadata(
+    string RuleId,
+    string Title,
+    AnalysisCategory Category,
+    Severity DefaultSeverity,
+    Confidence DefaultConfidence,
+    string Description,
+    string Recommendation);
+
 public sealed record AnalyzerResult(
     ModuleStatus Status,
     IReadOnlyList<Finding> Findings,
@@ -71,6 +80,10 @@ public interface IRepositoryAnalyzer
     IReadOnlyCollection<string> DependsOn { get; }
 
     AnalyzerExecutionSafety ExecutionSafety { get; }
+
+    IReadOnlyCollection<RuleMetadata> Rules { get; }
+
+    TimeSpan Timeout { get; }
 
     Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken);
 }

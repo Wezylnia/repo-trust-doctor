@@ -31,7 +31,17 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format json
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md --force
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --profile enterprise
 ```
+
+### CLI Exit Codes
+
+| Code | Meaning |
+| ---- | ------- |
+| `0`  | Scan completed and no blocking avoid decision |
+| `1`  | CLI usage error |
+| `2`  | Input/output error (e.g. refusing to overwrite an existing report) |
+| `3`  | Scan completed with `AvoidAsProductionDependency` decision |
 
 Planned packaged CLI commands:
 
