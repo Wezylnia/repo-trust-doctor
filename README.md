@@ -87,4 +87,4 @@ See [docs/roadmap.md](docs/roadmap.md) for milestone details.
 
 ## License
 
-Repository Trust Doctor is licensed under the [MIT License](LICENSE).
+Repository Trust Doctor is licensed under the [Apache License 2.0](LICENSE).
