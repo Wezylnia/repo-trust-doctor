@@ -10,9 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: read
   contents: read
-  security-events: write
 
 concurrency:
   group: codeql-${{ github.ref }}
@@ -23,6 +21,10 @@ jobs:
     name: codeql-analyze
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout
@@ -40,7 +42,7 @@ jobs:
           build-mode: manual
 
       - name: Restore
-        run: dotnet restore RepoTrustDoctor.slnx
+        run: dotnet restore RepoTrustDoctor.slnx --locked-mode
 
       - name: Build
         run: dotnet build RepoTrustDoctor.slnx --configuration Release --no-restore
