@@ -6,6 +6,11 @@ public sealed class TrustScorer
 {
     public TrustScore Score(IReadOnlyList<Finding> findings)
     {
+        return Score(findings, TrustProfile.ProductionDependency);
+    }
+
+    public TrustScore Score(IReadOnlyList<Finding> findings, TrustProfile trustProfile)
+    {
         var categories = findings
             .GroupBy(finding => finding.Category)
             .Select(group => new CategoryScore(group.Key, ScoreCategory(group)))
