@@ -50,6 +50,16 @@ Existing report files are not overwritten unless `--force` is supplied.
 - Do not execute repository code by default.
 - Analyzer failures should be isolated and visible in the report.
 
+## Pull Request Checks
+
+Pull requests to `main` are expected to pass:
+
+- `build-test`
+- `repo-trust-scan`
+- CodeQL analysis
+
+The protected branch requires review before merge. GitHub Copilot review can be requested manually from the pull request reviewers menu; automatic Copilot review depends on the repository owner's Copilot plan and GitHub settings.
+
 ## Public Repository Notes
 
 Local planning notes under `private-docs/` are intentionally ignored. Public documentation should live under `docs/` and be updated as behavior changes.

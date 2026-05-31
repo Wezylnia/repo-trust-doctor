@@ -93,6 +93,10 @@ See [docs/roadmap.md](docs/roadmap.md) for milestone details.
 - [Report format](docs/report-format.md)
 - [Rule catalog](docs/rules/README.md)
 
+## Repository Governance
+
+The public repository uses protected `main`, required pull request review, required CI status checks, CodeQL, OSSF Scorecard, Dependabot, and Copilot review instructions.
+
 ## License
 
 This project is licensed under the Apache License 2.0. See the [LICENSE](./LICENSE) file for details.

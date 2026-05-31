@@ -1,0 +1,49 @@
+name: PR Trust Analysis
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-trust-analysis-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repo-trust-scan:
+    name: repo-trust-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore RepoTrustDoctor.slnx
+
+      - name: Build CLI
+        run: dotnet build src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj --configuration Release --no-restore
+
+      - name: Generate trust report
+        run: >
+          dotnet run --project src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj
+          --configuration Release
+          -- scan .
+          --format markdown
+          --output artifacts/repo-trust-report.md
+
+      - name: Upload trust report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: repo-trust-report
+          path: artifacts/repo-trust-report.md
+          if-no-files-found: error
