@@ -56,6 +56,11 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
+            if (IsExampleFixturePath(relativePath))
+            {
+                continue;
+            }
+
             var content = await File.ReadAllTextAsync(file, cancellationToken);
             if (PrivateKeyPattern().Match(content) is { Success: true } privateKeyMatch)
             {
@@ -122,6 +127,14 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
         }
 
         return line;
+    }
+
+    private static bool IsExampleFixturePath(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/');
+        return normalized.Contains("tests/Fixtures/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("testdata/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("docs/examples/", StringComparison.OrdinalIgnoreCase);
     }
 
     [GeneratedRegex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----")]
