@@ -95,4 +95,10 @@ See [docs/roadmap.md](docs/roadmap.md) for milestone details.
 
 ## License
 
-Repository Trust Doctor is licensed under the [Apache License 2.0](LICENSE).
+This project is licensed under the Apache License 2.0. See the [LICENSE](./LICENSE) file for details.
+
+## Disclaimer
+
+repo-trust-doctor provides heuristic, evidence-based repository analysis. It does not certify that a repository, dependency, workflow, package, or release is secure, safe, compliant, or free from vulnerabilities.
+
+Reports may contain false positives or false negatives. The tool is intended to support decision-making and does not replace manual review, legal review, security testing, or professional audit.

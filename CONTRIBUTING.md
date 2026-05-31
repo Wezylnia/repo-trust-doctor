@@ -22,3 +22,9 @@ dotnet test
 ## Adding an Analyzer
 
 Start with [docs/analyzer-authoring.md](docs/analyzer-authoring.md), add fixture tests, then document any new rule IDs.
+
+## Licensing of Contributions
+
+By contributing to this project, you agree that your contributions will be licensed under the Apache License 2.0, the same license as the project.
+
+You also confirm that you have the right to submit the contribution and that your contribution does not knowingly include code or content you do not have permission to contribute.
