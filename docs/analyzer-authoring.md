@@ -43,3 +43,12 @@ TRUST-DOCKER001
 ```
 
 Document new rules under [docs/rules](rules/README.md) when adding or changing analyzer output.
+
+## Rule Author Checklist
+
+- [ ] Add rule metadata to the analyzer `Rules` collection.
+- [ ] Document the rule under [docs/rules](rules/README.md) or the relevant rule catalog page.
+- [ ] Add fixture-based analyzer tests for positive and negative cases.
+- [ ] Verify sensitive evidence is redacted before it reaches findings, reports, logs, or snapshots.
+- [ ] Verify the analyzer timeout is set and appropriate for the scan depth.
+- [ ] Run build and tests before opening or merging the change.
