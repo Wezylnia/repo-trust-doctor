@@ -59,3 +59,16 @@ Detects `ENV` instructions in Dockerfiles that define values for secret-like key
 Why it matters: environment variables set in Dockerfiles persist in the image layers and can be retrieved by anyone with access to the image.
 
 Recommendation: avoid defining secrets in ENV variables. Use Docker build secrets or pass secrets at runtime instead.
+
+## TRUST-DOCKER006: Dockerfile Does Not Appear to Use Multi-Stage Build
+
+- Category: Containers
+- Default severity: Low
+- Default confidence: Medium
+
+Detects Dockerfiles that have exactly one `FROM` instruction.
+
+Why it matters: single-stage builds often include build dependencies, compilers, and source code in the final image, increasing the image size and the attack surface.
+
+Recommendation: use multi-stage builds to reduce image size and improve security by separating build dependencies from the runtime image.
+
