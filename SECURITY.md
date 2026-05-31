@@ -33,8 +33,8 @@ Current safeguards:
 
 Current non-goals:
 
-- The project does not accept arbitrary uploaded files.
+- The project does not accept arbitrary uploaded files or archives. It accepts repository paths and public HTTP(S) Git repository URLs only.
 - The project does not execute package installation, build, test, Docker build, or repository scripts by default.
 - The current CLI does not provide hosted scanning or multi-user file intake.
 
-Future hosted or API-based scanning must add explicit upload policy, repository size limits, per-scan timeouts, workspace isolation, and abuse controls before accepting user-provided archives or files.
+Future upload or hosted scanning support must define explicit size limits, archive extraction policy, path traversal defenses (Zip Slip), malware scanning expectations, per-scan timeouts, workspace isolation, and cleanup before accepting user-provided archives or files.
