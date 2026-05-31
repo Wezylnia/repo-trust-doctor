@@ -83,4 +83,76 @@ public sealed class DependencyInventoryAnalyzerTests
 
         Assert.Empty(result.Findings);
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_PythonRequirementsWithoutLockfile_ReportsDep003()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "requirements.txt"), "");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP003");
+        Assert.Equal(Severity.Low, finding.Severity);
+        Assert.Equal(Confidence.Medium, finding.Confidence);
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Equal("requirements.txt", evidence.FilePath);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PythonPyprojectWithoutLockfile_ReportsDep003()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "pyproject.toml"), "");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP003");
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Equal("pyproject.toml", evidence.FilePath);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PythonPipfileWithoutLockfile_ReportsDep003()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Pipfile"), "");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP003");
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Equal("Pipfile", evidence.FilePath);
+    }
+
+    [Theory]
+    [InlineData("poetry.lock")]
+    [InlineData("uv.lock")]
+    public async Task AnalyzeAsync_PythonPyprojectWithLockfile_DoesNotReportDep003(string lockfileName)
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "pyproject.toml"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, lockfileName), "");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PythonPipfileWithLockfile_DoesNotReportDep003()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Pipfile"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Pipfile.lock"), "");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+    }
 }
