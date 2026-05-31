@@ -64,6 +64,28 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
             }
         }
 
+        // Detect NuGet projects and lockfiles
+        var csprojs = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.csproj").ToArray();
+        if (csprojs.Length > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var hasNuGetLockfile = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "packages.lock.json").Any();
+            if (!hasNuGetLockfile)
+            {
+                var representativeProject = csprojs[0];
+                var relativePath = Path.GetRelativePath(context.RepositoryPath, representativeProject);
+                findings.Add(new Finding(
+                    "TRUST-DEP002",
+                    "NuGet project does not use lockfile",
+                    AnalysisCategory.Dependencies,
+                    Severity.Low,
+                    Confidence.Medium,
+                    "NuGet project does not use lockfile",
+                    [new Evidence("package-manifest", "A NuGet project exists but no packages.lock.json was found.", relativePath)],
+                    new Recommendation("Enable NuGet lock files and restore locked mode, then commit packages.lock.json to the repository.")));
+            }
+        }
+
         return Task.FromResult(AnalyzerResult.Completed(findings));
     }
 }

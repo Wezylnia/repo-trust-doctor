@@ -54,4 +54,33 @@ public sealed class DependencyInventoryAnalyzerTests
 
         Assert.Empty(result.Findings);
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_NuGetProjectWithoutLockfile_ReportsDep002()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "MyProject.csproj"), "");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP002");
+        Assert.Equal(Severity.Low, finding.Severity);
+        Assert.Equal(Confidence.Medium, finding.Confidence);
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Equal("MyProject.csproj", evidence.FilePath);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_NuGetProjectWithLockfile_DoesNotReportDep002()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "MyProject.csproj"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "packages.lock.json"), "{}");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+    }
 }
