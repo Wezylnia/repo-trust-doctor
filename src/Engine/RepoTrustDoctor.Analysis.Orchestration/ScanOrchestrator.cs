@@ -61,7 +61,7 @@ public sealed class ScanOrchestrator
         string target,
         string repositoryPath,
         AnalysisDepth depth,
-        string trustProfile,
+        TrustProfile trustProfile,
         CancellationToken cancellationToken)
     {
         var started = DateTimeOffset.UtcNow;

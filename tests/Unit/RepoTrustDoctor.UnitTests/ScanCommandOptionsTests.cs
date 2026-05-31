@@ -18,7 +18,7 @@ public sealed class ScanCommandOptionsTests
         Assert.Null(options.OutputPath);
         Assert.False(options.ForceOutput);
         Assert.Equal(AnalysisDepth.Fast, options.Depth);
-        Assert.Equal("ProductionDependency", options.TrustProfile);
+        Assert.Equal(TrustProfile.ProductionDependency, options.TrustProfile);
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public sealed class ScanCommandOptionsTests
         Assert.Equal("out.json", options.OutputPath);
         Assert.True(options.ForceOutput);
         Assert.Equal(AnalysisDepth.Deep, options.Depth);
-        Assert.Equal("Personal", options.TrustProfile);
+        Assert.Equal(TrustProfile.Personal, options.TrustProfile);
     }
 
     [Fact]
@@ -111,12 +111,28 @@ public sealed class ScanCommandOptionsTests
     }
 
     [Theory]
-    [InlineData("production", "ProductionDependency")]
-    [InlineData("enterprise", "EnterpriseDependency")]
-    [InlineData("ci-cd", "CiCdTool")]
-    [InlineData("security", "SecuritySensitiveDependency")]
-    [InlineData("container", "ContainerDependency")]
-    public void TryParseScanOptions_ProfileAliases_AreNormalized(string profile, string expected)
+    [InlineData("Personal", TrustProfile.Personal)]
+    [InlineData("ProductionDependency", TrustProfile.ProductionDependency)]
+    [InlineData("EnterpriseDependency", TrustProfile.EnterpriseDependency)]
+    [InlineData("CiCdTool", TrustProfile.CiCdTool)]
+    [InlineData("SecuritySensitiveDependency", TrustProfile.SecuritySensitiveDependency)]
+    [InlineData("ContainerDependency", TrustProfile.ContainerDependency)]
+    public void TryParseScanOptions_CanonicalProfiles_AreAccepted(string profile, TrustProfile expected)
+    {
+        var args = new[] { "scan", ".", "--profile", profile };
+        var ok = CliProgram.TryParseScanOptions(args, out var options, out _);
+
+        Assert.True(ok);
+        Assert.Equal(expected, options.TrustProfile);
+    }
+
+    [Theory]
+    [InlineData("production", TrustProfile.ProductionDependency)]
+    [InlineData("enterprise", TrustProfile.EnterpriseDependency)]
+    [InlineData("ci-cd", TrustProfile.CiCdTool)]
+    [InlineData("security", TrustProfile.SecuritySensitiveDependency)]
+    [InlineData("container", TrustProfile.ContainerDependency)]
+    public void TryParseScanOptions_ProfileAliases_AreNormalized(string profile, TrustProfile expected)
     {
         var args = new[] { "scan", ".", "--profile", profile };
         var ok = CliProgram.TryParseScanOptions(args, out var options, out _);

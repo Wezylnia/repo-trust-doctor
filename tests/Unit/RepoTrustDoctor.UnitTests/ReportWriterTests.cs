@@ -26,6 +26,26 @@ public sealed class ReportWriterTests
     }
 
     [Fact]
+    public void JsonReport_IncludesSelectedTrustProfile()
+    {
+        var scan = CreateMinimalScan();
+        var json = new JsonReportWriter().Write(scan);
+
+        Assert.Contains("trustProfile", json);
+        Assert.Contains("ProductionDependency", json);
+    }
+
+    [Fact]
+    public void MarkdownReport_IncludesSelectedTrustProfile()
+    {
+        var scan = CreateMinimalScan();
+        var md = new MarkdownReportWriter().Write(scan);
+
+        Assert.Contains("Trust profile", md);
+        Assert.Contains("ProductionDependency", md);
+    }
+
+    [Fact]
     public void SortFindings_OrdersBySeverityDescending_ThenByCategory_ThenByRuleId()
     {
         var findings = new List<Finding>
@@ -101,7 +121,7 @@ public sealed class ReportWriterTests
             Guid.NewGuid(),
             ".",
             AnalysisDepth.Fast,
-            "ProductionDependency",
+            TrustProfile.ProductionDependency,
             "0.1.0-alpha",
             ModuleStatus.Completed,
             DateTimeOffset.UtcNow,

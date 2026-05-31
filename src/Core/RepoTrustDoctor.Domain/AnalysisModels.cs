@@ -20,6 +20,16 @@ public enum AnalysisDepth
     Deep
 }
 
+public enum TrustProfile
+{
+    Personal,
+    ProductionDependency,
+    EnterpriseDependency,
+    CiCdTool,
+    SecuritySensitiveDependency,
+    ContainerDependency
+}
+
 public enum Severity
 {
     Info,
@@ -122,7 +132,7 @@ public sealed record RepositoryScan(
     Guid Id,
     string Target,
     AnalysisDepth Depth,
-    string TrustProfile,
+    TrustProfile TrustProfile,
     string ToolVersion,
     ModuleStatus Status,
     DateTimeOffset StartedAt,
