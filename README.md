@@ -29,6 +29,7 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan .
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan https://github.com/owner/repo
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format json
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
 ```
 
 Planned packaged CLI commands:
@@ -38,6 +39,7 @@ repo-trust-doctor scan .
 repo-trust-doctor scan https://github.com/owner/repo
 repo-trust-doctor scan . --format json
 repo-trust-doctor scan . --format markdown
+repo-trust-doctor scan . --format json --output report.json
 ```
 
 ## Architecture

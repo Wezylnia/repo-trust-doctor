@@ -32,6 +32,7 @@ internal static class CliProgram
 
         var target = args.Length > 1 ? args[1] : ".";
         var format = ReadOption(args, "--format") ?? "console";
+        var outputPath = ReadOption(args, "--output");
         var depth = ParseDepth(ReadOption(args, "--depth") ?? "fast");
 
         IRepositoryAnalyzer[] analyzers =
@@ -54,7 +55,23 @@ internal static class CliProgram
             _ => throw new ArgumentException($"Unsupported format: {format}")
         };
 
-        Console.WriteLine(output);
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            Console.WriteLine(output);
+        }
+        else
+        {
+            var fullOutputPath = Path.GetFullPath(outputPath);
+            var outputDirectory = Path.GetDirectoryName(fullOutputPath);
+            if (!string.IsNullOrEmpty(outputDirectory))
+            {
+                Directory.CreateDirectory(outputDirectory);
+            }
+
+            await File.WriteAllTextAsync(fullOutputPath, output, cancellationToken);
+            Console.WriteLine($"Report written to {fullOutputPath}");
+        }
+
         return scan.Score.Decision.Kind == FinalDecisionKind.AvoidAsProductionDependency ? 3 : 0;
     }
 
@@ -121,7 +138,7 @@ internal static class CliProgram
         Repository Trust Doctor
 
         Usage:
-          repo-trust-doctor scan <path-or-url> [--format console|json|markdown] [--depth fast|standard|deep]
+          repo-trust-doctor scan <path-or-url> [--format console|json|markdown] [--output file] [--depth fast|standard|deep]
         """);
     }
 }

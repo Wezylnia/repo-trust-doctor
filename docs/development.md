@@ -32,6 +32,12 @@ To scan a public Git repository URL:
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan https://github.com/owner/repo --format console
 ```
 
+To write a report to disk:
+
+```powershell
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
+```
+
 ## Design Rules
 
 - Keep domain models free of infrastructure concerns.

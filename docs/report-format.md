@@ -28,3 +28,14 @@ Each finding includes:
 - blocking flag.
 
 Reports should be readable in Markdown and deterministic in JSON.
+
+## CLI Export
+
+Reports can be printed to stdout or written to disk:
+
+```powershell
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format json
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
+```
+
+When `--output` is provided, the CLI creates the parent directory if needed and writes the selected report format to that file.
