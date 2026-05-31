@@ -36,7 +36,7 @@ jobs:
           global-json-file: global.json
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@03e4368ac7daa2bd82b3e85262f3bf87ee112f57
+        uses: github/codeql-action/init@7211b7c8077ea37d8641b6271f6a365a22a5fbfa
         with:
           languages: csharp
           build-mode: manual
@@ -48,6 +48,6 @@ jobs:
         run: dotnet build RepoTrustDoctor.slnx --configuration Release --no-restore
 
       - name: Analyze
-        uses: github/codeql-action/analyze@03e4368ac7daa2bd82b3e85262f3bf87ee112f57
+        uses: github/codeql-action/analyze@7211b7c8077ea37d8641b6271f6a365a22a5fbfa
         with:
           category: "/language:csharp"
