@@ -20,28 +20,23 @@ internal sealed record ScanCommandOptions(
     string? OutputPath,
     bool ForceOutput,
     AnalysisDepth Depth,
-    string TrustProfile);
+    TrustProfile TrustProfile);
 
 internal static class CliProgram
 {
     private static readonly string[] SupportedFormats = ["console", "json", "markdown", "md"];
     private static readonly string[] SupportedDepths = ["fast", "standard", "deep"];
-    private static readonly Dictionary<string, string> SupportedProfiles = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly string[] SupportedProfileNames = Enum.GetNames<TrustProfile>();
+    private static readonly Dictionary<string, TrustProfile> SupportedProfileAliases = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["personal"] = "Personal",
-        ["production"] = "ProductionDependency",
-        ["prod"] = "ProductionDependency",
-        ["productiondependency"] = "ProductionDependency",
-        ["enterprise"] = "EnterpriseDependency",
-        ["enterprisedependency"] = "EnterpriseDependency",
-        ["cicd"] = "CiCdTool",
-        ["ci-cd"] = "CiCdTool",
-        ["cicdtool"] = "CiCdTool",
-        ["security"] = "SecuritySensitiveDependency",
-        ["security-sensitive"] = "SecuritySensitiveDependency",
-        ["securitysensitivedependency"] = "SecuritySensitiveDependency",
-        ["container"] = "ContainerDependency",
-        ["containerdependency"] = "ContainerDependency"
+        ["production"] = TrustProfile.ProductionDependency,
+        ["prod"] = TrustProfile.ProductionDependency,
+        ["enterprise"] = TrustProfile.EnterpriseDependency,
+        ["cicd"] = TrustProfile.CiCdTool,
+        ["ci-cd"] = TrustProfile.CiCdTool,
+        ["security"] = TrustProfile.SecuritySensitiveDependency,
+        ["security-sensitive"] = TrustProfile.SecuritySensitiveDependency,
+        ["container"] = TrustProfile.ContainerDependency
     };
 
     public static async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
@@ -125,7 +120,7 @@ internal static class CliProgram
         string? outputPath = null;
         var forceOutput = false;
         var depthValue = "fast";
-        var profileValue = "ProductionDependency";
+        var profileValue = nameof(TrustProfile.ProductionDependency);
 
         for (var index = 1; index < args.Length; index++)
         {
@@ -191,9 +186,9 @@ internal static class CliProgram
             return false;
         }
 
-        if (!SupportedProfiles.TryGetValue(profileValue, out var normalizedProfile))
+        if (!TryParseTrustProfile(profileValue, out var normalizedProfile))
         {
-            error = $"Unsupported profile: {profileValue}. Supported profiles: {string.Join(", ", SupportedProfiles.Keys)}";
+            error = $"Unsupported profile: {profileValue}. Supported profiles: {string.Join(", ", SupportedProfileNames)}";
             return false;
         }
 
@@ -207,6 +202,16 @@ internal static class CliProgram
 
         options = new ScanCommandOptions(target, format, outputPath, forceOutput, depth, normalizedProfile);
         return true;
+    }
+
+    private static bool TryParseTrustProfile(string profileValue, out TrustProfile profile)
+    {
+        if (Enum.TryParse(profileValue, ignoreCase: true, out profile))
+        {
+            return true;
+        }
+
+        return SupportedProfileAliases.TryGetValue(profileValue, out profile);
     }
 
     private static Task<RepositoryWorkspace> PrepareWorkspaceAsync(string target, CancellationToken cancellationToken)
