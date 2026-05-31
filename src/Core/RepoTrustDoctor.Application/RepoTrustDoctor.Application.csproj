@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\RepoTrustDoctor.Domain\RepoTrustDoctor.Domain.csproj" />
+    <ProjectReference Include="..\RepoTrustDoctor.Contracts\RepoTrustDoctor.Contracts.csproj" />
+    <ProjectReference Include="..\RepoTrustDoctor.Shared\RepoTrustDoctor.Shared.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

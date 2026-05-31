@@ -1,0 +1,40 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Analyzers/" />
+  <Folder Name="/src/Analyzers/CiCd/">
+    <Project Path="src/Analyzers/CiCd/RepoTrustDoctor.Analyzers.GitHubActions/RepoTrustDoctor.Analyzers.GitHubActions.csproj" />
+  </Folder>
+  <Folder Name="/src/Analyzers/Containers/">
+    <Project Path="src/Analyzers/Containers/RepoTrustDoctor.Analyzers.Docker/RepoTrustDoctor.Analyzers.Docker.csproj" />
+  </Folder>
+  <Folder Name="/src/Analyzers/Repository/">
+    <Project Path="src/Analyzers/Repository/RepoTrustDoctor.Analyzers.Repository/RepoTrustDoctor.Analyzers.Repository.csproj" />
+  </Folder>
+  <Folder Name="/src/Analyzers/Security/">
+    <Project Path="src/Analyzers/Security/RepoTrustDoctor.Analyzers.Secrets/RepoTrustDoctor.Analyzers.Secrets.csproj" />
+  </Folder>
+  <Folder Name="/src/Apps/">
+    <Project Path="src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj" />
+  </Folder>
+  <Folder Name="/src/Core/">
+    <Project Path="src/Core/RepoTrustDoctor.Application/RepoTrustDoctor.Application.csproj" />
+    <Project Path="src/Core/RepoTrustDoctor.Contracts/RepoTrustDoctor.Contracts.csproj" />
+    <Project Path="src/Core/RepoTrustDoctor.Domain/RepoTrustDoctor.Domain.csproj" />
+    <Project Path="src/Core/RepoTrustDoctor.Shared/RepoTrustDoctor.Shared.csproj" />
+  </Folder>
+  <Folder Name="/src/Engine/">
+    <Project Path="src/Engine/RepoTrustDoctor.Analysis.Abstractions/RepoTrustDoctor.Analysis.Abstractions.csproj" />
+    <Project Path="src/Engine/RepoTrustDoctor.Analysis.Engine/RepoTrustDoctor.Analysis.Engine.csproj" />
+    <Project Path="src/Engine/RepoTrustDoctor.Analysis.Orchestration/RepoTrustDoctor.Analysis.Orchestration.csproj" />
+    <Project Path="src/Engine/RepoTrustDoctor.Policies/RepoTrustDoctor.Policies.csproj" />
+    <Project Path="src/Engine/RepoTrustDoctor.Reporting/RepoTrustDoctor.Reporting.csproj" />
+    <Project Path="src/Engine/RepoTrustDoctor.Scoring/RepoTrustDoctor.Scoring.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/Analyzers/">
+    <Project Path="tests/Analyzers/RepoTrustDoctor.AnalyzerTests/RepoTrustDoctor.AnalyzerTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Unit/">
+    <Project Path="tests/Unit/RepoTrustDoctor.UnitTests/RepoTrustDoctor.UnitTests.csproj" />
+  </Folder>
+</Solution>

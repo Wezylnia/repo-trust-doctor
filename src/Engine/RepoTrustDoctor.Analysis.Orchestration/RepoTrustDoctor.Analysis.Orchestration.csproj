@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\RepoTrustDoctor.Domain\RepoTrustDoctor.Domain.csproj" />
+    <ProjectReference Include="..\RepoTrustDoctor.Analysis.Abstractions\RepoTrustDoctor.Analysis.Abstractions.csproj" />
+    <ProjectReference Include="..\RepoTrustDoctor.Analysis.Engine\RepoTrustDoctor.Analysis.Engine.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
