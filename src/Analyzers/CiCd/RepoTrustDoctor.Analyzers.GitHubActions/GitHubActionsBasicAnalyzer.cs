@@ -29,6 +29,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         new("TRUST-GHA005", "Third-party action is not pinned by SHA", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "A third-party action is referenced by tag instead of full commit SHA.", "Pin third-party GitHub Actions to a full commit SHA."),
         new("TRUST-GHA006", "Workflow uses self-hosted runner", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "The workflow runs on a self-hosted runner.", "Ensure self-hosted runners are isolated and do not run untrusted pull request code."),
         new("TRUST-GHA007", "Checkout may persist credentials", AnalysisCategory.CiCd, Severity.Low, Confidence.Medium, "The workflow uses actions/checkout without setting persist-credentials to false.", "Set persist-credentials: false to avoid exposing github token to subsequent steps."),
+        new("TRUST-GHA008", "Workflow may interpolate GitHub event data in shell", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "The workflow interpolates github.event, github.head_ref, or github.ref_name directly inside a run block.", "Avoid direct inline shell interpolation of event data. Pass event data as environment variables instead."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -113,9 +114,73 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
                     }
                 }
             }
+
+            CheckShellInjection(content, relativePath, findings);
         }
 
         return AnalyzerResult.Completed(findings);
+    }
+
+    private static void CheckShellInjection(string content, string relativePath, List<Finding> findings)
+    {
+        var lines = content.Split(['\r', '\n'], StringSplitOptions.None);
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            if (RunBlockPattern().IsMatch(line))
+            {
+                var isMultiLine = line.Contains('|') || line.Contains('>');
+                var baseIndentation = GetIndentation(line);
+
+                if (!isMultiLine)
+                {
+                    if (HasInjectionPattern(line))
+                    {
+                        AddFinding(findings, "TRUST-GHA008", "Workflow may interpolate GitHub event data in shell", Severity.High, "Avoid direct inline shell interpolation of event data. Pass event data as environment variables instead.", relativePath, "Potential shell injection found in run block.", i + 1);
+                    }
+                }
+                else
+                {
+                    for (int j = i + 1; j < lines.Length; j++)
+                    {
+                        var subLine = lines[j];
+                        if (string.IsNullOrWhiteSpace(subLine))
+                        {
+                            continue;
+                        }
+
+                        var subIndentation = GetIndentation(subLine);
+                        if (subIndentation <= baseIndentation)
+                        {
+                            break;
+                        }
+
+                        if (HasInjectionPattern(subLine))
+                        {
+                            AddFinding(findings, "TRUST-GHA008", "Workflow may interpolate GitHub event data in shell", Severity.High, "Avoid direct inline shell interpolation of event data. Pass event data as environment variables instead.", relativePath, "Potential shell injection found in multiline run block.", j + 1);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static int GetIndentation(string line)
+    {
+        int count = 0;
+        foreach (var c in line)
+        {
+            if (c == ' ') count++;
+            else if (c == '\t') count += 4;
+            else break;
+        }
+        return count;
+    }
+
+    private static bool HasInjectionPattern(string line)
+    {
+        return InjectionPattern().IsMatch(line);
     }
 
     private static bool IsPinnedToSha(string value) => ShaPattern().IsMatch(value);
@@ -176,4 +241,10 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"\bpersist-credentials\s*:\s*['""]?false['""]?", RegexOptions.IgnoreCase)]
     private static partial Regex PersistCredentialsFalsePattern();
+
+    [GeneratedRegex(@"^\s*(?:-\s*)?run\s*:", RegexOptions.IgnoreCase)]
+    private static partial Regex RunBlockPattern();
+
+    [GeneratedRegex(@"\$\{\{\s*github\.(?:event\.|head_ref\b|ref_name\b)", RegexOptions.IgnoreCase)]
+    private static partial Regex InjectionPattern();
 }
