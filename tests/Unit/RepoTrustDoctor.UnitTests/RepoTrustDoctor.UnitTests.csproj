@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -22,6 +22,11 @@
     <ProjectReference Include="..\..\..\src\Core\RepoTrustDoctor.Domain\RepoTrustDoctor.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Engine\RepoTrustDoctor.Scoring\RepoTrustDoctor.Scoring.csproj" />
     <ProjectReference Include="..\..\..\src\Infrastructure\RepoTrustDoctor.Infrastructure.Git\RepoTrustDoctor.Infrastructure.Git.csproj" />
+    <ProjectReference Include="..\..\..\src\Engine\RepoTrustDoctor.Analysis.Abstractions\RepoTrustDoctor.Analysis.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\src\Engine\RepoTrustDoctor.Analysis.Engine\RepoTrustDoctor.Analysis.Engine.csproj" />
+    <ProjectReference Include="..\..\..\src\Engine\RepoTrustDoctor.Analysis.Orchestration\RepoTrustDoctor.Analysis.Orchestration.csproj" />
+    <ProjectReference Include="..\..\..\src\Engine\RepoTrustDoctor.Reporting\RepoTrustDoctor.Reporting.csproj" />
+    <ProjectReference Include="..\..\..\src\Apps\RepoTrustDoctor.Cli\RepoTrustDoctor.Cli.csproj" />
   </ItemGroup>
 
 </Project>

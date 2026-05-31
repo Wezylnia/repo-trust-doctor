@@ -40,6 +40,15 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --
 
 Existing report files are not overwritten unless `--force` is supplied.
 
+## CLI Exit Codes
+
+| Code | Meaning |
+| ---- | ------- |
+| `0`  | Scan completed, no blocking decision |
+| `1`  | CLI usage error |
+| `2`  | Input/output error |
+| `3`  | Scan completed with `AvoidAsProductionDependency` |
+
 ## Design Rules
 
 - Keep domain models free of infrastructure concerns.

@@ -18,6 +18,16 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 
+    public TimeSpan Timeout => TimeSpan.FromSeconds(10);
+
+    public IReadOnlyCollection<RuleMetadata> Rules =>
+    [
+        new("TRUST-DOCKER001", "Dockerfile exists but .dockerignore is missing", AnalysisCategory.Containers, Severity.Medium, Confidence.High, "No .dockerignore file was found.", "Review the Dockerfile for reproducibility and runtime hardening."),
+        new("TRUST-DOCKER002", "Docker base image uses latest tag", AnalysisCategory.Containers, Severity.Medium, Confidence.High, "A FROM instruction uses the latest tag.", "Pin Docker base images by digest or a specific version tag."),
+        new("TRUST-DOCKER003", "Dockerfile does not declare a non-root USER", AnalysisCategory.Containers, Severity.Medium, Confidence.High, "No USER instruction was found.", "Add a USER instruction to run as a non-root user."),
+        new("TRUST-DOCKER004", "Dockerfile does not declare HEALTHCHECK", AnalysisCategory.Containers, Severity.Low, Confidence.High, "No HEALTHCHECK instruction was found.", "Add a HEALTHCHECK for container orchestration."),
+    ];
+
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var dockerfiles = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "Dockerfile*")

@@ -18,6 +18,17 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 
+    public TimeSpan Timeout => TimeSpan.FromSeconds(10);
+
+    public IReadOnlyCollection<RuleMetadata> Rules =>
+    [
+        new("TRUST-GHA001", "Workflow permissions are not declared", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "No top-level or job-level permissions key was found in the workflow.", "Declare least-privilege workflow permissions explicitly."),
+        new("TRUST-GHA002", "Workflow uses permissions: write-all", AnalysisCategory.CiCd, Severity.High, Confidence.High, "The workflow declares permissions: write-all.", "Replace write-all with the narrowest permissions required by each job."),
+        new("TRUST-GHA003", "Workflow uses pull_request_target", AnalysisCategory.CiCd, Severity.High, Confidence.High, "The workflow uses pull_request_target trigger.", "Review pull_request_target usage carefully and avoid running untrusted pull request code with repository privileges."),
+        new("TRUST-GHA004", "Workflow pipes downloaded scripts into a shell", AnalysisCategory.CiCd, Severity.High, Confidence.High, "A curl/wget pipe-to-shell pattern was found.", "Download scripts separately, verify integrity, and avoid piping remote content directly into a shell."),
+        new("TRUST-GHA005", "Third-party action is not pinned by SHA", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "A third-party action is referenced by tag instead of full commit SHA.", "Pin third-party GitHub Actions to a full commit SHA."),
+    ];
+
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var workflowRoot = Path.Combine(context.RepositoryPath, ".github", "workflows");

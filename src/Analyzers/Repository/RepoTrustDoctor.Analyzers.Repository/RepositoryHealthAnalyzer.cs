@@ -17,6 +17,20 @@ public sealed class RepositoryHealthAnalyzer : IRepositoryAnalyzer
 
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 
+    public TimeSpan Timeout => TimeSpan.FromSeconds(10);
+
+    public IReadOnlyCollection<RuleMetadata> Rules =>
+    [
+        new("TRUST-REPO001", "README is missing", AnalysisCategory.RepositoryHealth, Severity.Medium, Confidence.High, "The repository does not contain a README file.", "Add a README that explains the project purpose, installation, and basic usage."),
+        new("TRUST-REPO002", "LICENSE is missing", AnalysisCategory.RepositoryHealth, Severity.High, Confidence.High, "The repository does not contain a LICENSE file.", "Add a license file so users can understand whether and how the project can be used."),
+        new("TRUST-REPO003", "SECURITY.md is missing", AnalysisCategory.RepositoryHealth, Severity.Low, Confidence.High, "The repository does not contain a SECURITY.md file.", "Add SECURITY.md to explain how vulnerabilities should be reported."),
+        new("TRUST-REPO004", "CONTRIBUTING.md is missing", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "The repository does not contain a CONTRIBUTING.md file.", "Add contribution guidance for maintainers and contributors."),
+        new("TRUST-REPO005", "CODE_OF_CONDUCT.md is missing", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "The repository does not contain a CODE_OF_CONDUCT.md file.", "Add a code of conduct if the project accepts community contribution."),
+        new("TRUST-REPO006", "CODEOWNERS is missing", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "The repository does not contain a CODEOWNERS file.", "Add CODEOWNERS when ownership review should be explicit."),
+        new("TRUST-REPO007", "Issue template is missing", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "The repository does not contain an issue template.", "Add issue templates to collect enough information from users."),
+        new("TRUST-REPO008", "Pull request template is missing", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "The repository does not contain a pull request template.", "Add a pull request template to make review expectations clear."),
+    ];
+
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var findings = new List<Finding>();
