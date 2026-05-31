@@ -22,8 +22,44 @@ public sealed class SecretQuickScanAnalyzerTests
         var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-SECRET003");
         var evidence = Assert.Single(finding.Evidence);
         Assert.Equal(2, evidence.LineNumber);
-        Assert.Equal("[redacted]", evidence.Value);
+        Assert.Equal("ghp_[redacted]", evidence.Value);
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsRedactedAwsAccessKey()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var fakeKey = "AKIA" + "1234567890123456";
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), $"""
+        aws_key={fakeKey}
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-SECRET004");
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Equal(1, evidence.LineNumber);
+        Assert.Equal("AKIA[redacted]", evidence.Value);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsRedactedConnectionString()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), $"""
+        Server=myServerAddress;User Id=myUsername;Password=myPassword;
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-SECRET005");
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Equal(1, evidence.LineNumber);
+        Assert.Equal("Server=[redacted];User Id=[redacted];Password=[redacted]", evidence.Value);
+    }
+
 
     [Fact]
     public async Task AnalyzeAsync_ReportsRedactedSlackWebhook()
