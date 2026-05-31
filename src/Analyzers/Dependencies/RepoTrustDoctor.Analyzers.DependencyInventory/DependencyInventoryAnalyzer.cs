@@ -86,6 +86,59 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
             }
         }
 
+        // Detect Python manifests and lockfiles (root-level only)
+        var pipfilePath = Path.Combine(context.RepositoryPath, "Pipfile");
+        var pyprojectPath = Path.Combine(context.RepositoryPath, "pyproject.toml");
+        var requirementsPath = Path.Combine(context.RepositoryPath, "requirements.txt");
+
+        var hasPipfile = File.Exists(pipfilePath);
+        var hasPyproject = File.Exists(pyprojectPath);
+        var hasRequirements = File.Exists(requirementsPath);
+
+        var hasPipfileLock = File.Exists(Path.Combine(context.RepositoryPath, "Pipfile.lock"));
+        var hasPoetryLock = File.Exists(Path.Combine(context.RepositoryPath, "poetry.lock"));
+        var hasUvLock = File.Exists(Path.Combine(context.RepositoryPath, "uv.lock"));
+
+        if (hasPipfile && !hasPipfileLock)
+        {
+            var relativePath = Path.GetRelativePath(context.RepositoryPath, pipfilePath);
+            findings.Add(new Finding(
+                "TRUST-DEP003",
+                "Python dependency manifest does not have a recognized lockfile",
+                AnalysisCategory.Dependencies,
+                Severity.Low,
+                Confidence.Medium,
+                "Python dependency manifest does not have a recognized lockfile",
+                [new Evidence("package-manifest", "A Pipfile exists but no Pipfile.lock was found.", relativePath)],
+                new Recommendation("Use a package manager like Poetry, uv, or Pipenv, and commit the lockfile to the repository.")));
+        }
+        else if (hasPyproject && !hasPoetryLock && !hasUvLock)
+        {
+            var relativePath = Path.GetRelativePath(context.RepositoryPath, pyprojectPath);
+            findings.Add(new Finding(
+                "TRUST-DEP003",
+                "Python dependency manifest does not have a recognized lockfile",
+                AnalysisCategory.Dependencies,
+                Severity.Low,
+                Confidence.Medium,
+                "Python dependency manifest does not have a recognized lockfile",
+                [new Evidence("package-manifest", "A pyproject.toml exists but neither poetry.lock nor uv.lock was found.", relativePath)],
+                new Recommendation("Use a package manager like Poetry, uv, or Pipenv, and commit the lockfile to the repository.")));
+        }
+        else if (hasRequirements && !hasPipfileLock && !hasPoetryLock && !hasUvLock)
+        {
+            var relativePath = Path.GetRelativePath(context.RepositoryPath, requirementsPath);
+            findings.Add(new Finding(
+                "TRUST-DEP003",
+                "Python dependency manifest does not have a recognized lockfile",
+                AnalysisCategory.Dependencies,
+                Severity.Low,
+                Confidence.Medium,
+                "Python dependency manifest does not have a recognized lockfile",
+                [new Evidence("package-manifest", "A requirements.txt exists but no recognized lockfile was found.", relativePath)],
+                new Recommendation("Use a package manager like Poetry, uv, or Pipenv, and commit the lockfile to the repository.")));
+        }
+
         return Task.FromResult(AnalyzerResult.Completed(findings));
     }
 }
