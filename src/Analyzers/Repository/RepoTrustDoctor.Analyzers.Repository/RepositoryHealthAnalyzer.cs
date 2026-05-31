@@ -34,7 +34,7 @@ public sealed class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         new("TRUST-REPO011", "README lacks usage guidance", AnalysisCategory.RepositoryHealth, Severity.Low, Confidence.Medium, "The README file does not appear to contain usage instructions or examples.", "Add usage instructions or examples to the README."),
     ];
 
-    public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
+    public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var findings = new List<Finding>();
 
@@ -49,13 +49,13 @@ public sealed class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         CheckRequiredFile(context.RepositoryPath, ["CHANGELOG.md", "CHANGELOG", "HISTORY.md", "RELEASES.md"], "TRUST-REPO009", "CHANGELOG is missing", "Add a changelog to document user-facing changes in each release.", findings, Severity.Info);
 
         var readmePath = MatchReadme(context.RepositoryPath);
-        if (readmePath != null)
+        if (readmePath != null && RepositoryFileSystem.CanReadAsText(readmePath))
         {
-            var content = File.ReadAllText(readmePath);
+            var content = await File.ReadAllTextAsync(readmePath, cancellationToken);
             CheckReadmeSections(content, readmePath, context.RepositoryPath, findings);
         }
 
-        return Task.FromResult(AnalyzerResult.Completed(findings));
+        return AnalyzerResult.Completed(findings);
     }
 
     private static string? MatchReadme(string root)

@@ -25,7 +25,23 @@ internal static class CliProgram
 {
     private static readonly string[] SupportedFormats = ["console", "json", "markdown", "md"];
     private static readonly string[] SupportedDepths = ["fast", "standard", "deep"];
-    private static readonly string[] SupportedProfiles = ["personal", "productiondependency", "enterprisedependency", "cicdtool", "securitysensitivedependency", "containerdependency"];
+    private static readonly Dictionary<string, string> SupportedProfiles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["personal"] = "Personal",
+        ["production"] = "ProductionDependency",
+        ["prod"] = "ProductionDependency",
+        ["productiondependency"] = "ProductionDependency",
+        ["enterprise"] = "EnterpriseDependency",
+        ["enterprisedependency"] = "EnterpriseDependency",
+        ["cicd"] = "CiCdTool",
+        ["ci-cd"] = "CiCdTool",
+        ["cicdtool"] = "CiCdTool",
+        ["security"] = "SecuritySensitiveDependency",
+        ["security-sensitive"] = "SecuritySensitiveDependency",
+        ["securitysensitivedependency"] = "SecuritySensitiveDependency",
+        ["container"] = "ContainerDependency",
+        ["containerdependency"] = "ContainerDependency"
+    };
 
     public static async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
     {
@@ -101,31 +117,65 @@ internal static class CliProgram
         options = default!;
         error = string.Empty;
 
-        // Validate for unknown options
+        var target = ".";
+        var hasTarget = false;
+        var format = "console";
+        string? outputPath = null;
+        var forceOutput = false;
+        var depthValue = "fast";
+        var profileValue = "ProductionDependency";
+
         for (var index = 1; index < args.Length; index++)
         {
             var arg = args[index];
-            if (arg.StartsWith("--", StringComparison.Ordinal))
+            switch (arg)
             {
-                if (arg is not ("--format" or "--output" or "--force" or "--depth" or "--profile"))
-                {
-                    error = $"Unknown option: {arg}";
-                    return false;
-                }
-            }
-            else if (arg.StartsWith('-') && arg.Length > 1)
-            {
-                error = $"Unknown option: {arg}";
-                return false;
+                case "--format":
+                    if (!TryReadOptionValue(args, ref index, arg, out format, out error))
+                    {
+                        return false;
+                    }
+                    break;
+                case "--output":
+                    if (!TryReadOptionValue(args, ref index, arg, out var parsedOutputPath, out error))
+                    {
+                        return false;
+                    }
+                    outputPath = parsedOutputPath;
+                    break;
+                case "--force":
+                    forceOutput = true;
+                    break;
+                case "--depth":
+                    if (!TryReadOptionValue(args, ref index, arg, out depthValue, out error))
+                    {
+                        return false;
+                    }
+                    break;
+                case "--profile":
+                    if (!TryReadOptionValue(args, ref index, arg, out profileValue, out error))
+                    {
+                        return false;
+                    }
+                    break;
+                default:
+                    if (arg.StartsWith("-", StringComparison.Ordinal) && arg.Length > 1)
+                    {
+                        error = $"Unknown option: {arg}";
+                        return false;
+                    }
+
+                    if (hasTarget)
+                    {
+                        error = $"Unexpected argument: {arg}";
+                        return false;
+                    }
+
+                    target = arg;
+                    hasTarget = true;
+                    break;
             }
         }
-
-        var target = args.Length > 1 && !args[1].StartsWith('-') ? args[1] : ".";
-        var format = ReadOption(args, "--format") ?? "console";
-        var outputPath = ReadOption(args, "--output");
-        var forceOutput = HasFlag(args, "--force");
-        var depthValue = ReadOption(args, "--depth") ?? "fast";
-        var profileValue = ReadOption(args, "--profile") ?? "ProductionDependency";
 
         if (!SupportedFormats.Contains(format, StringComparer.OrdinalIgnoreCase))
         {
@@ -139,9 +189,9 @@ internal static class CliProgram
             return false;
         }
 
-        if (!SupportedProfiles.Contains(profileValue, StringComparer.OrdinalIgnoreCase))
+        if (!SupportedProfiles.TryGetValue(profileValue, out var normalizedProfile))
         {
-            error = $"Unsupported profile: {profileValue}. Supported profiles: {string.Join(", ", SupportedProfiles)}";
+            error = $"Unsupported profile: {profileValue}. Supported profiles: {string.Join(", ", SupportedProfiles.Keys)}";
             return false;
         }
 
@@ -153,7 +203,7 @@ internal static class CliProgram
             _ => AnalysisDepth.Fast
         };
 
-        options = new ScanCommandOptions(target, format, outputPath, forceOutput, depth, profileValue);
+        options = new ScanCommandOptions(target, format, outputPath, forceOutput, depth, normalizedProfile);
         return true;
     }
 
@@ -167,22 +217,19 @@ internal static class CliProgram
         return Task.FromResult(RepositoryWorkspace.ForLocalPath(target));
     }
 
-    private static string? ReadOption(string[] args, string name)
+    private static bool TryReadOptionValue(string[] args, ref int index, string name, out string value, out string error)
     {
-        for (var index = 0; index < args.Length - 1; index++)
+        value = string.Empty;
+        error = string.Empty;
+
+        if (index + 1 >= args.Length || args[index + 1].StartsWith("-", StringComparison.Ordinal))
         {
-            if (string.Equals(args[index], name, StringComparison.OrdinalIgnoreCase))
-            {
-                return args[index + 1];
-            }
+            error = $"Missing value for option: {name}";
+            return false;
         }
 
-        return null;
-    }
-
-    private static bool HasFlag(string[] args, string name)
-    {
-        return args.Any(argument => string.Equals(argument, name, StringComparison.OrdinalIgnoreCase));
+        value = args[++index];
+        return true;
     }
 
     private static string BuildConsoleSummary(RepositoryScan scan)
@@ -229,6 +276,7 @@ internal static class CliProgram
         Supported profiles:
           Personal, ProductionDependency, EnterpriseDependency,
           CiCdTool, SecuritySensitiveDependency, ContainerDependency
+          Common aliases: production, enterprise, ci-cd, security, container
 
         Exit codes:
           0   Scan completed, no blocking decision
