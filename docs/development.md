@@ -58,7 +58,7 @@ Pull requests to `main` are expected to pass:
 - `repo-trust-scan`
 - CodeQL analysis
 
-The protected branch requires review before merge. GitHub Copilot review can be requested manually from the pull request reviewers menu; automatic Copilot review depends on the repository owner's Copilot plan and GitHub settings.
+The protected branch requires review before merge for non-admin contributors. Repository admins can bypass branch protection for urgent maintenance. GitHub Copilot review can be requested manually from the pull request reviewers menu, and the repository also has an automatic Copilot review ruleset for pull requests targeting `main`.
 
 ## Public Repository Notes
 
