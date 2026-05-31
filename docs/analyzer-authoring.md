@@ -41,3 +41,5 @@ TRUST-GHA001
 TRUST-SECRET001
 TRUST-DOCKER001
 ```
+
+Document new rules under [docs/rules](rules/README.md) when adding or changing analyzer output.
