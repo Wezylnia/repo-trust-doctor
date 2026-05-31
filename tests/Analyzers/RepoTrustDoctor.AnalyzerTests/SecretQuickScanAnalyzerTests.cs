@@ -151,6 +151,57 @@ public sealed class SecretQuickScanAnalyzerTests
         var evidence = Assert.Single(finding.Evidence);
         Assert.Contains("src/sample.txt", evidence.FilePath?.Replace('\\', '/'));
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_SkipsBinaryFilesWithNullBytes()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var fakeToken = "ghp_" + "abcdefghijklmnopqrstuvwxyz123456";
+        var tokenBytes = System.Text.Encoding.UTF8.GetBytes($"token={fakeToken}\n");
+        var content = new byte[tokenBytes.Length + 4];
+        Array.Copy(tokenBytes, content, tokenBytes.Length);
+        content[tokenBytes.Length] = 0; // Null byte sniffer check
+
+        File.WriteAllBytes(Path.Combine(fixture.Path, "binary.bin"), content);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReadsNormalUtf8TextFile()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var fakeToken = "ghp_" + "abcdefghijklmnopqrstuvwxyz123456";
+        File.WriteAllText(Path.Combine(fixture.Path, "text.txt"), $"""
+        token={fakeToken}
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET003");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_HandlesDeletedOrUnreadableFilesGracefully()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var fakeToken = "ghp_" + "abcdefghijklmnopqrstuvwxyz123456";
+        var filePath = Path.Combine(fixture.Path, "deleted.txt");
+        File.WriteAllText(filePath, $"""
+        token={fakeToken}
+        """);
+
+        File.Delete(filePath);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+    }
 }
 
 
