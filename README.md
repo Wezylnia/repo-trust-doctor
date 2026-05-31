@@ -34,6 +34,8 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --profile enterprise
 ```
 
+Supported trust profiles are `Personal`, `ProductionDependency`, `EnterpriseDependency`, `CiCdTool`, `SecuritySensitiveDependency`, and `ContainerDependency`. The CLI also accepts common aliases such as `production`, `enterprise`, `ci-cd`, `security`, and `container`.
+
 ### CLI Exit Codes
 
 | Code | Meaning |

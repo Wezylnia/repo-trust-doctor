@@ -74,6 +74,26 @@ public sealed class ScanCommandOptionsTests
         Assert.Contains("Unsupported profile", error);
     }
 
+    [Fact]
+    public void TryParseScanOptions_MissingOptionValue_ReturnsFalse()
+    {
+        var args = new[] { "scan", ".", "--output", "--force" };
+        var ok = CliProgram.TryParseScanOptions(args, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("Missing value for option: --output", error);
+    }
+
+    [Fact]
+    public void TryParseScanOptions_SecondPositionalArgument_ReturnsFalse()
+    {
+        var args = new[] { "scan", "first", "second" };
+        var ok = CliProgram.TryParseScanOptions(args, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("Unexpected argument", error);
+    }
+
     [Theory]
     [InlineData("console")]
     [InlineData("json")]
@@ -86,5 +106,20 @@ public sealed class ScanCommandOptionsTests
 
         Assert.True(ok);
         Assert.Equal(format, options.Format);
+    }
+
+    [Theory]
+    [InlineData("production", "ProductionDependency")]
+    [InlineData("enterprise", "EnterpriseDependency")]
+    [InlineData("ci-cd", "CiCdTool")]
+    [InlineData("security", "SecuritySensitiveDependency")]
+    [InlineData("container", "ContainerDependency")]
+    public void TryParseScanOptions_ProfileAliases_AreNormalized(string profile, string expected)
+    {
+        var args = new[] { "scan", ".", "--profile", profile };
+        var ok = CliProgram.TryParseScanOptions(args, out var options, out _);
+
+        Assert.True(ok);
+        Assert.Equal(expected, options.TrustProfile);
     }
 }

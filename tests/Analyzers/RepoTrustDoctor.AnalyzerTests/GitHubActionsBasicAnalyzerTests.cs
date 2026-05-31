@@ -91,7 +91,7 @@ public sealed class GitHubActionsBasicAnalyzerTests
         var analyzer = new GitHubActionsBasicAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
-        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-GHA007");
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-GHA007" && finding.Confidence == Confidence.Medium);
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public sealed class GitHubActionsBasicAnalyzerTests
         var analyzer = new GitHubActionsBasicAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
-        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-GHA008");
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-GHA008" && finding.Confidence == Confidence.Medium);
     }
 
     [Fact]

@@ -91,7 +91,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
                 AddFinding(findings, "TRUST-GHA006", "Workflow uses self-hosted runner", Severity.Medium, "Ensure self-hosted runners are isolated and do not run untrusted pull request code.", relativePath, "self-hosted runner was found.", GetLineNumber(content, selfHostedMatch.Index));
             }
 
-            var lines = content.Split(['\r', '\n'], StringSplitOptions.None);
+            var lines = SplitLines(content);
             for (int i = 0; i < lines.Length; i++)
             {
                 var line = lines[i];
@@ -110,7 +110,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
                     if (!hasPersistCredentialsFalse)
                     {
-                        AddFinding(findings, "TRUST-GHA007", "Checkout may persist credentials", Severity.Low, "Set persist-credentials: false when checkout is only used for building or testing.", relativePath, "actions/checkout is used without persist-credentials: false.", i + 1);
+                        AddFinding(findings, "TRUST-GHA007", "Checkout may persist credentials", Severity.Low, "Set persist-credentials: false when checkout is only used for building or testing.", relativePath, "actions/checkout is used without persist-credentials: false.", i + 1, Confidence.Medium);
                     }
                 }
             }
@@ -123,7 +123,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
     private static void CheckShellInjection(string content, string relativePath, List<Finding> findings)
     {
-        var lines = content.Split(['\r', '\n'], StringSplitOptions.None);
+        var lines = SplitLines(content);
         for (int i = 0; i < lines.Length; i++)
         {
             var line = lines[i];
@@ -136,7 +136,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
                 {
                     if (HasInjectionPattern(line))
                     {
-                        AddFinding(findings, "TRUST-GHA008", "Workflow may interpolate GitHub event data in shell", Severity.High, "Avoid direct inline shell interpolation of event data. Pass event data as environment variables instead.", relativePath, "Potential shell injection found in run block.", i + 1);
+                        AddFinding(findings, "TRUST-GHA008", "Workflow may interpolate GitHub event data in shell", Severity.High, "Avoid direct inline shell interpolation of event data. Pass event data as environment variables instead.", relativePath, "Potential shell injection found in run block.", i + 1, Confidence.Medium);
                     }
                 }
                 else
@@ -157,7 +157,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
                         if (HasInjectionPattern(subLine))
                         {
-                            AddFinding(findings, "TRUST-GHA008", "Workflow may interpolate GitHub event data in shell", Severity.High, "Avoid direct inline shell interpolation of event data. Pass event data as environment variables instead.", relativePath, "Potential shell injection found in multiline run block.", j + 1);
+                            AddFinding(findings, "TRUST-GHA008", "Workflow may interpolate GitHub event data in shell", Severity.High, "Avoid direct inline shell interpolation of event data. Pass event data as environment variables instead.", relativePath, "Potential shell injection found in multiline run block.", j + 1, Confidence.Medium);
                             break;
                         }
                     }
@@ -183,16 +183,18 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         return InjectionPattern().IsMatch(line);
     }
 
+    private static string[] SplitLines(string content) => content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
+
     private static bool IsPinnedToSha(string value) => ShaPattern().IsMatch(value);
 
-    private static void AddFinding(List<Finding> findings, string ruleId, string title, Severity severity, string recommendation, string filePath, string evidence, int? lineNumber = null)
+    private static void AddFinding(List<Finding> findings, string ruleId, string title, Severity severity, string recommendation, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High)
     {
         findings.Add(new Finding(
             ruleId,
             title,
             AnalysisCategory.CiCd,
             severity,
-            Confidence.High,
+            confidence,
             title,
             [new Evidence("workflow", evidence, filePath, lineNumber)],
             new Recommendation(recommendation)));
