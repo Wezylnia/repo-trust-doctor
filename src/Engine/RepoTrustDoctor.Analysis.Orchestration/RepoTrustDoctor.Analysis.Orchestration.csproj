@@ -4,6 +4,7 @@
     <ProjectReference Include="..\..\Core\RepoTrustDoctor.Domain\RepoTrustDoctor.Domain.csproj" />
     <ProjectReference Include="..\RepoTrustDoctor.Analysis.Abstractions\RepoTrustDoctor.Analysis.Abstractions.csproj" />
     <ProjectReference Include="..\RepoTrustDoctor.Analysis.Engine\RepoTrustDoctor.Analysis.Engine.csproj" />
+    <ProjectReference Include="..\RepoTrustDoctor.Scoring\RepoTrustDoctor.Scoring.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
