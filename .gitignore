@@ -1,0 +1,18 @@
+bin/
+obj/
+.vs/
+.vscode/
+.idea/
+TestResults/
+coverage/
+artifacts/
+*.user
+*.suo
+*.nupkg
+
+# Local source notes are not part of the public repository.
+private-docs/
+
+# Scan workspaces and generated reports.
+.repo-trust/
+reports/
