@@ -59,3 +59,38 @@ Detects database connection string-like values with user and password fields.
 Why it matters: exposed database credentials may allow data access or modification.
 
 Recommendation: manually verify, rotate credentials if confirmed, and move secrets to a secure secret store.
+
+## TRUST-SECRET006: Possible Slack Webhook Found
+
+- Category: Security
+- Default severity: High
+- Default confidence: Medium
+
+Detects Slack webhook-like URLs.
+
+Why it matters: exposed Slack webhooks allow posting messages to Slack channels, which could be abused for spam, phishing, or information disclosure.
+
+Recommendation: manually verify the finding, revoke or rotate the webhook URL if confirmed, and remove it from repository history.
+
+## TRUST-SECRET007: Possible Discord Webhook Found
+
+- Category: Security
+- Default severity: High
+- Default confidence: Medium
+
+Detects Discord webhook-like URLs.
+
+Why it matters: exposed Discord webhooks allow posting messages or executing actions in Discord channels, which could be abused.
+
+Recommendation: manually verify the finding, revoke or rotate the webhook URL if confirmed, and remove it from repository history.
+
+## False-Positive Suppression
+
+To avoid noise in automated testing and documentation, the secret scanner ignores internal secret pattern matches (such as API keys, webhooks, or tokens) within files residing in the following paths:
+- `tests/Fixtures/`
+- `testdata/`
+- `docs/examples/`
+
+Note that files under these paths are still checked for general repository metadata or container settings where appropriate, but pattern-based secret rules will not fire.
+
+

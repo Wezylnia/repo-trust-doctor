@@ -18,6 +18,20 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 
+    public TimeSpan Timeout => TimeSpan.FromSeconds(10);
+
+    public IReadOnlyCollection<RuleMetadata> Rules =>
+    [
+        new("TRUST-GHA001", "Workflow permissions are not declared", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "No top-level or job-level permissions key was found in the workflow.", "Declare least-privilege workflow permissions explicitly."),
+        new("TRUST-GHA002", "Workflow uses permissions: write-all", AnalysisCategory.CiCd, Severity.High, Confidence.High, "The workflow declares permissions: write-all.", "Replace write-all with the narrowest permissions required by each job."),
+        new("TRUST-GHA003", "Workflow uses pull_request_target", AnalysisCategory.CiCd, Severity.High, Confidence.High, "The workflow uses pull_request_target trigger.", "Review pull_request_target usage carefully and avoid running untrusted pull request code with repository privileges."),
+        new("TRUST-GHA004", "Workflow pipes downloaded scripts into a shell", AnalysisCategory.CiCd, Severity.High, Confidence.High, "A curl/wget pipe-to-shell pattern was found.", "Download scripts separately, verify integrity, and avoid piping remote content directly into a shell."),
+        new("TRUST-GHA005", "Third-party action is not pinned by SHA", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "A third-party action is referenced by tag instead of full commit SHA.", "Pin third-party GitHub Actions to a full commit SHA."),
+        new("TRUST-GHA006", "Workflow uses self-hosted runner", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "The workflow runs on a self-hosted runner.", "Ensure self-hosted runners are isolated and do not run untrusted pull request code."),
+        new("TRUST-GHA007", "Checkout may persist credentials", AnalysisCategory.CiCd, Severity.Low, Confidence.Medium, "The workflow uses actions/checkout without setting persist-credentials to false.", "Set persist-credentials: false to avoid exposing github token to subsequent steps."),
+        new("TRUST-GHA008", "Workflow may interpolate GitHub event data in shell", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "The workflow interpolates github.event, github.head_ref, or github.ref_name directly inside a run block.", "Avoid direct inline shell interpolation of event data. Pass event data as environment variables instead."),
+    ];
+
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var workflowRoot = Path.Combine(context.RepositoryPath, ".github", "workflows");
@@ -71,21 +85,116 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
                     AddFinding(findings, "TRUST-GHA005", "Third-party action is not pinned by SHA", Severity.Medium, "Pin third-party GitHub Actions to a full commit SHA.", relativePath, $"Action '{action}@{version}' is not pinned to a full commit SHA.", GetLineNumber(content, match.Index));
                 }
             }
+
+            if (SelfHostedPattern().Match(content) is { Success: true } selfHostedMatch)
+            {
+                AddFinding(findings, "TRUST-GHA006", "Workflow uses self-hosted runner", Severity.Medium, "Ensure self-hosted runners are isolated and do not run untrusted pull request code.", relativePath, "self-hosted runner was found.", GetLineNumber(content, selfHostedMatch.Index));
+            }
+
+            var lines = SplitLines(content);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (UsesCheckoutPattern().IsMatch(line))
+                {
+                    var hasPersistCredentialsFalse = false;
+                    var checkLimit = Math.Min(i + 9, lines.Length);
+                    for (int j = i + 1; j < checkLimit; j++)
+                    {
+                        if (PersistCredentialsFalsePattern().IsMatch(lines[j]))
+                        {
+                            hasPersistCredentialsFalse = true;
+                            break;
+                        }
+                    }
+
+                    if (!hasPersistCredentialsFalse)
+                    {
+                        AddFinding(findings, "TRUST-GHA007", "Checkout may persist credentials", Severity.Low, "Set persist-credentials: false when checkout is only used for building or testing.", relativePath, "actions/checkout is used without persist-credentials: false.", i + 1, Confidence.Medium);
+                    }
+                }
+            }
+
+            CheckShellInjection(content, relativePath, findings);
         }
 
         return AnalyzerResult.Completed(findings);
     }
 
+    private static void CheckShellInjection(string content, string relativePath, List<Finding> findings)
+    {
+        var lines = SplitLines(content);
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            if (RunBlockPattern().IsMatch(line))
+            {
+                var isMultiLine = line.Contains('|') || line.Contains('>');
+                var baseIndentation = GetIndentation(line);
+
+                if (!isMultiLine)
+                {
+                    if (HasInjectionPattern(line))
+                    {
+                        AddFinding(findings, "TRUST-GHA008", "Workflow may interpolate GitHub event data in shell", Severity.High, "Avoid direct inline shell interpolation of event data. Pass event data as environment variables instead.", relativePath, "Potential shell injection found in run block.", i + 1, Confidence.Medium);
+                    }
+                }
+                else
+                {
+                    for (int j = i + 1; j < lines.Length; j++)
+                    {
+                        var subLine = lines[j];
+                        if (string.IsNullOrWhiteSpace(subLine))
+                        {
+                            continue;
+                        }
+
+                        var subIndentation = GetIndentation(subLine);
+                        if (subIndentation <= baseIndentation)
+                        {
+                            break;
+                        }
+
+                        if (HasInjectionPattern(subLine))
+                        {
+                            AddFinding(findings, "TRUST-GHA008", "Workflow may interpolate GitHub event data in shell", Severity.High, "Avoid direct inline shell interpolation of event data. Pass event data as environment variables instead.", relativePath, "Potential shell injection found in multiline run block.", j + 1, Confidence.Medium);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static int GetIndentation(string line)
+    {
+        int count = 0;
+        foreach (var c in line)
+        {
+            if (c == ' ') count++;
+            else if (c == '\t') count += 4;
+            else break;
+        }
+        return count;
+    }
+
+    private static bool HasInjectionPattern(string line)
+    {
+        return InjectionPattern().IsMatch(line);
+    }
+
+    private static string[] SplitLines(string content) => content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
+
     private static bool IsPinnedToSha(string value) => ShaPattern().IsMatch(value);
 
-    private static void AddFinding(List<Finding> findings, string ruleId, string title, Severity severity, string recommendation, string filePath, string evidence, int? lineNumber = null)
+    private static void AddFinding(List<Finding> findings, string ruleId, string title, Severity severity, string recommendation, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High)
     {
         findings.Add(new Finding(
             ruleId,
             title,
             AnalysisCategory.CiCd,
             severity,
-            Confidence.High,
+            confidence,
             title,
             [new Evidence("workflow", evidence, filePath, lineNumber)],
             new Recommendation(recommendation)));
@@ -125,4 +234,19 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"^[a-f0-9]{40}$", RegexOptions.IgnoreCase)]
     private static partial Regex ShaPattern();
+
+    [GeneratedRegex(@"(?mi)(?:^\s*runs-on\s*:\s*(?:['""]*self-hosted['""]*|\[[^\]]*\bself-hosted\b[^\]]*\])|^\s*-\s*['""]*self-hosted['""]*\s*$)")]
+    private static partial Regex SelfHostedPattern();
+
+    [GeneratedRegex(@"\buses\s*:\s*actions/checkout@", RegexOptions.IgnoreCase)]
+    private static partial Regex UsesCheckoutPattern();
+
+    [GeneratedRegex(@"\bpersist-credentials\s*:\s*['""]?false['""]?", RegexOptions.IgnoreCase)]
+    private static partial Regex PersistCredentialsFalsePattern();
+
+    [GeneratedRegex(@"^\s*(?:-\s*)?run\s*:", RegexOptions.IgnoreCase)]
+    private static partial Regex RunBlockPattern();
+
+    [GeneratedRegex(@"\$\{\{\s*github\.(?:event\.|head_ref\b|ref_name\b)", RegexOptions.IgnoreCase)]
+    private static partial Regex InjectionPattern();
 }

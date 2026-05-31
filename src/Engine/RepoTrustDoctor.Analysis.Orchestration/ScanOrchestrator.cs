@@ -7,6 +7,8 @@ namespace RepoTrustDoctor.Analysis.Orchestration;
 
 public sealed class ScanOrchestrator
 {
+    public const string ToolVersion = "0.1.0-alpha";
+
     private readonly IReadOnlyList<IRepositoryAnalyzer> analyzers;
     private readonly AnalyzerExecutor executor;
     private readonly TrustScorer scorer;
@@ -19,6 +21,40 @@ public sealed class ScanOrchestrator
         this.analyzers = analyzers.OrderBy(analyzer => analyzer.Id, StringComparer.OrdinalIgnoreCase).ToArray();
         this.executor = executor;
         this.scorer = scorer;
+
+        ValidateAnalyzers(this.analyzers);
+    }
+
+    private static void ValidateAnalyzers(IReadOnlyList<IRepositoryAnalyzer> analyzers)
+    {
+        var analyzerIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var ruleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var analyzer in analyzers)
+        {
+            if (string.IsNullOrWhiteSpace(analyzer.Id))
+            {
+                throw new InvalidOperationException("An analyzer has an empty or null ID.");
+            }
+
+            if (!analyzerIds.Add(analyzer.Id))
+            {
+                throw new InvalidOperationException($"Duplicate analyzer ID: '{analyzer.Id}'.");
+            }
+
+            foreach (var rule in analyzer.Rules)
+            {
+                if (string.IsNullOrWhiteSpace(rule.RuleId))
+                {
+                    throw new InvalidOperationException($"Analyzer '{analyzer.Id}' has a rule with an empty or null rule ID.");
+                }
+
+                if (!ruleIds.Add(rule.RuleId))
+                {
+                    throw new InvalidOperationException($"Duplicate rule ID: '{rule.RuleId}' found in analyzer '{analyzer.Id}'.");
+                }
+            }
+        }
     }
 
     public async Task<RepositoryScan> RunAsync(
@@ -51,6 +87,7 @@ public sealed class ScanOrchestrator
             target,
             depth,
             trustProfile,
+            ToolVersion,
             status,
             started,
             completed,

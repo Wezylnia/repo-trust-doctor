@@ -28,7 +28,7 @@ jobs:
           global-json-file: global.json
 
       - name: Restore
-        run: dotnet restore RepoTrustDoctor.slnx
+        run: dotnet restore RepoTrustDoctor.slnx --locked-mode
 
       - name: Build CLI
         run: dotnet build src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj --configuration Release --no-restore

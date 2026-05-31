@@ -20,8 +20,39 @@ public static class RepositoryFileSystem
 
     public static bool CanReadAsText(string filePath, long maxBytes = DefaultMaxReadableFileBytes)
     {
-        var info = new FileInfo(filePath);
-        return info.Exists && info.Length <= maxBytes;
+        try
+        {
+            var info = new FileInfo(filePath);
+            if (!info.Exists || info.Length > maxBytes)
+            {
+                return false;
+            }
+
+            using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                var bytesToRead = (int)Math.Min(4096, stream.Length);
+                if (bytesToRead == 0)
+                {
+                    return true;
+                }
+
+                var buffer = new byte[bytesToRead];
+                var bytesRead = stream.Read(buffer, 0, bytesToRead);
+                for (var i = 0; i < bytesRead; i++)
+                {
+                    if (buffer[i] == 0)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static bool HasExcludedPathPart(string filePath)

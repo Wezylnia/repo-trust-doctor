@@ -28,4 +28,18 @@ public sealed class RepositoryWorkspaceTests
         await Assert.ThrowsAsync<ArgumentException>(() =>
             RepositoryWorkspace.CloneFromUrlAsync("https://token@example.com/owner/repo.git", CancellationToken.None));
     }
+
+    [Theory]
+    [InlineData("https://secretToken123@example.com/owner/repo.git", "secretToken123")]
+    [InlineData("https://user:secretPassword456@example.com/owner/repo.git", "secretPassword456")]
+    [InlineData("https://github.com/owner/repo.git#secretFragment789", "secretFragment789")]
+    public async Task CloneFromUrlAsync_RejectsDangerousUrlsAndRedactsVerbatim(string url, string sensitivePart)
+    {
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+            RepositoryWorkspace.CloneFromUrlAsync(url, CancellationToken.None));
+
+        Assert.NotNull(exception.Message);
+        Assert.DoesNotContain(sensitivePart, exception.Message);
+        Assert.DoesNotContain(url, exception.Message);
+    }
 }
