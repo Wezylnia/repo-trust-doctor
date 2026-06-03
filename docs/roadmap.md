@@ -6,7 +6,7 @@ The roadmap is intentionally conservative. Each milestone should leave the proje
 
 ## Current Release
 
-`v0.1.5-alpha` is an early CLI-first static scanner. It includes the foundation platform, first static analyzers, dependency lockfile coverage checks, typed trust profile recording, stable finding fingerprints, CI gate options, and public rule/security documentation.
+`v0.2.0` is a CLI-first static scanner focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, dependency lockfile coverage, deterministic reports, and CI gate options.
 
 Current scans are static-only by default. The tool does not execute repository code, install packages, run tests, run builds, or build containers as part of a scan.
 
@@ -15,7 +15,7 @@ Current scans are static-only by default. The tool does not execute repository c
 | Version | Theme | Main Outcome |
 | --- | --- | --- |
 | `v0.1.x` | Foundation alpha | Local static scans, report output, basic analyzers, CI gates |
-| `v0.2.x` | Static analyzer expansion | Better repository, workflow, secret, Docker, and report quality |
+| `v0.2.x` | Static analyzer expansion | Current: better repository, workflow, secret, Docker, and report quality |
 | `v0.3.x` | Dependency inventory | Structured NuGet, npm, and Python dependency artifacts |
 | `v0.4.x` | Risk intelligence | Vulnerability, license, package origin, typosquatting, dependency confusion |
 | `v0.5.x` | API and worker foundation | Hosted scan API, worker execution, persistence, progress DTOs |
@@ -76,28 +76,26 @@ Success criteria:
 
 Goal: improve the first analyzer set so real repositories receive more useful static feedback.
 
-Planned analyzer work:
+Delivered in `v0.2.0`:
 
 - repository documentation quality checks:
   - README installation section,
   - README quick start section,
   - README usage examples,
   - docs folder detection,
-  - changelog quality signals,
-  - broken-looking local links where safely detectable;
+  - changelog detection,
+  - broken-looking local README links;
 - GitHub Actions hardening checks:
   - self-hosted runner usage,
   - checkout credential persistence,
-  - secret usage in pull request contexts,
   - script injection risk with `github.event.*`,
   - release workflow without visible test dependency,
-  - upload/download artifact risk patterns,
+  - broad artifact upload paths,
   - overly broad permissions;
 - secret scanner improvements:
-  - more precise redaction tests,
-  - high-entropy candidate detection with conservative confidence,
-  - production config sensitive-value patterns,
-  - more webhook/token families;
+  - redacted evidence for token, key, webhook, and connection string-like values,
+  - sensitive file detection,
+  - binary and fixture suppression safeguards;
 - Docker analyzer improvements:
   - `COPY . .` before dependency restore,
   - `apt-get update` and install layering risk,
@@ -113,6 +111,14 @@ Reporting work:
 - top recommended actions,
 - skipped/failed module visibility,
 - better report-format documentation.
+
+Remaining `v0.2.x` follow-up candidates:
+
+- high-entropy secret candidates with conservative confidence,
+- more precise workflow pull request secret-context checks,
+- download-artifact trust checks,
+- README configuration/troubleshooting section checks,
+- Markdown report action prioritization.
 
 Out of scope:
 

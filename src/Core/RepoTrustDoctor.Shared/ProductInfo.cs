@@ -4,5 +4,5 @@ public static class ProductInfo
 {
     public const string Name = "Repository Trust Doctor";
     public const string CommandName = "repo-trust-doctor";
-    public const string Version = "0.1.5-alpha";
+    public const string Version = "0.2.0";
 }
