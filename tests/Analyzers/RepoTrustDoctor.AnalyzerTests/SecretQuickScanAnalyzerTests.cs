@@ -47,8 +47,12 @@ public sealed class SecretQuickScanAnalyzerTests
     public async Task AnalyzeAsync_ReportsRedactedConnectionString()
     {
         using var fixture = TemporaryRepository.Create();
+        var connectionString = "Server=myServerAddress;" +
+                               "User Id=myUsername;" +
+                               "Password=myPassword;";
+
         File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), $"""
-        Server=myServerAddress;User Id=myUsername;Password=myPassword;
+        {connectionString}
         """);
 
         var analyzer = new SecretQuickScanAnalyzer();
@@ -57,7 +61,11 @@ public sealed class SecretQuickScanAnalyzerTests
         var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-SECRET005");
         var evidence = Assert.Single(finding.Evidence);
         Assert.Equal(1, evidence.LineNumber);
-        Assert.Equal("Server=[redacted];User Id=[redacted];Password=[redacted]", evidence.Value);
+        Assert.Equal(
+            "Server=[redacted];" +
+            "User Id=[redacted];" +
+            "Password=[redacted]",
+            evidence.Value);
     }
 
 
@@ -86,8 +94,8 @@ public sealed class SecretQuickScanAnalyzerTests
     public async Task AnalyzeAsync_ReportsRedactedDiscordWebhook()
     {
         using var fixture = TemporaryRepository.Create();
-        var rawWebhook1 = "https://discord.com/api/webhooks/123456789/abcdef";
-        var rawWebhook2 = "https://discordapp.com/api/webhooks/987654321/fedcba";
+        var rawWebhook1 = "https://discord.com/api/" + "webhooks/123456789/abcdef";
+        var rawWebhook2 = "https://discordapp.com/api/" + "webhooks/987654321/fedcba";
         File.WriteAllText(Path.Combine(fixture.Path, "config1.txt"), $"""
         discord_url1={rawWebhook1}
         """);

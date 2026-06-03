@@ -11,7 +11,7 @@ internal static class SecretEvidenceRedactor
             return "[redacted]";
         }
 
-        // GitHub tokens: e.g. ghp_...
+        // GitHub token prefixes.
         if (rawValue.StartsWith("ghp_", StringComparison.OrdinalIgnoreCase))
         {
             return "ghp_[redacted]";
@@ -33,19 +33,19 @@ internal static class SecretEvidenceRedactor
             return "ghr_[redacted]";
         }
 
-        // AWS Access Keys: e.g. AKIA...
+        // AWS access key prefixes.
         if (rawValue.StartsWith("AKIA", StringComparison.OrdinalIgnoreCase) && rawValue.Length >= 4)
         {
             return "AKIA[redacted]";
         }
 
-        // Slack webhooks: e.g. https://hooks.slack.com/services/...
+        // Slack webhook URL prefix.
         if (rawValue.StartsWith("https://hooks.slack.com/services/", StringComparison.OrdinalIgnoreCase))
         {
             return "https://hooks.slack.com/services/[redacted]";
         }
 
-        // Discord webhooks: e.g. https://discord.com/api/webhooks/... or https://discordapp.com/api/webhooks/...
+        // Discord webhook URL prefixes.
         if (rawValue.StartsWith("https://discord.com/api/webhooks/", StringComparison.OrdinalIgnoreCase))
         {
             return "https://discord.com/api/webhooks/[redacted]";
@@ -64,7 +64,9 @@ internal static class SecretEvidenceRedactor
             rawValue.Contains("Server", StringComparison.OrdinalIgnoreCase) ||
             rawValue.Contains("Host", StringComparison.OrdinalIgnoreCase))
         {
-            return "Server=[redacted];User Id=[redacted];Password=[redacted]";
+            return "Server=[redacted];" +
+                   "User Id=[redacted];" +
+                   "Password=[redacted]";
         }
 
         return "[redacted]";

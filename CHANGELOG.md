@@ -16,6 +16,7 @@ This alpha maintenance release improves release metadata consistency and CLI dis
 
 - Reports now use the shared product version source instead of a locally hardcoded orchestrator value.
 - README now documents the current alpha version and version command.
+- Synthetic secret scanner test values were split in source so self-scans no longer report them as possible leaked secrets.
 
 ### Validation
 
