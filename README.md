@@ -13,7 +13,7 @@ The project is intentionally evidence-based: analyzers produce findings with rul
 
 ## Current Status
 
-This repository is at the `v0.1.1-alpha` pre-release milestone. It is an early CLI-first static scanner intended for local experimentation, repository hardening, and analyzer development.
+This repository is at the `v0.1.5-alpha` pre-release milestone. It is an early CLI-first static scanner intended for local experimentation, repository hardening, and analyzer development.
 
 Implemented in this alpha:
 
@@ -83,6 +83,8 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md --force
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --profile enterprise
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --fail-under 75
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --fail-on-severity High
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- --version
 ```
 
@@ -96,6 +98,7 @@ Supported trust profiles are `Personal`, `ProductionDependency`, `EnterpriseDepe
 | `1`  | CLI usage error |
 | `2`  | Input/output error (e.g. refusing to overwrite an existing report) |
 | `3`  | Scan completed with `AvoidAsProductionDependency` decision |
+| `4`  | Configured CI gate failed |
 
 Future packaged CLI commands:
 
@@ -153,6 +156,7 @@ See [docs/roadmap.md](docs/roadmap.md) for milestone details.
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
 - [Development guide](docs/development.md)
+- [CI usage](docs/ci-usage.md)
 - [Analyzer authoring guide](docs/analyzer-authoring.md)
 - [Report format](docs/report-format.md)
 - [Release checklist](docs/release-checklist.md)
