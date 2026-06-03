@@ -2,6 +2,26 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v0.1.1-alpha - 2026-06-03
+
+This alpha maintenance release improves release metadata consistency and CLI discoverability without expanding the analyzer scope beyond the current static-only foundation.
+
+### Added
+
+- Central product metadata for the tool name and version.
+- CLI version command through `--version`, `-v`, and `version`.
+- Release checklist documentation for maintainer validation before publishing pre-releases.
+
+### Changed
+
+- Reports now use the shared product version source instead of a locally hardcoded orchestrator value.
+- README now documents the current alpha version and version command.
+
+### Validation
+
+- `dotnet test RepoTrustDoctor.slnx`
+- `dotnet run --project src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj -- --version`
+
 ## v0.1.0-alpha - 2026-05-31
 
 This is the first public alpha release of Repository Trust Doctor. It is an early CLI-first static scanner for local repository trust analysis and analyzer development.
