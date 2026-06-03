@@ -30,6 +30,8 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         new("TRUST-GHA006", "Workflow uses self-hosted runner", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "The workflow runs on a self-hosted runner.", "Ensure self-hosted runners are isolated and do not run untrusted pull request code."),
         new("TRUST-GHA007", "Checkout may persist credentials", AnalysisCategory.CiCd, Severity.Low, Confidence.Medium, "The workflow uses actions/checkout without setting persist-credentials to false.", "Set persist-credentials: false to avoid exposing github token to subsequent steps."),
         new("TRUST-GHA008", "Workflow may interpolate GitHub event data in shell", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "The workflow interpolates github.event, github.head_ref, or github.ref_name directly inside a run block.", "Avoid direct inline shell interpolation of event data. Pass event data as environment variables instead."),
+        new("TRUST-GHA009", "Release workflow may publish without test dependency", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "The workflow appears to publish or release artifacts without a visible test dependency.", "Make release or publish jobs depend on a test or CI job before publishing artifacts or packages."),
+        new("TRUST-GHA010", "Workflow uploads overly broad artifact path", AnalysisCategory.CiCd, Severity.Medium, Confidence.Medium, "The workflow uploads an artifact from an overly broad path such as the repository root.", "Upload only specific build outputs and avoid broad artifact paths that may include source, secrets, or temporary files."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -116,6 +118,8 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
             }
 
             CheckShellInjection(content, relativePath, findings);
+            CheckReleaseWorkflowDependency(content, relativePath, findings);
+            CheckArtifactUploadPaths(content, relativePath, findings);
         }
 
         return AnalyzerResult.Completed(findings);
@@ -181,6 +185,65 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
     private static bool HasInjectionPattern(string line)
     {
         return InjectionPattern().IsMatch(line);
+    }
+
+    private static void CheckReleaseWorkflowDependency(string content, string relativePath, List<Finding> findings)
+    {
+        if (!ReleasePublishPattern().IsMatch(content))
+        {
+            return;
+        }
+
+        if (TestDependencyPattern().IsMatch(content))
+        {
+            return;
+        }
+
+        var match = ReleasePublishPattern().Match(content);
+        AddFinding(
+            findings,
+            "TRUST-GHA009",
+            "Release workflow may publish without test dependency",
+            Severity.High,
+            "Make release or publish jobs depend on a test or CI job before publishing artifacts or packages.",
+            relativePath,
+            "Release or package publishing command was found without a visible test dependency.",
+            GetLineNumber(content, match.Index),
+            Confidence.Medium);
+    }
+
+    private static void CheckArtifactUploadPaths(string content, string relativePath, List<Finding> findings)
+    {
+        var lines = SplitLines(content);
+        for (var index = 0; index < lines.Length; index++)
+        {
+            if (!UploadArtifactPattern().IsMatch(lines[index]))
+            {
+                continue;
+            }
+
+            var checkLimit = Math.Min(index + 12, lines.Length);
+            for (var cursor = index + 1; cursor < checkLimit; cursor++)
+            {
+                var pathMatch = BroadArtifactPathPattern().Match(lines[cursor]);
+                if (!pathMatch.Success)
+                {
+                    continue;
+                }
+
+                AddFinding(
+                    findings,
+                    "TRUST-GHA010",
+                    "Workflow uploads overly broad artifact path",
+                    Severity.Medium,
+                    "Upload only specific build outputs and avoid broad artifact paths that may include source, secrets, or temporary files.",
+                    relativePath,
+                    $"Artifact upload path is overly broad: {pathMatch.Groups["path"].Value.Trim()}",
+                    cursor + 1,
+                    Confidence.Medium);
+                break;
+            }
+        }
     }
 
     private static string[] SplitLines(string content) => content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
@@ -249,4 +312,16 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"\$\{\{\s*github\.(?:event\.|head_ref\b|ref_name\b)", RegexOptions.IgnoreCase)]
     private static partial Regex InjectionPattern();
+
+    [GeneratedRegex(@"(?mi)\b(gh\s+release\s+(?:create|upload)|npm\s+publish|dotnet\s+nuget\s+push|nuget\s+push|twine\s+upload|docker\s+(?:push|buildx\s+build.+--push))\b")]
+    private static partial Regex ReleasePublishPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*needs\s*:\s*(?:\[[^\]]*\b(?:test|tests|ci|build-and-test)\b[^\]]*\]|(?:test|tests|ci|build-and-test)\b)")]
+    private static partial Regex TestDependencyPattern();
+
+    [GeneratedRegex(@"\buses\s*:\s*actions/upload-artifact@", RegexOptions.IgnoreCase)]
+    private static partial Regex UploadArtifactPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*path\s*:\s*(?<path>['""]?(?:\.|\.\/|\*\*\/\*)['""]?)\s*$")]
+    private static partial Regex BroadArtifactPathPattern();
 }
