@@ -21,7 +21,9 @@ internal sealed record ScanCommandOptions(
     string? OutputPath,
     bool ForceOutput,
     AnalysisDepth Depth,
-    TrustProfile TrustProfile);
+    TrustProfile TrustProfile,
+    int? FailUnderScore,
+    Severity? FailOnSeverity);
 
 internal static class CliProgram
 {
@@ -113,7 +115,7 @@ internal static class CliProgram
             Console.WriteLine($"Report written to {fullOutputPath}");
         }
 
-        return scan.Score.Decision.Kind == FinalDecisionKind.AvoidAsProductionDependency ? 3 : 0;
+        return ComputeExitCode(scan, options);
     }
 
     internal static bool TryParseScanOptions(string[] args, out ScanCommandOptions options, out string error)
@@ -128,6 +130,8 @@ internal static class CliProgram
         var forceOutput = false;
         var depthValue = "fast";
         var profileValue = nameof(TrustProfile.ProductionDependency);
+        int? failUnderScore = null;
+        Severity? failOnSeverity = null;
 
         for (var index = 1; index < args.Length; index++)
         {
@@ -161,6 +165,34 @@ internal static class CliProgram
                     {
                         return false;
                     }
+                    break;
+                case "--fail-under":
+                    if (!TryReadOptionValue(args, ref index, arg, out var failUnderValue, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!int.TryParse(failUnderValue, out var parsedFailUnder) || parsedFailUnder is < 0 or > 100)
+                    {
+                        error = "--fail-under must be an integer between 0 and 100.";
+                        return false;
+                    }
+
+                    failUnderScore = parsedFailUnder;
+                    break;
+                case "--fail-on-severity":
+                    if (!TryReadOptionValue(args, ref index, arg, out var failOnSeverityValue, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!Enum.TryParse<Severity>(failOnSeverityValue, ignoreCase: true, out var parsedFailOnSeverity))
+                    {
+                        error = $"Unsupported severity: {failOnSeverityValue}. Supported severities: {string.Join(", ", Enum.GetNames<Severity>())}";
+                        return false;
+                    }
+
+                    failOnSeverity = parsedFailOnSeverity;
                     break;
                 default:
                     if (arg.StartsWith("-", StringComparison.Ordinal) && arg.Length > 1)
@@ -207,7 +239,7 @@ internal static class CliProgram
             _ => AnalysisDepth.Fast
         };
 
-        options = new ScanCommandOptions(target, format, outputPath, forceOutput, depth, normalizedProfile);
+        options = new ScanCommandOptions(target, format, outputPath, forceOutput, depth, normalizedProfile, failUnderScore, failOnSeverity);
         return true;
     }
 
@@ -248,13 +280,18 @@ internal static class CliProgram
 
     private static string BuildConsoleSummary(RepositoryScan scan)
     {
+        var summary = scan.Summary;
         var lines = new List<string>
         {
             ProductInfo.Name,
+            $"Version: {scan.ToolVersion}",
             $"Target: {scan.Target}",
+            $"Depth: {scan.Depth}",
+            $"Trust profile: {scan.TrustProfile}",
             $"Score: {scan.Score.Overall}/100",
             $"Decision: {scan.Score.Decision.Kind}",
             $"Findings: {scan.Findings.Count}",
+            $"Severity summary: Critical={summary.Critical}, High={summary.High}, Medium={summary.Medium}, Low={summary.Low}, Info={summary.Info}",
             string.Empty,
             "Top findings:"
         };
@@ -270,6 +307,22 @@ internal static class CliProgram
         }
 
         return string.Join(Environment.NewLine, lines);
+    }
+
+    internal static int ComputeExitCode(RepositoryScan scan, ScanCommandOptions options)
+    {
+        if (options.FailUnderScore is int minimumScore && scan.Score.Overall < minimumScore)
+        {
+            return 4;
+        }
+
+        if (options.FailOnSeverity is Severity minimumSeverity &&
+            scan.Findings.Any(finding => finding.Severity >= minimumSeverity))
+        {
+            return 4;
+        }
+
+        return scan.Score.Decision.Kind == FinalDecisionKind.AvoidAsProductionDependency ? 3 : 0;
     }
 
     private static void PrintHelp()
@@ -289,6 +342,8 @@ internal static class CliProgram
           --force                             Overwrite existing report file
           --depth fast|standard|deep          Scan depth (default: fast)
           --profile <name>                    Trust profile (default: ProductionDependency)
+          --fail-under <0-100>                Exit 4 if the score is below this value
+          --fail-on-severity <severity>       Exit 4 if any finding is at or above this severity
 
         Supported profiles:
           Personal, ProductionDependency, EnterpriseDependency,
@@ -300,6 +355,7 @@ internal static class CliProgram
           1   CLI usage error
           2   Input/output error
           3   Scan completed with AvoidAsProductionDependency decision
+          4   Configured CI gate failed
         """);
     }
 }

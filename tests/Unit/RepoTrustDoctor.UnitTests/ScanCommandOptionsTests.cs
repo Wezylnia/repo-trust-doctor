@@ -45,12 +45,14 @@ public sealed class ScanCommandOptionsTests
         Assert.False(options.ForceOutput);
         Assert.Equal(AnalysisDepth.Fast, options.Depth);
         Assert.Equal(TrustProfile.ProductionDependency, options.TrustProfile);
+        Assert.Null(options.FailUnderScore);
+        Assert.Null(options.FailOnSeverity);
     }
 
     [Fact]
     public void TryParseScanOptions_AllOptionsProvided_ParsesCorrectly()
     {
-        var args = new[] { "scan", "myrepo", "--format", "json", "--output", "out.json", "--force", "--depth", "deep", "--profile", "Personal" };
+        var args = new[] { "scan", "myrepo", "--format", "json", "--output", "out.json", "--force", "--depth", "deep", "--profile", "Personal", "--fail-under", "80", "--fail-on-severity", "High" };
         var ok = CliProgram.TryParseScanOptions(args, out var options, out _);
 
         Assert.True(ok);
@@ -60,6 +62,8 @@ public sealed class ScanCommandOptionsTests
         Assert.True(options.ForceOutput);
         Assert.Equal(AnalysisDepth.Deep, options.Depth);
         Assert.Equal(TrustProfile.Personal, options.TrustProfile);
+        Assert.Equal(80, options.FailUnderScore);
+        Assert.Equal(Severity.High, options.FailOnSeverity);
     }
 
     [Fact]
@@ -100,6 +104,26 @@ public sealed class ScanCommandOptionsTests
 
         Assert.False(ok);
         Assert.Contains("Unsupported profile", error);
+    }
+
+    [Fact]
+    public void TryParseScanOptions_InvalidFailUnder_ReturnsFalse()
+    {
+        var args = new[] { "scan", ".", "--fail-under", "101" };
+        var ok = CliProgram.TryParseScanOptions(args, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("between 0 and 100", error);
+    }
+
+    [Fact]
+    public void TryParseScanOptions_InvalidFailOnSeverity_ReturnsFalse()
+    {
+        var args = new[] { "scan", ".", "--fail-on-severity", "Severe" };
+        var ok = CliProgram.TryParseScanOptions(args, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("Unsupported severity", error);
     }
 
     [Fact]
@@ -167,6 +191,57 @@ public sealed class ScanCommandOptionsTests
         Assert.Equal(expected, options.TrustProfile);
     }
 
+    [Theory]
+    [InlineData("Info", Severity.Info)]
+    [InlineData("Low", Severity.Low)]
+    [InlineData("Medium", Severity.Medium)]
+    [InlineData("High", Severity.High)]
+    [InlineData("Critical", Severity.Critical)]
+    public void TryParseScanOptions_FailOnSeverity_AcceptsKnownSeverities(string severity, Severity expected)
+    {
+        var args = new[] { "scan", ".", "--fail-on-severity", severity };
+        var ok = CliProgram.TryParseScanOptions(args, out var options, out _);
+
+        Assert.True(ok);
+        Assert.Equal(expected, options.FailOnSeverity);
+    }
+
+    [Fact]
+    public void ComputeExitCode_ReturnsFour_WhenScoreIsBelowFailUnder()
+    {
+        var scan = CreateScan(score: 79);
+        var options = CreateOptions(failUnderScore: 80);
+
+        Assert.Equal(4, CliProgram.ComputeExitCode(scan, options));
+    }
+
+    [Fact]
+    public void ComputeExitCode_ReturnsFour_WhenFindingMeetsFailOnSeverity()
+    {
+        var scan = CreateScan(findings: [CreateFinding(Severity.High)]);
+        var options = CreateOptions(failOnSeverity: Severity.High);
+
+        Assert.Equal(4, CliProgram.ComputeExitCode(scan, options));
+    }
+
+    [Fact]
+    public void ComputeExitCode_ReturnsZero_WhenConfiguredGatesPass()
+    {
+        var scan = CreateScan(score: 90, findings: [CreateFinding(Severity.Low)]);
+        var options = CreateOptions(failUnderScore: 80, failOnSeverity: Severity.High);
+
+        Assert.Equal(0, CliProgram.ComputeExitCode(scan, options));
+    }
+
+    [Fact]
+    public void ComputeExitCode_ReturnsThree_ForAvoidDecisionWithoutFailedGate()
+    {
+        var scan = CreateScan(decision: FinalDecisionKind.AvoidAsProductionDependency);
+        var options = CreateOptions();
+
+        Assert.Equal(3, CliProgram.ComputeExitCode(scan, options));
+    }
+
     [Property(MaxTest = 100)]
     public void TryParseScanOptions_GeneratedRelativeTarget_RoundTrips(int value)
     {
@@ -177,5 +252,50 @@ public sealed class ScanCommandOptionsTests
 
         Assert.True(ok);
         Assert.Equal(target, options.Target);
+    }
+
+    private static ScanCommandOptions CreateOptions(int? failUnderScore = null, Severity? failOnSeverity = null)
+    {
+        return new ScanCommandOptions(
+            ".",
+            "console",
+            null,
+            false,
+            AnalysisDepth.Fast,
+            TrustProfile.ProductionDependency,
+            failUnderScore,
+            failOnSeverity);
+    }
+
+    private static RepositoryScan CreateScan(
+        int score = 100,
+        FinalDecisionKind decision = FinalDecisionKind.SafeToTry,
+        IReadOnlyList<Finding>? findings = null)
+    {
+        return new RepositoryScan(
+            Guid.NewGuid(),
+            ".",
+            AnalysisDepth.Fast,
+            TrustProfile.ProductionDependency,
+            ProductInfo.Version,
+            ModuleStatus.Completed,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            [],
+            findings ?? [],
+            new TrustScore(score, [], new FinalDecision(decision, ["test"])));
+    }
+
+    private static Finding CreateFinding(Severity severity)
+    {
+        return new Finding(
+            "TRUST-TEST001",
+            "Test finding",
+            AnalysisCategory.Security,
+            severity,
+            Confidence.High,
+            "Test finding",
+            [new Evidence("test", "test")],
+            new Recommendation("Fix it."));
     }
 }
