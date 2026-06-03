@@ -131,3 +131,39 @@ Detects if the README exists but lacks common usage keywords or examples.
 Why it matters: users may not know how to run or import the project.
 
 Recommendation: add usage instructions or examples to the README.
+
+## TRUST-REPO012: README Lacks Quick Start Guidance
+
+- Category: Repository Health
+- Default severity: Low
+- Default confidence: Medium
+
+Detects if the README exists but lacks quick-start or getting-started wording.
+
+Why it matters: users often need the shortest safe path to try a project before investing in deeper setup.
+
+Recommendation: add a short quick start section with the minimum steps required to try the project.
+
+## TRUST-REPO013: Documentation Folder Is Missing
+
+- Category: Repository Health
+- Default severity: Info
+- Default confidence: High
+
+Detects repositories without a root `docs` directory.
+
+Why it matters: growing projects need a predictable place for architecture, configuration, operations, and contributor documentation.
+
+Recommendation: add a `docs` folder as documentation grows beyond the README.
+
+## TRUST-REPO014: README Contains Broken-Looking Local Link
+
+- Category: Repository Health
+- Default severity: Low
+- Default confidence: Medium
+
+Detects local Markdown links in the README whose target path was not found in the repository.
+
+Why it matters: broken README links interrupt installation, usage, and security review workflows.
+
+Recommendation: fix or remove broken README links.
