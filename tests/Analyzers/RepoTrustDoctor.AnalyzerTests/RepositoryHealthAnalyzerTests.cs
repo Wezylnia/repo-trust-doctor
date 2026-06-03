@@ -60,12 +60,88 @@ public sealed class RepositoryHealthAnalyzerTests
     public async Task AnalyzeAsync_DoesNotReportReadmeMissingInstallationAndUsage_WhenKeywordsArePresent()
     {
         using var fixture = TemporaryRepository.Create();
-        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), "# Project\n## Setup\nRun `npm install`.\n## Usage\nTo run the project: `npm start`.");
+        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), "# Project\n## Getting Started\nRun `npm install`.\n## Usage\nTo run the project: `npm start`.");
 
         var analyzer = new RepositoryHealthAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REPO010");
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REPO011");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REPO012");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsMissingQuickStart_WhenReadmeHasInstallAndUsageOnly()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), "# Project\n## Installation\nRun install.\n## Usage\nRun the app.");
+
+        var analyzer = new RepositoryHealthAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-REPO012");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsMissingDocsFolder()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), "# Project\n## Getting Started\nInstall and use.");
+
+        var analyzer = new RepositoryHealthAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-REPO013");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportMissingDocsFolder_WhenDocsExists()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "docs"));
+        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), "# Project\n## Getting Started\nInstall and use.");
+
+        var analyzer = new RepositoryHealthAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REPO013");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsBrokenLocalReadmeLink()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), """
+        # Project
+        ## Getting Started
+        Install and use.
+        See [missing docs](docs/missing.md).
+        """);
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "docs"));
+
+        var analyzer = new RepositoryHealthAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-REPO014");
+        Assert.Equal(4, finding.Evidence[0].LineNumber);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportExistingLocalReadmeLinkOrExternalLinks()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "docs"));
+        File.WriteAllText(Path.Combine(fixture.Path, "docs", "usage.md"), "# Usage");
+        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), """
+        # Project
+        ## Getting Started
+        Install and use.
+        See [usage](docs/usage.md) and [site](https://example.com).
+        """);
+
+        var analyzer = new RepositoryHealthAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REPO014");
     }
 }
