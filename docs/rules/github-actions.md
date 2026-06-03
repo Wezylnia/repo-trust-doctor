@@ -95,3 +95,27 @@ Detects `run:` steps containing inline shell interpolation of `github.event.*`, 
 Why it matters: if an attacker modifies fields like a pull request title, issue description, or git branch name, direct interpolation within a shell script run block can execute arbitrary shell commands inside the workflow runner.
 
 Recommendation: avoid direct inline shell interpolation of event data. Pass event data as environment variables instead, and read them using shell environment variables.
+
+## TRUST-GHA009: Release Workflow May Publish Without Test Dependency
+
+- Category: CI/CD
+- Default severity: High
+- Default confidence: Medium
+
+Detects workflows that appear to publish packages, Docker images, or GitHub releases without a visible `needs:` dependency on a test or CI job.
+
+Why it matters: release jobs that do not depend on tests may publish unverified artifacts or packages.
+
+Recommendation: make release or publish jobs depend on a test or CI job before publishing artifacts or packages.
+
+## TRUST-GHA010: Workflow Uploads Overly Broad Artifact Path
+
+- Category: CI/CD
+- Default severity: Medium
+- Default confidence: Medium
+
+Detects `actions/upload-artifact` steps that upload very broad paths such as `.` or `**/*`.
+
+Why it matters: broad artifact uploads may include source files, generated temporary files, logs, or sensitive files that were not intended to leave the runner.
+
+Recommendation: upload only specific build outputs and avoid broad artifact paths.

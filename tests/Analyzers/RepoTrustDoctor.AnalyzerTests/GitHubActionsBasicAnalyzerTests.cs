@@ -163,4 +163,113 @@ public sealed class GitHubActionsBasicAnalyzerTests
 
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-GHA008");
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsReleasePublishWithoutTestDependency()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "release.yml"), """
+        name: release
+        on:
+          push:
+            tags: ["v*"]
+        permissions:
+          contents: write
+        jobs:
+          publish:
+            runs-on: ubuntu-latest
+            steps:
+              - run: gh release create "$GITHUB_REF_NAME"
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-GHA009" && finding.Confidence == Confidence.Medium);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportReleasePublishWithTestDependency()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "release.yml"), """
+        name: release
+        on:
+          push:
+            tags: ["v*"]
+        permissions:
+          contents: write
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - run: dotnet test
+          publish:
+            needs: test
+            runs-on: ubuntu-latest
+            steps:
+              - run: gh release create "$GITHUB_REF_NAME"
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsBroadArtifactUploadPath()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/upload-artifact@2541b1294d2704b0964813337f33b291d3f8596b
+                with:
+                  path: .
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-GHA010" && finding.Confidence == Confidence.Medium);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportNarrowArtifactUploadPath()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/upload-artifact@2541b1294d2704b0964813337f33b291d3f8596b
+                with:
+                  path: artifacts/package.zip
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-GHA010");
+    }
 }
