@@ -2,6 +2,43 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v0.2.0 - 2026-06-03
+
+This release completes the `v0.2` static analyzer expansion milestone. It improves repository documentation quality checks, GitHub Actions release/artifact review, Dockerfile hygiene checks, rule documentation, and fixture coverage while keeping scans static-only by default.
+
+### Added
+
+- Repository health rules:
+  - `TRUST-REPO012`: README lacks quick start guidance.
+  - `TRUST-REPO013`: Documentation folder is missing.
+  - `TRUST-REPO014`: README contains broken-looking local link.
+- Docker rules:
+  - `TRUST-DOCKER007`: Dockerfile copies entire context before dependency restore.
+  - `TRUST-DOCKER008`: Dockerfile separates `apt-get update` from install.
+- GitHub Actions rules:
+  - `TRUST-GHA009`: Release workflow may publish without test dependency.
+  - `TRUST-GHA010`: Workflow uploads overly broad artifact path.
+- Positive and negative analyzer fixture tests for the new rules.
+- Public rule documentation for all new repository, Docker, and GitHub Actions rules.
+
+### Changed
+
+- Product version is now `0.2.0`.
+- README and roadmap now describe `v0.2.0` as the current static analyzer expansion milestone.
+
+### Security
+
+- New checks remain static-only and do not execute repository code, package managers, workflows, Docker builds, or release artifacts.
+- New heuristic findings use medium confidence where false positives are plausible.
+
+### Known Limitations
+
+- Package metadata, vulnerability, license, package origin, and dependency confusion analysis are not implemented yet.
+- SARIF output is designed but not implemented yet.
+- API, worker, persistence, hosted scanning, and web UI are not implemented yet.
+- Trust profiles are recorded in reports, but scoring is intentionally profile-neutral until policy thresholds are implemented.
+- Findings are heuristic and may include false positives or false negatives.
+
 ## v0.1.5-alpha - 2026-06-03
 
 This alpha release improves CLI automation support for CI and release hardening while keeping the scanner static-only.

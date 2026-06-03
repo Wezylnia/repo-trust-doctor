@@ -25,9 +25,9 @@ The current alpha focuses on local, static repository trust signals:
 
 ## Current Status
 
-This repository is at the `v0.1.5-alpha` pre-release milestone. It is an early CLI-first static scanner intended for local experimentation, repository hardening, and analyzer development.
+This repository is at the `v0.2.0` milestone. It is a CLI-first static scanner intended for local repository trust review, repository hardening, CI gates, and analyzer development.
 
-Implemented in `v0.1.5-alpha`:
+Implemented in `v0.2.0`:
 
 - a clean .NET solution structure,
 - pure domain models,
@@ -36,6 +36,9 @@ Implemented in `v0.1.5-alpha`:
 - console, JSON, and Markdown report output,
 - a CLI-first workflow,
 - repository health, GitHub Actions, secret quick scan, Docker, and dependency lockfile analyzers,
+- expanded repository documentation quality checks,
+- expanded GitHub Actions release and artifact checks,
+- expanded Docker cache and package-layering checks,
 - npm, NuGet, and Python lockfile coverage checks,
 - typed trust profiles recorded in reports,
 - stable finding fingerprints for report output,
@@ -144,7 +147,7 @@ The roadmap grows the platform gradually:
 | Version | Focus |
 | ------- | ----- |
 | `v0.1.x` | Foundation alpha, static local scans, basic analyzers, report output, CI gates |
-| `v0.2.x` | Static analyzer expansion for repository docs, workflows, secrets, Docker, and reports |
+| `v0.2.x` | Current: static analyzer expansion for repository docs, workflows, secrets, Docker, and reports |
 | `v0.3.x` | Structured dependency inventory for NuGet, npm, and Python |
 | `v0.4.x` | Vulnerability, license, package origin, typosquatting, and dependency confusion intelligence |
 | `v0.5.x` | API, worker, persistence, and progressive scan state |
