@@ -72,3 +72,26 @@ Why it matters: single-stage builds often include build dependencies, compilers,
 
 Recommendation: use multi-stage builds to reduce image size and improve security by separating build dependencies from the runtime image.
 
+## TRUST-DOCKER007: Dockerfile Copies Entire Context Before Dependency Restore
+
+- Category: Containers
+- Default severity: Low
+- Default confidence: Medium
+
+Detects `COPY . .` before common dependency restore or install commands.
+
+Why it matters: copying the full source tree before restoring dependencies can invalidate the dependency cache on every source change and may increase accidental build-context exposure.
+
+Recommendation: copy dependency manifest files first, restore dependencies, then copy the rest of the source.
+
+## TRUST-DOCKER008: Dockerfile Separates `apt-get update` From Install
+
+- Category: Containers
+- Default severity: Low
+- Default confidence: Medium
+
+Detects `apt-get update` and `apt-get install` in separate `RUN` instructions.
+
+Why it matters: separating package index updates from installs can create stale package index layers and less reproducible builds.
+
+Recommendation: combine `apt-get update` and `apt-get install` in one `RUN` instruction and clean package lists in the same layer.
