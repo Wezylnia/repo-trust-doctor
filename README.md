@@ -11,11 +11,23 @@ Repository Trust Doctor is a modular repository analysis platform for deciding w
 
 The project is intentionally evidence-based: analyzers produce findings with rule IDs, severity, confidence, evidence, and recommendations. Scoring and policy evaluation interpret those findings without hiding serious risks behind an average score.
 
+## What It Checks Today
+
+The current alpha focuses on local, static repository trust signals:
+
+- repository health files such as README, LICENSE, SECURITY.md, contributing docs, CODEOWNERS, templates, and changelog,
+- GitHub Actions workflow risks such as broad permissions, `pull_request_target`, unpinned actions, shell pipe execution, and checkout credential persistence,
+- possible committed secrets or sensitive files with redacted evidence,
+- Dockerfile hygiene signals such as `latest` tags, missing `.dockerignore`, root user risk, missing healthcheck, secret-like `ENV`, and missing multi-stage builds,
+- dependency lockfile coverage for npm, NuGet, and Python manifests,
+- deterministic JSON and Markdown reports with stable finding fingerprints,
+- CI gate behavior through score and severity thresholds.
+
 ## Current Status
 
 This repository is at the `v0.1.5-alpha` pre-release milestone. It is an early CLI-first static scanner intended for local experimentation, repository hardening, and analyzer development.
 
-Implemented in this alpha:
+Implemented in `v0.1.5-alpha`:
 
 - a clean .NET solution structure,
 - pure domain models,
@@ -27,6 +39,7 @@ Implemented in this alpha:
 - npm, NuGet, and Python lockfile coverage checks,
 - typed trust profiles recorded in reports,
 - stable finding fingerprints for report output,
+- CI gate options for score and severity thresholds,
 - fixture-based analyzer tests,
 - public rule, architecture, security, and contributor documentation.
 
@@ -128,18 +141,20 @@ Read the public architecture overview in [docs/architecture.md](docs/architectur
 
 The roadmap grows the platform gradually:
 
-- `v0.1`: foundation and first local static scan,
-- `v0.2`: static analyzer expansion,
-- `v0.3`: dependency inventory,
-- `v0.4`: vulnerability, license, and package origin intelligence,
-- `v0.5`: API, worker, and progressive scan platform,
-- `v0.6`: trust profiles and policies,
-- `v0.7`: release and supply-chain evidence,
-- `v0.8`: deep code intelligence,
-- `v0.9`: history, comparison, and monitoring,
-- `v1.0`: stable public release.
+| Version | Focus |
+| ------- | ----- |
+| `v0.1.x` | Foundation alpha, static local scans, basic analyzers, report output, CI gates |
+| `v0.2.x` | Static analyzer expansion for repository docs, workflows, secrets, Docker, and reports |
+| `v0.3.x` | Structured dependency inventory for NuGet, npm, and Python |
+| `v0.4.x` | Vulnerability, license, package origin, typosquatting, and dependency confusion intelligence |
+| `v0.5.x` | API, worker, persistence, and progressive scan state |
+| `v0.6.x` | Built-in policies, blocking risks, and profile-aware scoring |
+| `v0.7.x` | Release hygiene, artifact integrity, SBOM/provenance, and supply-chain evidence |
+| `v0.8.x` | Coverage import, code criticality, public API analysis, and deep scan signals |
+| `v0.9.x` | Trust history, comparison, trust diff, and monitoring |
+| `v1.0.0` | Stable public platform with documented contracts and reliable reports |
 
-See [docs/roadmap.md](docs/roadmap.md) for milestone details.
+See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scope boundaries, and success criteria.
 
 ## Safety Principles
 
