@@ -10,6 +10,7 @@ using RepoTrustDoctor.Domain;
 using RepoTrustDoctor.Infrastructure.Git;
 using RepoTrustDoctor.Reporting;
 using RepoTrustDoctor.Scoring;
+using RepoTrustDoctor.Shared;
 
 var exitCode = await CliProgram.RunAsync(args, CancellationToken.None);
 return exitCode;
@@ -41,6 +42,12 @@ internal static class CliProgram
 
     public static async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
     {
+        if (args.Length > 0 && args[0] is "--version" or "-v" or "version")
+        {
+            Console.WriteLine($"{ProductInfo.CommandName} {ProductInfo.Version}");
+            return 0;
+        }
+
         if (args.Length == 0 || args[0] is "-h" or "--help")
         {
             PrintHelp();
@@ -243,7 +250,7 @@ internal static class CliProgram
     {
         var lines = new List<string>
         {
-            "Repository Trust Doctor",
+            ProductInfo.Name,
             $"Target: {scan.Target}",
             $"Score: {scan.Score.Overall}/100",
             $"Decision: {scan.Score.Decision.Kind}",
@@ -269,6 +276,9 @@ internal static class CliProgram
     {
         Console.WriteLine("""
         Repository Trust Doctor
+
+        Version:
+          repo-trust-doctor --version
 
         Usage:
           repo-trust-doctor scan <path-or-url> [options]

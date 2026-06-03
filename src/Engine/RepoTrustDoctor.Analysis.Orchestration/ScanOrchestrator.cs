@@ -2,12 +2,13 @@ using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Analysis.Engine;
 using RepoTrustDoctor.Domain;
 using RepoTrustDoctor.Scoring;
+using RepoTrustDoctor.Shared;
 
 namespace RepoTrustDoctor.Analysis.Orchestration;
 
 public sealed class ScanOrchestrator
 {
-    public const string ToolVersion = "0.1.0-alpha";
+    public const string ToolVersion = ProductInfo.Version;
 
     private readonly IReadOnlyList<IRepositoryAnalyzer> analyzers;
     private readonly AnalyzerExecutor executor;

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using RepoTrustDoctor.Domain;
 using RepoTrustDoctor.Reporting;
+using RepoTrustDoctor.Shared;
 
 namespace RepoTrustDoctor.UnitTests;
 
@@ -12,7 +13,7 @@ public sealed class ReportWriterTests
         var scan = CreateMinimalScan();
         var json = new JsonReportWriter().Write(scan);
 
-        Assert.Contains("0.1.0-alpha", json);
+        Assert.Contains(ProductInfo.Version, json);
         Assert.Contains("toolVersion", json);
     }
 
@@ -22,7 +23,7 @@ public sealed class ReportWriterTests
         var scan = CreateMinimalScan();
         var md = new MarkdownReportWriter().Write(scan);
 
-        Assert.Contains("0.1.0-alpha", md);
+        Assert.Contains(ProductInfo.Version, md);
         Assert.Contains("Tool version", md);
     }
 
@@ -214,7 +215,7 @@ public sealed class ReportWriterTests
             ".",
             AnalysisDepth.Fast,
             TrustProfile.ProductionDependency,
-            "0.1.0-alpha",
+            ProductInfo.Version,
             ModuleStatus.Completed,
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow,

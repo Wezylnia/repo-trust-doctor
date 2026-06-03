@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\RepoTrustDoctor.Domain\RepoTrustDoctor.Domain.csproj" />
+    <ProjectReference Include="..\..\Core\RepoTrustDoctor.Shared\RepoTrustDoctor.Shared.csproj" />
     <ProjectReference Include="..\..\Engine\RepoTrustDoctor.Analysis.Abstractions\RepoTrustDoctor.Analysis.Abstractions.csproj" />
     <ProjectReference Include="..\..\Engine\RepoTrustDoctor.Analysis.Engine\RepoTrustDoctor.Analysis.Engine.csproj" />
     <ProjectReference Include="..\..\Engine\RepoTrustDoctor.Analysis.Orchestration\RepoTrustDoctor.Analysis.Orchestration.csproj" />

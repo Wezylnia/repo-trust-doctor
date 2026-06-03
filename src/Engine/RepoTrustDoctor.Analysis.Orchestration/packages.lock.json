@@ -23,6 +23,9 @@
         "dependencies": {
           "RepoTrustDoctor.Domain": "[1.0.0, )"
         }
+      },
+      "repotrustdoctor.shared": {
+        "type": "Project"
       }
     }
   }

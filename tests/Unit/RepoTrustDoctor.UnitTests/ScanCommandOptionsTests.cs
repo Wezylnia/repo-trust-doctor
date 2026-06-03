@@ -1,11 +1,37 @@
 using System.Globalization;
+using System.IO;
 using FsCheck.Xunit;
 using RepoTrustDoctor.Domain;
+using RepoTrustDoctor.Shared;
 
 namespace RepoTrustDoctor.UnitTests;
 
 public sealed class ScanCommandOptionsTests
 {
+    [Theory]
+    [InlineData("--version")]
+    [InlineData("-v")]
+    [InlineData("version")]
+    public async Task RunAsync_VersionCommand_PrintsProductVersion(string versionArg)
+    {
+        using var writer = new StringWriter();
+        var originalOut = Console.Out;
+        Console.SetOut(writer);
+
+        try
+        {
+            var exitCode = await CliProgram.RunAsync([versionArg], CancellationToken.None);
+
+            Assert.Equal(0, exitCode);
+            Assert.Contains(ProductInfo.CommandName, writer.ToString());
+            Assert.Contains(ProductInfo.Version, writer.ToString());
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+    }
+
     [Fact]
     public void TryParseScanOptions_DefaultValues_AreCorrect()
     {
