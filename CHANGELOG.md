@@ -2,6 +2,28 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v0.1.5-alpha - 2026-06-03
+
+This alpha release improves CLI automation support for CI and release hardening while keeping the scanner static-only.
+
+### Added
+
+- `--fail-under <0-100>` CLI gate, returning exit code `4` when the trust score is below the configured threshold.
+- `--fail-on-severity <severity>` CLI gate, returning exit code `4` when any finding is at or above the configured severity.
+- Console summary metadata for tool version, scan depth, trust profile, and severity counts.
+- CI usage documentation with safe static-analysis examples.
+
+### Changed
+
+- Product version is now `0.1.5-alpha`.
+- README now documents CI gating options and the new exit code.
+
+### Validation
+
+- `dotnet test RepoTrustDoctor.slnx`
+- `dotnet run --project src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj -- --version`
+- `dotnet run --project src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj -- scan . --fail-under 80`
+
 ## v0.1.1-alpha - 2026-06-03
 
 This alpha maintenance release improves release metadata consistency and CLI discoverability without expanding the analyzer scope beyond the current static-only foundation.

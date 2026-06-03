@@ -35,6 +35,6 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj -- 
 ## Publish
 
 - Push release commits to `main`.
-- Create an annotated tag such as `v0.1.1-alpha`.
+- Create an annotated tag such as `v0.1.5-alpha`.
 - Create a GitHub pre-release with the changelog summary.
 - Confirm CI, CodeQL, and required repository checks complete on the pushed commit or release tag.
