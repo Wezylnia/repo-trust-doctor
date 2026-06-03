@@ -13,7 +13,7 @@ The project is intentionally evidence-based: analyzers produce findings with rul
 
 ## Current Status
 
-This repository is at the `v0.1.0-alpha` pre-release milestone. It is an early CLI-first static scanner intended for local experimentation, repository hardening, and analyzer development.
+This repository is at the `v0.1.1-alpha` pre-release milestone. It is an early CLI-first static scanner intended for local experimentation, repository hardening, and analyzer development.
 
 Implemented in this alpha:
 
@@ -83,6 +83,7 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md --force
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --profile enterprise
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- --version
 ```
 
 Supported trust profiles are `Personal`, `ProductionDependency`, `EnterpriseDependency`, `CiCdTool`, `SecuritySensitiveDependency`, and `ContainerDependency`. The CLI also accepts common aliases such as `production`, `enterprise`, `ci-cd`, `security`, and `container`.
@@ -154,6 +155,7 @@ See [docs/roadmap.md](docs/roadmap.md) for milestone details.
 - [Development guide](docs/development.md)
 - [Analyzer authoring guide](docs/analyzer-authoring.md)
 - [Report format](docs/report-format.md)
+- [Release checklist](docs/release-checklist.md)
 - [Trust profiles](docs/policies/trust-profiles.md)
 - [Rule catalog](docs/rules/README.md)
 - [Changelog](CHANGELOG.md)
