@@ -28,6 +28,8 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         new("TRUST-DOCKER004", "Dockerfile does not declare HEALTHCHECK", AnalysisCategory.Containers, Severity.Low, Confidence.High, "No HEALTHCHECK instruction was found.", "Add a HEALTHCHECK for container orchestration."),
         new("TRUST-DOCKER005", "Dockerfile may define secret-like ENV", AnalysisCategory.Containers, Severity.High, Confidence.Medium, "The Dockerfile defines a secret-like environment variable.", "Avoid defining secrets in ENV variables. Use Docker build secrets or pass secrets at runtime instead."),
         new("TRUST-DOCKER006", "Dockerfile does not appear to use multi-stage build", AnalysisCategory.Containers, Severity.Low, Confidence.Medium, "Dockerfile has only one FROM instruction.", "Use multi-stage builds to reduce image size and improve security by separating build dependencies from the runtime image."),
+        new("TRUST-DOCKER007", "Dockerfile copies entire context before dependency restore", AnalysisCategory.Containers, Severity.Low, Confidence.Medium, "COPY . . appears before a dependency restore or install step.", "Copy dependency manifest files first, restore dependencies, then copy the rest of the source."),
+        new("TRUST-DOCKER008", "Dockerfile separates apt-get update from install", AnalysisCategory.Containers, Severity.Low, Confidence.Medium, "apt-get update and apt-get install appear in separate RUN instructions.", "Combine apt-get update and apt-get install in one RUN instruction and clean package lists in the same layer."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -85,6 +87,9 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
                     "Use multi-stage builds to reduce image size and improve security by separating build dependencies from the runtime image."));
             }
 
+            CheckCopyBeforeRestore(content, relativePath, findings);
+            CheckAptGetLayering(content, relativePath, findings);
+
             foreach (Match match in SecretEnvPattern().Matches(content))
             {
                 var key = match.Groups["key"].Value;
@@ -131,6 +136,58 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         return line;
     }
 
+    private static void CheckCopyBeforeRestore(string content, string relativePath, List<Finding> findings)
+    {
+        var copyAllMatch = CopyAllPattern().Match(content);
+        if (!copyAllMatch.Success)
+        {
+            return;
+        }
+
+        var restoreMatch = RestoreOrInstallPattern().Match(content);
+        if (!restoreMatch.Success || copyAllMatch.Index > restoreMatch.Index)
+        {
+            return;
+        }
+
+        findings.Add(CreateFinding(
+            "TRUST-DOCKER007",
+            "Dockerfile copies entire context before dependency restore",
+            Severity.Low,
+            relativePath,
+            "COPY . . appears before a dependency restore or install step.",
+            Confidence.Medium,
+            "Copy dependency manifest files first, restore dependencies, then copy the rest of the source."));
+    }
+
+    private static void CheckAptGetLayering(string content, string relativePath, List<Finding> findings)
+    {
+        var runMatches = RunInstructionPattern().Matches(content);
+        var updateRunIndex = -1;
+        for (var index = 0; index < runMatches.Count; index++)
+        {
+            var runLine = runMatches[index].Value;
+            if (AptGetUpdatePattern().IsMatch(runLine) && !AptGetInstallPattern().IsMatch(runLine))
+            {
+                updateRunIndex = index;
+                continue;
+            }
+
+            if (updateRunIndex >= 0 && AptGetInstallPattern().IsMatch(runLine))
+            {
+                findings.Add(CreateFinding(
+                    "TRUST-DOCKER008",
+                    "Dockerfile separates apt-get update from install",
+                    Severity.Low,
+                    relativePath,
+                    "apt-get update and apt-get install appear in separate RUN instructions.",
+                    Confidence.Medium,
+                    "Combine apt-get update and apt-get install in one RUN instruction and clean package lists in the same layer."));
+                return;
+            }
+        }
+    }
+
     [GeneratedRegex(@"(?mi)^\s*FROM\s+\S+:latest\b")]
     private static partial Regex LatestImagePattern();
 
@@ -145,4 +202,19 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?mi)^\s*ENV\s+(?<key>PASSWORD|TOKEN|SECRET|API_KEY)\b\s*(?:=\s*|\s+)(?<value>\S+)", RegexOptions.IgnoreCase)]
     private static partial Regex SecretEnvPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*COPY\s+(?:--[^\s]+\s+)*\.\s+\.\s*$")]
+    private static partial Regex CopyAllPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*RUN\s+.*\b(dotnet\s+restore|npm\s+(?:ci|install)|pnpm\s+install|yarn\s+install|pip\s+install|poetry\s+install|uv\s+sync|go\s+mod\s+download|mvn\s+(?:dependency:go-offline|install)|gradle\s+dependencies)\b")]
+    private static partial Regex RestoreOrInstallPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*RUN\s+.+$")]
+    private static partial Regex RunInstructionPattern();
+
+    [GeneratedRegex(@"\bapt-get\s+update\b", RegexOptions.IgnoreCase)]
+    private static partial Regex AptGetUpdatePattern();
+
+    [GeneratedRegex(@"\bapt-get\s+install\b", RegexOptions.IgnoreCase)]
+    private static partial Regex AptGetInstallPattern();
 }

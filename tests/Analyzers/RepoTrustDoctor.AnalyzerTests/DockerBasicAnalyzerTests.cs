@@ -90,5 +90,82 @@ public sealed class DockerBasicAnalyzerTests
         // Should report TRUST-DOCKER006 because only one active FROM is counted (alpine)
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DOCKER006");
     }
-}
 
+    [Fact]
+    public async Task AnalyzeAsync_ReportsCopyAllBeforeDependencyRestore()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM mcr.microsoft.com/dotnet/sdk:10.0
+        WORKDIR /src
+        COPY . .
+        RUN dotnet restore
+        USER appuser
+        HEALTHCHECK NONE
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DOCKER007");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportCopyAllAfterDependencyRestore()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM node:22
+        WORKDIR /app
+        COPY package.json package-lock.json ./
+        RUN npm ci
+        COPY . .
+        USER node
+        HEALTHCHECK NONE
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DOCKER007");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsAptGetUpdateInstallInSeparateLayers()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM ubuntu:24.04
+        RUN apt-get update
+        RUN apt-get install -y curl
+        USER appuser
+        HEALTHCHECK NONE
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DOCKER008");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportAptGetUpdateInstallInSameLayer()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM ubuntu:24.04
+        RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+        USER appuser
+        HEALTHCHECK NONE
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DOCKER008");
+    }
+}
