@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
 
 namespace RepoTrustDoctor.Reporting;
@@ -74,6 +75,10 @@ public sealed class MarkdownReportWriter
         }
 
         builder.AppendLine();
+        AppendDependencySummary(builder, scan);
+        AppendRecommendedActions(builder, scan);
+
+        builder.AppendLine();
         builder.AppendLine("## Findings");
         var findings = JsonReportWriter.SortFindings(FindingFingerprinter.AddFingerprints(scan.Findings));
         if (findings.Count == 0)
@@ -103,5 +108,69 @@ public sealed class MarkdownReportWriter
         }
 
         return builder.ToString();
+    }
+
+    private static void AppendDependencySummary(StringBuilder builder, RepositoryScan scan)
+    {
+        if (scan.Artifacts is null ||
+            !scan.Artifacts.TryGetValue(DependencyInventoryArtifact.ArtifactKey, out var rawArtifact) ||
+            rawArtifact is not DependencyInventoryArtifact inventory)
+        {
+            return;
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("## Dependency Inventory");
+        builder.AppendLine();
+        builder.AppendLine($"- Manifests: `{inventory.Manifests.Count}`");
+        builder.AppendLine($"- Lockfiles: `{inventory.Lockfiles.Count}`");
+        builder.AppendLine($"- Packages: `{inventory.Packages.Count}`");
+        builder.AppendLine($"- Package sources: `{inventory.PackageSources.Count}`");
+        builder.AppendLine($"- Unpinned or ranged packages: `{inventory.Packages.Count(package => !package.IsVersionPinned)}`");
+        builder.AppendLine($"- Prerelease packages: `{inventory.Packages.Count(package => package.IsPrerelease)}`");
+        builder.AppendLine();
+
+        builder.AppendLine("| Ecosystem | Manifests | Lockfiles | Packages |");
+        builder.AppendLine("| --------- | --------- | --------- | -------- |");
+        foreach (var ecosystem in Enum.GetValues<DependencyEcosystem>())
+        {
+            var manifestCount = inventory.Manifests.Count(manifest => manifest.Ecosystem == ecosystem);
+            var lockfileCount = inventory.Lockfiles.Count(lockfile => lockfile.Ecosystem == ecosystem);
+            var packageCount = inventory.Packages.Count(package => package.Ecosystem == ecosystem);
+            if (manifestCount == 0 && lockfileCount == 0 && packageCount == 0)
+            {
+                continue;
+            }
+
+            builder.AppendLine($"| {ecosystem} | {manifestCount} | {lockfileCount} | {packageCount} |");
+        }
+    }
+
+    private static void AppendRecommendedActions(StringBuilder builder, RepositoryScan scan)
+    {
+        var findings = JsonReportWriter.SortFindings(scan.Findings);
+        if (findings.Count == 0)
+        {
+            return;
+        }
+
+        var actions = findings
+            .Select(finding => finding.Recommendation.Message)
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(5)
+            .ToArray();
+
+        if (actions.Length == 0)
+        {
+            return;
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("## Top Recommended Actions");
+        foreach (var action in actions)
+        {
+            builder.AppendLine($"- {action}");
+        }
     }
 }

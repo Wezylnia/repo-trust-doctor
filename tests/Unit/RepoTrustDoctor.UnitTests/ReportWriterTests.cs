@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
 using RepoTrustDoctor.Reporting;
 using RepoTrustDoctor.Shared;
@@ -115,6 +116,59 @@ public sealed class ReportWriterTests
         var json = new JsonReportWriter().Write(scan);
 
         Assert.Contains("summary", json);
+    }
+
+    [Fact]
+    public void MarkdownReport_IncludesDependencyInventorySummary_WhenArtifactExists()
+    {
+        var inventory = new DependencyInventoryArtifact(
+            [new DependencyManifestInfo(DependencyEcosystem.Npm, "package.json", "package.json")],
+            [new DependencyLockfileInfo(DependencyEcosystem.Npm, "package-lock.json", "package-lock.json")],
+            [
+                new DependencyPackageInfo(
+                    DependencyEcosystem.Npm,
+                    "react",
+                    "^19.0.0",
+                    DependencyScope.Production,
+                    "package.json",
+                    "package-lock.json",
+                    true,
+                    false,
+                    false)
+            ],
+            [],
+            new Dictionary<string, string>());
+        var scan = CreateMinimalScan() with
+        {
+            Artifacts = new Dictionary<string, object>
+            {
+                [DependencyInventoryArtifact.ArtifactKey] = inventory
+            }
+        };
+
+        var markdown = new MarkdownReportWriter().Write(scan);
+
+        Assert.Contains("Dependency Inventory", markdown);
+        Assert.Contains("| Npm | 1 | 1 | 1 |", markdown);
+        Assert.Contains("Unpinned or ranged packages", markdown);
+    }
+
+    [Fact]
+    public void MarkdownReport_IncludesTopRecommendedActions()
+    {
+        var scan = CreateMinimalScan() with
+        {
+            Findings =
+            [
+                CreateFinding("TRUST-DEP006", Severity.Medium, AnalysisCategory.Dependencies),
+                CreateFinding("TRUST-GHA001", Severity.High, AnalysisCategory.CiCd)
+            ]
+        };
+
+        var markdown = new MarkdownReportWriter().Write(scan);
+
+        Assert.Contains("Top Recommended Actions", markdown);
+        Assert.Contains("Fix it.", markdown);
     }
 
     [Fact]
