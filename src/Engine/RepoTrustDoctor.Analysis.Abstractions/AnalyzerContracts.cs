@@ -29,8 +29,12 @@ public sealed record AnalyzerResult(
     IReadOnlyList<string>? Warnings = null,
     string? ErrorMessage = null)
 {
-    public static AnalyzerResult Completed(IReadOnlyList<Finding> findings) =>
-        new(ModuleStatus.Completed, findings);
+    public static AnalyzerResult Completed(
+        IReadOnlyList<Finding> findings,
+        IReadOnlyList<AnalyzerArtifact>? artifacts = null,
+        IReadOnlyDictionary<string, string>? metrics = null,
+        IReadOnlyList<string>? warnings = null) =>
+        new(ModuleStatus.Completed, findings, artifacts, metrics, warnings);
 }
 
 public sealed class AnalysisContext
