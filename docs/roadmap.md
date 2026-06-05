@@ -6,7 +6,7 @@ The roadmap is intentionally conservative. Each milestone should leave the proje
 
 ## Current Release
 
-`v0.3.0` is a CLI-first static scanner focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, deterministic reports, and CI gate options.
+`v0.4.0` is a CLI-first static scanner focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, static package-origin review, deterministic reports, and CI gate options.
 
 Current scans are static-only by default. The tool does not execute repository code, install packages, run tests, run builds, or build containers as part of a scan.
 
@@ -16,8 +16,8 @@ Current scans are static-only by default. The tool does not execute repository c
 | --- | --- | --- |
 | `v0.1.x` | Foundation alpha | Local static scans, report output, basic analyzers, CI gates |
 | `v0.2.x` | Static analyzer expansion | Better repository, workflow, secret, Docker, and report quality |
-| `v0.3.x` | Dependency inventory | Current: structured NuGet, npm, and Python dependency artifacts |
-| `v0.4.x` | Risk intelligence | Vulnerability, license, package origin, typosquatting, dependency confusion |
+| `v0.3.x` | Dependency inventory | Structured NuGet, npm, and Python dependency artifacts |
+| `v0.4.x` | Risk intelligence | Current: static package-origin signals, then vulnerability, license, typosquatting, dependency confusion |
 | `v0.5.x` | API and worker foundation | Hosted scan API, worker execution, persistence, progress DTOs |
 | `v0.6.x` | Policies and profiles | Built-in policies, blocking risks, profile-aware scoring |
 | `v0.7.x` | Release trust | Release hygiene, artifact integrity, SBOM/provenance evidence |
@@ -198,6 +198,16 @@ Success criteria:
 ## v0.4.x: Vulnerability, License, and Package Origin Intelligence
 
 Goal: turn dependency inventory into cautious risk intelligence.
+
+Delivered in `v0.4.0`:
+
+- static npm direct remote source detection,
+- static npm local source detection,
+- static NuGet insecure HTTP source detection,
+- static NuGet local path source detection,
+- package source local and secure-transport artifact fields,
+- dependency inventory metrics for origin risk signals,
+- Markdown report summary fields for package-origin review.
 
 Infrastructure work:
 

@@ -16,7 +16,7 @@ Each rule documents:
 - why it matters,
 - recommendation.
 
-The current catalog covers implemented static analyzer rules and the first dependency inventory rules. Future releases will add package metadata, vulnerability, license, package origin, and policy rules.
+The current catalog covers implemented static analyzer rules, dependency inventory rules, and the first static package-origin review rules. Future releases will add package metadata, vulnerability, license, typosquatting, dependency confusion, and policy rules.
 
 ## Categories
 
