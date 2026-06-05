@@ -6,7 +6,7 @@ The roadmap is intentionally conservative. Each milestone should leave the proje
 
 ## Current Release
 
-`v0.2.0` is a CLI-first static scanner focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, dependency lockfile coverage, deterministic reports, and CI gate options.
+`v0.3.0` is a CLI-first static scanner focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, deterministic reports, and CI gate options.
 
 Current scans are static-only by default. The tool does not execute repository code, install packages, run tests, run builds, or build containers as part of a scan.
 
@@ -15,8 +15,8 @@ Current scans are static-only by default. The tool does not execute repository c
 | Version | Theme | Main Outcome |
 | --- | --- | --- |
 | `v0.1.x` | Foundation alpha | Local static scans, report output, basic analyzers, CI gates |
-| `v0.2.x` | Static analyzer expansion | Current: better repository, workflow, secret, Docker, and report quality |
-| `v0.3.x` | Dependency inventory | Structured NuGet, npm, and Python dependency artifacts |
+| `v0.2.x` | Static analyzer expansion | Better repository, workflow, secret, Docker, and report quality |
+| `v0.3.x` | Dependency inventory | Current: structured NuGet, npm, and Python dependency artifacts |
 | `v0.4.x` | Risk intelligence | Vulnerability, license, package origin, typosquatting, dependency confusion |
 | `v0.5.x` | API and worker foundation | Hosted scan API, worker execution, persistence, progress DTOs |
 | `v0.6.x` | Policies and profiles | Built-in policies, blocking risks, profile-aware scoring |
@@ -139,7 +139,7 @@ Success criteria:
 
 Goal: answer "what does this repository depend on?" without yet making vulnerability or legal claims.
 
-Planned dependency artifacts:
+Delivered in `v0.3.0`:
 
 - `DependencyInventoryArtifact`,
 - ecosystem enum for NuGet, npm, and Python,
@@ -151,7 +151,7 @@ Planned dependency artifacts:
 - pinned/prerelease markers,
 - deterministic metrics.
 
-NuGet work:
+NuGet work delivered:
 
 - parse direct `PackageReference` entries safely,
 - support nested `<Version>` nodes,
@@ -159,7 +159,7 @@ NuGet work:
 - detect floating, wildcard, missing, and prerelease versions,
 - record NuGet package sources without network access.
 
-npm work:
+npm work delivered:
 
 - parse `package.json` dependency sections,
 - record `dependencies`, `devDependencies`, `optionalDependencies`, and `peerDependencies`,
@@ -167,14 +167,14 @@ npm work:
 - record `packageManager` and `engines`,
 - flag install-time scripts for manual review.
 
-Python work:
+Python work delivered:
 
 - parse `requirements.txt`,
 - parse `pyproject.toml` and `Pipfile` conservatively,
 - detect unpinned requirements,
 - detect lockfile coverage with Poetry, uv, and Pipenv.
 
-Reporting work:
+Reporting work delivered:
 
 - dependency summary in Markdown,
 - dependency counts by ecosystem,

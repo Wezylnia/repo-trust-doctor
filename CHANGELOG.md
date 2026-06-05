@@ -2,6 +2,51 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v0.3.0 - 2026-06-05
+
+This release completes the first dependency inventory milestone. It turns the previous lockfile coverage checks into a reusable static dependency inventory for NuGet, npm, and Python while preserving the scanner's no-code-execution safety model.
+
+### Added
+
+- `DependencyInventoryArtifact` with manifest, lockfile, package, package source, and metric records.
+- Dependency inventory artifacts are carried through scan results for report writers and future analyzers.
+- NuGet direct `PackageReference` parsing, including nested `<Version>` nodes.
+- Basic Central Package Management version resolution through `Directory.Packages.props`.
+- Static NuGet findings:
+  - `TRUST-DEP004`: NuGet dependency uses a floating or unpinned version.
+  - `TRUST-DEP005`: NuGet dependency uses a prerelease version.
+- NuGet package source recording from `NuGet.config` with credential redaction.
+- npm dependency parsing for `dependencies`, `devDependencies`, `optionalDependencies`, and `peerDependencies`.
+- npm `packageManager` and `engines` metadata capture.
+- Static npm findings:
+  - `TRUST-DEP006`: npm dependency uses a range or unpinned version.
+  - `TRUST-DEP007`: npm dependency uses a prerelease version.
+  - `TRUST-DEP008`: npm install-time script requires manual review.
+- Python dependency parsing for `requirements.txt`, `pyproject.toml`, and `Pipfile`.
+- Static Python findings:
+  - `TRUST-DEP009`: Python requirement is unpinned.
+  - `TRUST-DEP010`: Python dependency uses a prerelease version.
+- Markdown dependency inventory summary with counts by ecosystem.
+- Markdown top recommended actions section.
+
+### Changed
+
+- Product version is now `0.3.0`.
+- README, roadmap, report format docs, and dependency rule docs now describe the dependency inventory milestone.
+
+### Security
+
+- Dependency inventory remains static-only.
+- The scanner does not execute package managers, repository scripts, builds, tests, Docker builds, or install hooks.
+- XML parsing disables DTD processing and external resource resolution.
+- NuGet source URLs redact embedded credentials before entering artifacts.
+
+### Known Limitations
+
+- Package registry metadata, latest-version freshness, vulnerability lookup, license analysis, package origin analysis, and dependency confusion analysis are not implemented yet.
+- Dependency parsing is conservative and does not perform full MSBuild, npm, Poetry, uv, Pipenv, or Python packaging resolution.
+- Reports may contain heuristic false positives or false negatives.
+
 ## v0.2.0 - 2026-06-03
 
 This release completes the `v0.2` static analyzer expansion milestone. It improves repository documentation quality checks, GitHub Actions release/artifact review, Dockerfile hygiene checks, rule documentation, and fixture coverage while keeping scans static-only by default.

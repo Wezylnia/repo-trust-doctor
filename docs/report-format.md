@@ -14,6 +14,7 @@ The initial report model includes:
 - overall score,
 - final decision,
 - recommended actions.
+- analyzer artifacts such as dependency inventory when produced.
 
 Each finding includes:
 
@@ -29,6 +30,24 @@ Each finding includes:
 - blocking flag.
 
 Reports should be readable in Markdown and deterministic in JSON.
+
+## Dependency Inventory Artifact
+
+`v0.3.0` adds a structured dependency inventory artifact under the stable key `dependency.inventory`.
+
+The artifact contains:
+
+- manifest records,
+- lockfile records,
+- package records,
+- package source records,
+- deterministic string metrics.
+
+Package records include ecosystem, package name, optional version, scope, manifest path, optional lockfile path, direct/transitive marker, pinned marker, and prerelease marker.
+
+Markdown reports include a dependency inventory summary when the artifact is present. JSON reports include scan artifacts for machine readers.
+
+The dependency inventory is static-only. It does not fetch registry metadata, resolve latest versions, look up vulnerabilities, or make license claims.
 
 Finding fingerprints are lowercase SHA-256 hex strings. They are computed from the rule ID, category, evidence kind, evidence file path, and evidence line number when present. Evidence messages, evidence values, and secret-like content are not fingerprint inputs.
 

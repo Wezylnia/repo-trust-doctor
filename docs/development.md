@@ -42,6 +42,12 @@ Existing report files are not overwritten unless `--force` is supplied.
 
 Trust profile values are normalized by the CLI. Canonical values are `Personal`, `ProductionDependency`, `EnterpriseDependency`, `CiCdTool`, `SecuritySensitiveDependency`, and `ContainerDependency`; common aliases such as `production`, `enterprise`, `ci-cd`, `security`, and `container` are also accepted.
 
+## Dependency Analyzer Fixtures
+
+Dependency analyzer tests should prefer small synthetic fixtures for NuGet, npm, and Python manifests. Fixtures must not include real credentials, internal registry URLs, customer data, or generated lockfiles larger than the test actually needs.
+
+Static dependency tests may parse manifests and lockfiles, but they must not run package managers such as `npm install`, `dotnet restore`, `pip install`, Poetry, uv, or Pipenv against scanned repository content.
+
 ## CLI Exit Codes
 
 | Code | Meaning |
@@ -50,6 +56,7 @@ Trust profile values are normalized by the CLI. Canonical values are `Personal`,
 | `1`  | CLI usage error |
 | `2`  | Input/output error |
 | `3`  | Scan completed with `AvoidAsProductionDependency` |
+| `4`  | Configured CI gate failed |
 
 ## Design Rules
 
