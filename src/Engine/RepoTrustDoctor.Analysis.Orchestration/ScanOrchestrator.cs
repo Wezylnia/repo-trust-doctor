@@ -94,6 +94,7 @@ public sealed class ScanOrchestrator
             completed,
             modules,
             findings,
-            score);
+            score,
+            context.Artifacts);
     }
 }

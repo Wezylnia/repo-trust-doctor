@@ -140,7 +140,8 @@ public sealed record RepositoryScan(
     DateTimeOffset CompletedAt,
     IReadOnlyList<ScanModule> Modules,
     IReadOnlyList<Finding> Findings,
-    TrustScore Score)
+    TrustScore Score,
+    IReadOnlyDictionary<string, object>? Artifacts = null)
 {
     public FindingSummary Summary => FindingSummary.From(Findings);
 }
