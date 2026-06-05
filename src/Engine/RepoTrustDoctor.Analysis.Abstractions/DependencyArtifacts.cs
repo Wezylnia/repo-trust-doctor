@@ -32,7 +32,10 @@ public sealed record DependencyPackageSourceInfo(
     DependencyEcosystem Ecosystem,
     string Name,
     string Source,
-    string FilePath);
+    string FilePath,
+    bool IsLocal = false,
+    bool IsSecureTransport = true,
+    IReadOnlyDictionary<string, string>? Metadata = null);
 
 public sealed record DependencyPackageInfo(
     DependencyEcosystem Ecosystem,

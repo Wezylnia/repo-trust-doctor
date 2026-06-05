@@ -41,7 +41,11 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new("TRUST-DEP007", "npm dependency uses a prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A package.json dependency uses a prerelease version.", "Review prerelease dependencies and prefer stable versions where possible."),
         new("TRUST-DEP008", "npm install-time script requires manual review", AnalysisCategory.Dependencies, Severity.Medium, Confidence.Medium, "package.json defines an install-time script such as preinstall, install, or postinstall.", "Manually review install-time scripts because they run during package installation."),
         new("TRUST-DEP009", "Python requirement is unpinned", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Python dependency is not pinned to an exact version.", "Pin Python requirements or use a lockfile-based package manager."),
-        new("TRUST-DEP010", "Python dependency uses a prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Python dependency uses a prerelease version.", "Review whether the prerelease dependency is intentional before production use.")
+        new("TRUST-DEP010", "Python dependency uses a prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Python dependency uses a prerelease version.", "Review whether the prerelease dependency is intentional before production use."),
+        new("TRUST-DEP011", "npm dependency uses a direct remote source", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A package.json dependency points directly at a Git or URL source instead of a registry version.", "Review direct remote dependency sources and prefer registry packages with pinned versions when possible."),
+        new("TRUST-DEP012", "npm dependency uses a local file source", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A package.json dependency points at a local file, link, workspace, or portal source.", "Review local dependency sources because they depend on repository layout and may bypass registry provenance."),
+        new("TRUST-DEP013", "NuGet package source uses insecure transport", AnalysisCategory.Dependencies, Severity.High, Confidence.High, "NuGet.config defines an HTTP package source.", "Use HTTPS package sources and avoid sending package metadata or credentials over plaintext transport."),
+        new("TRUST-DEP014", "NuGet package source uses a local path", AnalysisCategory.Dependencies, Severity.Low, Confidence.Medium, "NuGet.config defines a local package source.", "Review local package sources because they can change package origin assumptions and may hide dependency confusion risk.")
     ];
 
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -175,7 +179,7 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
 
         foreach (var config in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "NuGet.config"))
         {
-            ReadNuGetSources(context, config, warnings, sources);
+            ReadNuGetSources(context, config, warnings, findings, sources);
         }
 
         if (csprojs.Length > 0 && lockfiles.All(lockfile => lockfile.Ecosystem != DependencyEcosystem.NuGet))
@@ -392,6 +396,7 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
             var normalizedVersion = NormalizeVersion(version);
             var pinned = IsPinnedNpmVersion(normalizedVersion);
             var prerelease = IsPrereleaseVersion(normalizedVersion);
+            var sourceKind = ClassifyNpmVersionSpec(normalizedVersion);
             packages.Add(new DependencyPackageInfo(
                 DependencyEcosystem.Npm,
                 dependency.Name,
@@ -402,7 +407,11 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
                 true,
                 pinned,
                 prerelease,
-                new Dictionary<string, string> { ["section"] = sectionName }));
+                new Dictionary<string, string>
+                {
+                    ["section"] = sectionName,
+                    ["sourceKind"] = sourceKind.Kind
+                }));
 
             if (!pinned)
             {
@@ -430,6 +439,34 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
                     $"Package `{dependency.Name}` in `{sectionName}` uses version `{normalizedVersion}`.",
                     manifestPath,
                     "Review prerelease dependencies and prefer stable versions where possible."));
+            }
+
+            if (sourceKind.IsRemote)
+            {
+                findings.Add(CreateDependencyFinding(
+                    "TRUST-DEP011",
+                    "npm dependency uses a direct remote source",
+                    Severity.Medium,
+                    Confidence.High,
+                    $"npm dependency `{dependency.Name}` points directly at a remote source.",
+                    "npm-package",
+                    $"Package `{dependency.Name}` in `{sectionName}` uses `{DisplayVersion(normalizedVersion)}`.",
+                    manifestPath,
+                    "Review direct remote dependency sources and prefer registry packages with pinned versions when possible."));
+            }
+
+            if (sourceKind.IsLocal)
+            {
+                findings.Add(CreateDependencyFinding(
+                    "TRUST-DEP012",
+                    "npm dependency uses a local file source",
+                    Severity.Low,
+                    Confidence.High,
+                    $"npm dependency `{dependency.Name}` points at a local source.",
+                    "npm-package",
+                    $"Package `{dependency.Name}` in `{sectionName}` uses `{DisplayVersion(normalizedVersion)}`.",
+                    manifestPath,
+                    "Review local dependency sources because they depend on repository layout and may bypass registry provenance."));
             }
         }
     }
@@ -485,6 +522,7 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         AnalysisContext context,
         string configPath,
         List<string> warnings,
+        List<Finding> findings,
         List<DependencyPackageSourceInfo> sources)
     {
         var relativePath = Relative(context, configPath);
@@ -501,7 +539,45 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
             var value = ReadXmlAttribute(source, "value");
             if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(value))
             {
-                sources.Add(new DependencyPackageSourceInfo(DependencyEcosystem.NuGet, name.Trim(), RedactUrl(value.Trim()), relativePath));
+                var sourceText = value.Trim();
+                var sourceKind = ClassifyNuGetSource(sourceText);
+                var redacted = RedactUrl(sourceText);
+                sources.Add(new DependencyPackageSourceInfo(
+                    DependencyEcosystem.NuGet,
+                    name.Trim(),
+                    redacted,
+                    relativePath,
+                    sourceKind.IsLocal,
+                    sourceKind.IsSecureTransport,
+                    new Dictionary<string, string> { ["kind"] = sourceKind.Kind }));
+
+                if (!sourceKind.IsSecureTransport)
+                {
+                    findings.Add(CreateDependencyFinding(
+                        "TRUST-DEP013",
+                        "NuGet package source uses insecure transport",
+                        Severity.High,
+                        Confidence.High,
+                        $"NuGet package source `{name.Trim()}` uses insecure HTTP transport.",
+                        "nuget-source",
+                        $"Package source `{name.Trim()}` is `{redacted}`.",
+                        relativePath,
+                        "Use HTTPS package sources and avoid sending package metadata or credentials over plaintext transport."));
+                }
+
+                if (sourceKind.IsLocal)
+                {
+                    findings.Add(CreateDependencyFinding(
+                        "TRUST-DEP014",
+                        "NuGet package source uses a local path",
+                        Severity.Low,
+                        Confidence.Medium,
+                        $"NuGet package source `{name.Trim()}` points to a local path.",
+                        "nuget-source",
+                        $"Package source `{name.Trim()}` is local.",
+                        relativePath,
+                        "Review local package sources because they can change package origin assumptions and may hide dependency confusion risk."));
+                }
             }
         }
     }
@@ -738,7 +814,17 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
             ["dependency.package.direct.count"] = packages.Count(package => package.IsDirect).ToString(),
             ["dependency.package.unpinned.count"] = packages.Count(package => !package.IsVersionPinned).ToString(),
             ["dependency.package.prerelease.count"] = packages.Count(package => package.IsPrerelease).ToString(),
-            ["dependency.source.count"] = sources.Count.ToString()
+            ["dependency.source.count"] = sources.Count.ToString(),
+            ["dependency.source.insecure.count"] = sources.Count(source => !source.IsSecureTransport).ToString(),
+            ["dependency.source.local.count"] = sources.Count(source => source.IsLocal).ToString(),
+            ["dependency.package.npm.remote-source.count"] = packages.Count(package =>
+                package.Ecosystem == DependencyEcosystem.Npm &&
+                package.Metadata?.TryGetValue("sourceKind", out var kind) == true &&
+                kind.Equals("remote", StringComparison.OrdinalIgnoreCase)).ToString(),
+            ["dependency.package.npm.local-source.count"] = packages.Count(package =>
+                package.Ecosystem == DependencyEcosystem.Npm &&
+                package.Metadata?.TryGetValue("sourceKind", out var kind) == true &&
+                kind.Equals("local", StringComparison.OrdinalIgnoreCase)).ToString()
         };
 
         foreach (var group in packages.GroupBy(package => package.Ecosystem))
@@ -794,6 +880,50 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
 
     private static string DisplayVersion(string? version) => string.IsNullOrWhiteSpace(version) ? "missing" : version;
 
+    private static NpmSourceKind ClassifyNpmVersionSpec(string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return new NpmSourceKind("registry", false, false);
+        }
+
+        var value = version.Trim();
+        if (value.StartsWith("git+", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("git://", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("github:", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains(".git#", StringComparison.OrdinalIgnoreCase))
+        {
+            return new NpmSourceKind("remote", true, false);
+        }
+
+        if (value.StartsWith("file:", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("link:", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("workspace:", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("portal:", StringComparison.OrdinalIgnoreCase))
+        {
+            return new NpmSourceKind("local", false, true);
+        }
+
+        return new NpmSourceKind("registry", false, false);
+    }
+
+    private static NuGetSourceKind ClassifyNuGetSource(string source)
+    {
+        if (Uri.TryCreate(source, UriKind.Absolute, out var uri))
+        {
+            if (uri.IsFile)
+            {
+                return new NuGetSourceKind("local", true, true);
+            }
+
+            return new NuGetSourceKind(uri.Scheme, false, uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return new NuGetSourceKind("local", true, true);
+    }
+
     private static string RedactUrl(string value)
     {
         if (Uri.TryCreate(value, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.UserInfo))
@@ -810,4 +940,8 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"^\d+\.\d+(\.\d+)?$", RegexOptions.CultureInvariant)]
     private static partial Regex ExactSemVerPattern();
+
+    private sealed record NpmSourceKind(string Kind, bool IsRemote, bool IsLocal);
+
+    private sealed record NuGetSourceKind(string Kind, bool IsLocal, bool IsSecureTransport);
 }

@@ -187,6 +187,31 @@ public sealed class DependencyInventoryAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_NuGetConfigSources_ReportInsecureAndLocalOrigins()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "NuGet.config"), """
+        <configuration>
+          <packageSources>
+            <add key="internal-http" value="http://packages.example.test/v3/index.json" />
+            <add key="local-feed" value="packages" />
+          </packageSources>
+        </configuration>
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.PackageSources, source => source.Name == "internal-http" && !source.IsSecureTransport);
+        Assert.Contains(inventory.PackageSources, source => source.Name == "local-feed" && source.IsLocal);
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP013" && finding.Message.Contains("internal-http", StringComparison.Ordinal));
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP014" && finding.Message.Contains("local-feed", StringComparison.Ordinal));
+        Assert.Equal("1", inventory.Metrics["dependency.source.insecure.count"]);
+        Assert.Equal("1", inventory.Metrics["dependency.source.local.count"]);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_NpmDependenciesAndInstallScripts_AreRecordedAndReported()
     {
         using var fixture = TemporaryRepository.Create();
@@ -217,6 +242,33 @@ public sealed class DependencyInventoryAnalyzerTests
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP006" && finding.Message.Contains("react", StringComparison.Ordinal));
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP007" && finding.Message.Contains("preview", StringComparison.Ordinal));
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP008");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_NpmDirectAndLocalSources_AreRecordedAndReported()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "package-lock.json"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "package.json"), """
+        {
+          "dependencies": {
+            "remote-lib": "github:example/remote-lib#main",
+            "local-lib": "file:../local-lib",
+            "stable": "1.0.0"
+          }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, package => package.Name == "remote-lib" && package.Metadata?["sourceKind"] == "remote");
+        Assert.Contains(inventory.Packages, package => package.Name == "local-lib" && package.Metadata?["sourceKind"] == "local");
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP011" && finding.Message.Contains("remote-lib", StringComparison.Ordinal));
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP012" && finding.Message.Contains("local-lib", StringComparison.Ordinal));
+        Assert.Equal("1", inventory.Metrics["dependency.package.npm.remote-source.count"]);
+        Assert.Equal("1", inventory.Metrics["dependency.package.npm.local-source.count"]);
     }
 
     [Fact]
