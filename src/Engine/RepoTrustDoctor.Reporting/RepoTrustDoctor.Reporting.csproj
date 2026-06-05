@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\RepoTrustDoctor.Analysis.Abstractions\RepoTrustDoctor.Analysis.Abstractions.csproj" />
     <ProjectReference Include="..\..\Core\RepoTrustDoctor.Domain\RepoTrustDoctor.Domain.csproj" />
   </ItemGroup>
 
