@@ -1,0 +1,54 @@
+import { Search, X } from 'lucide-react';
+import { severities } from '../../../domain/reportSelectors';
+
+interface FilterToolbarProps {
+  categories: string[];
+  category: string;
+  query: string;
+  severity: string;
+  onCategoryChange: (value: string) => void;
+  onClear: () => void;
+  onQueryChange: (value: string) => void;
+  onSeverityChange: (value: string) => void;
+}
+
+export function FilterToolbar({
+  categories,
+  category,
+  query,
+  severity,
+  onCategoryChange,
+  onClear,
+  onQueryChange,
+  onSeverityChange
+}: FilterToolbarProps) {
+  return (
+    <div className="toolbar" aria-label="Finding filters">
+      <label className="search-field">
+        <Search size={16} aria-hidden="true" />
+        <input
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Search findings, files, rules"
+        />
+      </label>
+      <select value={severity} onChange={(event) => onSeverityChange(event.target.value)} aria-label="Severity">
+        {severities.map((item) => (
+          <option value={item} key={item}>
+            {item}
+          </option>
+        ))}
+      </select>
+      <select value={category} onChange={(event) => onCategoryChange(event.target.value)} aria-label="Category">
+        {categories.map((item) => (
+          <option value={item} key={item}>
+            {item}
+          </option>
+        ))}
+      </select>
+      <button type="button" className="icon-button" onClick={onClear} aria-label="Clear filters" title="Clear filters">
+        <X size={16} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
