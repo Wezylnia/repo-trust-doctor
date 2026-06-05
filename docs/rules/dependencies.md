@@ -119,3 +119,51 @@ Detects Python dependencies with prerelease version labels.
 Why it matters: prerelease dependencies may be unstable or intentionally experimental.
 
 Recommendation: review whether the prerelease dependency is intentional before production use.
+
+## TRUST-DEP011: npm Dependency Uses a Direct Remote Source
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects npm dependencies in `package.json` that point directly to Git, GitHub shorthand, HTTP, or HTTPS sources instead of normal registry versions.
+
+Why it matters: direct remote dependency sources can bypass normal registry provenance and review workflows. They may also change behavior if a branch or moving ref is used.
+
+Recommendation: review direct remote dependency sources and prefer registry packages with pinned versions when possible.
+
+## TRUST-DEP012: npm Dependency Uses a Local File Source
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: High
+
+Detects npm dependencies that use local `file:`, `link:`, `workspace:`, or `portal:` references.
+
+Why it matters: local dependency sources depend on repository layout and package manager behavior. They can be legitimate in monorepos, but they deserve review because they bypass registry provenance.
+
+Recommendation: review local dependency sources and ensure they are intentional, documented, and covered by the repository's dependency review process.
+
+## TRUST-DEP013: NuGet Package Source Uses Insecure Transport
+
+- Category: Dependencies
+- Default severity: High
+- Default confidence: High
+
+Detects NuGet package sources configured with HTTP instead of HTTPS.
+
+Why it matters: plaintext package sources can expose metadata and credentials, and they weaken package integrity assumptions.
+
+Recommendation: use HTTPS package sources and avoid sending package metadata or credentials over plaintext transport.
+
+## TRUST-DEP014: NuGet Package Source Uses a Local Path
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: Medium
+
+Detects NuGet package sources that point to local filesystem paths.
+
+Why it matters: local package sources can be legitimate for development, but they change package-origin assumptions and may hide dependency confusion or provenance gaps.
+
+Recommendation: review local package sources and document whether they are development-only or part of the supported build process.

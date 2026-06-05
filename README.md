@@ -19,15 +19,15 @@ The current alpha focuses on local, static repository trust signals:
 - GitHub Actions workflow risks such as broad permissions, `pull_request_target`, unpinned actions, shell pipe execution, and checkout credential persistence,
 - possible committed secrets or sensitive files with redacted evidence,
 - Dockerfile hygiene signals such as `latest` tags, missing `.dockerignore`, root user risk, missing healthcheck, secret-like `ENV`, and missing multi-stage builds,
-- dependency lockfile coverage for npm, NuGet, and Python manifests,
+- dependency lockfile coverage and static package-origin signals for npm, NuGet, and Python manifests,
 - deterministic JSON and Markdown reports with stable finding fingerprints,
 - CI gate behavior through score and severity thresholds.
 
 ## Current Status
 
-This repository is at the `v0.3.0` milestone. It is a CLI-first static scanner intended for local repository trust review, repository hardening, CI gates, analyzer development, and dependency inventory review.
+This repository is at the `v0.4.0` milestone. It is a CLI-first static scanner intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, and cautious package-origin review.
 
-Implemented through `v0.3.0`:
+Implemented through `v0.4.0`:
 
 - a clean .NET solution structure,
 - pure domain models,
@@ -47,6 +47,7 @@ Implemented through `v0.3.0`:
 - static dependency hygiene findings for unpinned/ranged and prerelease versions,
 - npm install-time script findings for manual review,
 - NuGet package source recording from `NuGet.config` without network access,
+- static package-origin findings for direct remote npm dependencies, local npm dependencies, insecure NuGet sources, and local NuGet sources,
 - Markdown dependency inventory summaries,
 - typed trust profiles recorded in reports,
 - stable finding fingerprints for report output,
@@ -86,12 +87,12 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --
 
 ## Contributing
 
-Contributor help is very welcome. The project has a set of scoped `v0.3` dependency inventory and reporting issues ready for external contributors:
+Contributor help is very welcome. The project has scoped dependency intelligence and reporting issues ready for external contributors:
 
 - [good first issue](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22)
 - [help wanted](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22help%20wanted%22)
 - [contributor-ready](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3Acontributor-ready)
-- [v0.3 dependency workstream](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3Aphase%3Av0.3)
+- [v0.4 risk intelligence workstream](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3Aphase%3Av0.4)
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, safety rules, validation commands, and pull request expectations. Use [Discussions](https://github.com/Wezylnia/repo-trust-doctor/discussions) for questions or help choosing an issue.
 
@@ -156,8 +157,8 @@ The roadmap grows the platform gradually:
 | ------- | ----- |
 | `v0.1.x` | Foundation alpha, static local scans, basic analyzers, report output, CI gates |
 | `v0.2.x` | Static analyzer expansion for repository docs, workflows, secrets, Docker, and reports |
-| `v0.3.x` | Current: structured dependency inventory for NuGet, npm, and Python |
-| `v0.4.x` | Vulnerability, license, package origin, typosquatting, and dependency confusion intelligence |
+| `v0.3.x` | Structured dependency inventory for NuGet, npm, and Python |
+| `v0.4.x` | Current: static package-origin signals, then vulnerability, license, typosquatting, and dependency confusion intelligence |
 | `v0.5.x` | API, worker, persistence, and progressive scan state |
 | `v0.6.x` | Built-in policies, blocking risks, and profile-aware scoring |
 | `v0.7.x` | Release hygiene, artifact integrity, SBOM/provenance, and supply-chain evidence |

@@ -33,7 +33,7 @@ Reports should be readable in Markdown and deterministic in JSON.
 
 ## Dependency Inventory Artifact
 
-`v0.3.0` adds a structured dependency inventory artifact under the stable key `dependency.inventory`.
+`v0.3.0` added a structured dependency inventory artifact under the stable key `dependency.inventory`. `v0.4.0` adds static package-origin fields and metrics to the same artifact.
 
 The artifact contains:
 
@@ -43,11 +43,13 @@ The artifact contains:
 - package source records,
 - deterministic string metrics.
 
-Package records include ecosystem, package name, optional version, scope, manifest path, optional lockfile path, direct/transitive marker, pinned marker, and prerelease marker.
+Package records include ecosystem, package name, optional version, scope, manifest path, optional lockfile path, direct/transitive marker, pinned marker, prerelease marker, and optional metadata such as npm source kind.
+
+Package source records include ecosystem, source name, redacted source value, source file path, local-source marker, secure-transport marker, and optional metadata.
 
 Markdown reports include a dependency inventory summary when the artifact is present. JSON reports include scan artifacts for machine readers.
 
-The dependency inventory is static-only. It does not fetch registry metadata, resolve latest versions, look up vulnerabilities, or make license claims.
+The dependency inventory is static-only. It does not fetch registry metadata, resolve latest versions, look up vulnerabilities, or make license claims. Package-origin fields are review signals derived only from manifests and config files already present in the repository.
 
 Finding fingerprints are lowercase SHA-256 hex strings. They are computed from the rule ID, category, evidence kind, evidence file path, and evidence line number when present. Evidence messages, evidence values, and secret-like content are not fingerprint inputs.
 

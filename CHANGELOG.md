@@ -2,6 +2,39 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v0.4.0 - 2026-06-05
+
+This release starts the risk intelligence milestone with static package-origin checks. It builds on the dependency inventory artifact without adding package downloads, registry metadata calls, vulnerability lookups, or license claims.
+
+### Added
+
+- Static npm package-origin findings:
+  - `TRUST-DEP011`: npm dependency uses a direct remote source.
+  - `TRUST-DEP012`: npm dependency uses a local file source.
+- Static NuGet package-source findings:
+  - `TRUST-DEP013`: NuGet package source uses insecure transport.
+  - `TRUST-DEP014`: NuGet package source uses a local path.
+- Dependency package source metadata for local sources and secure transport.
+- Dependency inventory metrics for insecure package sources, local package sources, direct remote npm sources, and local npm sources.
+- Markdown dependency inventory summary fields for package-origin risk signals.
+- Analyzer fixture tests and report writer tests for package-origin risk signals.
+
+### Changed
+
+- Product version is now `0.4.0`.
+- README, roadmap, report format docs, and dependency rule docs now describe the first static package-origin intelligence milestone.
+
+### Security
+
+- Package-origin checks remain static-only.
+- The scanner does not contact npm, NuGet, PyPI, GitHub, OSV, package registries, or package URLs for this release.
+- NuGet source URLs continue to redact embedded credentials before entering artifacts or evidence.
+
+### Known Limitations
+
+- Vulnerability lookup, license analysis, package metadata freshness, typosquatting detection, and dependency confusion checks are still planned future work.
+- Direct remote and local source findings are heuristic review signals, not proof that a dependency is malicious.
+
 ## v0.3.0 - 2026-06-05
 
 This release completes the first dependency inventory milestone. It turns the previous lockfile coverage checks into a reusable static dependency inventory for NuGet, npm, and Python while preserving the scanner's no-code-execution safety model.
