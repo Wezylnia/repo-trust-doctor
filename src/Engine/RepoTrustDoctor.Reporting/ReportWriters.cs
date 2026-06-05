@@ -128,6 +128,10 @@ public sealed class MarkdownReportWriter
         builder.AppendLine($"- Package sources: `{inventory.PackageSources.Count}`");
         builder.AppendLine($"- Unpinned or ranged packages: `{inventory.Packages.Count(package => !package.IsVersionPinned)}`");
         builder.AppendLine($"- Prerelease packages: `{inventory.Packages.Count(package => package.IsPrerelease)}`");
+        builder.AppendLine($"- Direct remote npm sources: `{inventory.Packages.Count(package => package.Ecosystem == DependencyEcosystem.Npm && package.Metadata?.TryGetValue("sourceKind", out var kind) == true && kind.Equals("remote", StringComparison.OrdinalIgnoreCase))}`");
+        builder.AppendLine($"- Local npm sources: `{inventory.Packages.Count(package => package.Ecosystem == DependencyEcosystem.Npm && package.Metadata?.TryGetValue("sourceKind", out var kind) == true && kind.Equals("local", StringComparison.OrdinalIgnoreCase))}`");
+        builder.AppendLine($"- Insecure package sources: `{inventory.PackageSources.Count(source => !source.IsSecureTransport)}`");
+        builder.AppendLine($"- Local package sources: `{inventory.PackageSources.Count(source => source.IsLocal)}`");
         builder.AppendLine();
 
         builder.AppendLine("| Ecosystem | Manifests | Lockfiles | Packages |");

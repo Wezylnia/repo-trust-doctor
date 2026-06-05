@@ -151,6 +151,8 @@ public sealed class ReportWriterTests
         Assert.Contains("Dependency Inventory", markdown);
         Assert.Contains("| Npm | 1 | 1 | 1 |", markdown);
         Assert.Contains("Unpinned or ranged packages", markdown);
+        Assert.Contains("Direct remote npm sources", markdown);
+        Assert.Contains("Insecure package sources", markdown);
     }
 
     [Fact]
