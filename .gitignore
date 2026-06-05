@@ -16,3 +16,8 @@ private-docs/
 # Scan workspaces and generated reports.
 .repo-trust/
 reports/
+
+# Web app dependencies and build output.
+node_modules/
+dist/
+*.tsbuildinfo

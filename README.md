@@ -21,6 +21,7 @@ The current alpha focuses on local, static repository trust signals:
 - Dockerfile hygiene signals such as `latest` tags, missing `.dockerignore`, root user risk, missing healthcheck, secret-like `ENV`, and missing multi-stage builds,
 - dependency lockfile coverage and static package-origin signals for npm, NuGet, and Python manifests,
 - deterministic JSON and Markdown reports with stable finding fingerprints,
+- a local-first React report viewer for JSON report inspection,
 - CI gate behavior through score and severity thresholds.
 
 ## Current Status
@@ -53,9 +54,9 @@ Implemented through `v0.4.0`:
 - stable finding fingerprints for report output,
 - CI gate options for score and severity thresholds,
 - fixture-based analyzer tests,
-- public rule, architecture, security, and contributor documentation.
+- public rule, architecture, security, web UI, and contributor documentation.
 
-The scanner does not execute repository code by default. Package metadata lookup, vulnerability lookup, license analysis, SARIF output, API/worker hosting, persistence, and web UI are planned future work.
+The scanner does not execute repository code by default. Package metadata lookup, vulnerability lookup, license analysis, SARIF output, API/worker hosting, and persistence are planned future work.
 
 ## Requirements
 
@@ -83,6 +84,22 @@ Export a Markdown report:
 
 ```text
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
+```
+
+## Web Report Viewer
+
+The React viewer opens `repo-trust-doctor` JSON reports locally in the browser. It supports file open, paste, severity and category filters, text search, finding evidence review, module status, and dependency inventory totals.
+
+```text
+cd src/Apps/RepoTrustDoctor.Web
+npm install
+npm run dev
+```
+
+Generate a JSON report from the repository root:
+
+```text
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format json --output reports/scan.json
 ```
 
 ## Contributing
@@ -140,6 +157,7 @@ repo-trust-doctor scan . --format json --output report.json
 The architecture separates detection from interpretation:
 
 - `src/Apps` contains executable entry points such as the CLI.
+- `src/Apps/RepoTrustDoctor.Web` contains the local React report viewer.
 - `src/Core` contains domain, application, contracts, and shared primitives.
 - `src/Engine` contains analyzer abstractions, execution, orchestration, scoring, policies, and reporting.
 - `src/Analyzers` contains independent analyzer modules.
@@ -186,6 +204,7 @@ See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scop
 - [CI usage](docs/ci-usage.md)
 - [Analyzer authoring guide](docs/analyzer-authoring.md)
 - [Report format](docs/report-format.md)
+- [Web UI](docs/web-ui.md)
 - [Release checklist](docs/release-checklist.md)
 - [Trust profiles](docs/policies/trust-profiles.md)
 - [Rule catalog](docs/rules/README.md)
