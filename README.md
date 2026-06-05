@@ -25,9 +25,9 @@ The current alpha focuses on local, static repository trust signals:
 
 ## Current Status
 
-This repository is at the `v0.2.0` milestone. It is a CLI-first static scanner intended for local repository trust review, repository hardening, CI gates, and analyzer development.
+This repository is at the `v0.3.0` milestone. It is a CLI-first static scanner intended for local repository trust review, repository hardening, CI gates, analyzer development, and dependency inventory review.
 
-Implemented in `v0.2.0`:
+Implemented through `v0.3.0`:
 
 - a clean .NET solution structure,
 - pure domain models,
@@ -39,7 +39,15 @@ Implemented in `v0.2.0`:
 - expanded repository documentation quality checks,
 - expanded GitHub Actions release and artifact checks,
 - expanded Docker cache and package-layering checks,
+- structured npm, NuGet, and Python dependency inventory artifacts,
 - npm, NuGet, and Python lockfile coverage checks,
+- direct NuGet `PackageReference` parsing, including basic Central Package Management version resolution,
+- `package.json` dependency section parsing for production, development, optional, and peer dependencies,
+- conservative Python dependency parsing for `requirements.txt`, `pyproject.toml`, and `Pipfile`,
+- static dependency hygiene findings for unpinned/ranged and prerelease versions,
+- npm install-time script findings for manual review,
+- NuGet package source recording from `NuGet.config` without network access,
+- Markdown dependency inventory summaries,
 - typed trust profiles recorded in reports,
 - stable finding fingerprints for report output,
 - CI gate options for score and severity thresholds,
@@ -147,8 +155,8 @@ The roadmap grows the platform gradually:
 | Version | Focus |
 | ------- | ----- |
 | `v0.1.x` | Foundation alpha, static local scans, basic analyzers, report output, CI gates |
-| `v0.2.x` | Current: static analyzer expansion for repository docs, workflows, secrets, Docker, and reports |
-| `v0.3.x` | Structured dependency inventory for NuGet, npm, and Python |
+| `v0.2.x` | Static analyzer expansion for repository docs, workflows, secrets, Docker, and reports |
+| `v0.3.x` | Current: structured dependency inventory for NuGet, npm, and Python |
 | `v0.4.x` | Vulnerability, license, package origin, typosquatting, and dependency confusion intelligence |
 | `v0.5.x` | API, worker, persistence, and progressive scan state |
 | `v0.6.x` | Built-in policies, blocking risks, and profile-aware scoring |
