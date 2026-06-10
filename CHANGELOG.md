@@ -2,6 +2,32 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v0.7.0 - 2026-06-10
+
+This release adds release and supply-chain evidence checks for local release artifacts, package version consistency, changelog alignment, and release workflow integrity evidence.
+
+### Added
+
+- Release evidence analyzer registered in the CLI standard/deep scan pipeline.
+- Release rules:
+  - `TRUST-REL001`: changelog does not mention detected package version.
+  - `TRUST-REL002`: release artifact lacks checksum evidence.
+  - `TRUST-REL003`: release artifact lacks SBOM or provenance evidence.
+  - `TRUST-REL004`: package version does not match latest changelog version.
+  - `TRUST-REL005`: release workflow lacks integrity evidence steps.
+- Rule catalog page for release evidence rules.
+- Analyzer tests for package/changelog mismatch, artifact integrity evidence, and release workflow integrity evidence.
+
+### Changed
+
+- Product version is now `0.7.0`.
+- README and roadmap now describe release trust as the current milestone.
+
+### Security
+
+- Release evidence analysis is static-only.
+- The analyzer does not download, execute, unpack, or verify release artifacts by default.
+
 ## v0.6.0 - 2026-06-10
 
 This release introduces built-in trust policy presets, policy evaluation, blocking risks, and profile-aware scoring.

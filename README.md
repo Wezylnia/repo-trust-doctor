@@ -21,14 +21,15 @@ The current alpha focuses on local, static repository trust signals:
 - Dockerfile hygiene signals such as `latest` tags, missing `.dockerignore`, root user risk, missing healthcheck, secret-like `ENV`, and missing multi-stage builds,
 - dependency lockfile coverage and static package-origin signals for npm, NuGet, and Python manifests,
 - deterministic JSON, Markdown, and SARIF reports with stable finding fingerprints,
+- release artifact checksum, SBOM/provenance, changelog, package-version, and release workflow evidence,
 - a local-first React report viewer for JSON report inspection,
 - CI gate behavior through score and severity thresholds.
 
 ## Current Status
 
-This repository is at the `v0.4.0` milestone. It is a CLI-first static scanner intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, and cautious package-origin review.
+This repository is at the `v0.7.0` milestone. It is a CLI-first static scanner intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, and release trust review.
 
-Implemented through `v0.4.0`:
+Implemented through `v0.7.0`:
 
 - a clean .NET solution structure,
 - pure domain models,
@@ -53,10 +54,15 @@ Implemented through `v0.4.0`:
 - typed trust profiles recorded in reports,
 - stable finding fingerprints for report output,
 - CI gate options for score and severity thresholds,
+- safe package metadata and OSV advisory lookup foundations,
+- dependency freshness, vulnerability, license, package-origin, and dependency-confusion review findings,
+- scan progress DTOs for API/worker/frontend polling,
+- built-in trust policies and profile-aware scoring,
+- release evidence checks for checksums, SBOM/provenance, changelog/package version alignment, and release workflows,
 - fixture-based analyzer tests,
 - public rule, architecture, security, web UI, and contributor documentation.
 
-The scanner does not execute repository code by default. Package metadata lookup, vulnerability lookup, license analysis, SARIF output, API/worker hosting, and persistence are planned future work.
+The scanner does not execute repository code by default. API/worker hosting, persistence, deep code intelligence, historical trust diffing, and monitoring are planned future work.
 
 ## Requirements
 
@@ -178,10 +184,10 @@ The roadmap grows the platform gradually:
 | `v0.1.x` | Foundation alpha, static local scans, basic analyzers, report output, CI gates |
 | `v0.2.x` | Static analyzer expansion for repository docs, workflows, secrets, Docker, and reports |
 | `v0.3.x` | Structured dependency inventory for NuGet, npm, and Python |
-| `v0.4.x` | Current: static package-origin signals, then vulnerability, license, typosquatting, and dependency confusion intelligence |
-| `v0.5.x` | API, worker, persistence, and progressive scan state |
+| `v0.4.x` | Risk intelligence for dependency metadata, vulnerabilities, licenses, and origin signals |
+| `v0.5.x` | SARIF output and progressive scan contracts |
 | `v0.6.x` | Built-in policies, blocking risks, and profile-aware scoring |
-| `v0.7.x` | Release hygiene, artifact integrity, SBOM/provenance, and supply-chain evidence |
+| `v0.7.x` | Current: release hygiene, artifact integrity, SBOM/provenance, and supply-chain evidence |
 | `v0.8.x` | Coverage import, code criticality, public API analysis, and deep scan signals |
 | `v0.9.x` | Trust history, comparison, trust diff, and monitoring |
 | `v1.0.0` | Stable public platform with documented contracts and reliable reports |
