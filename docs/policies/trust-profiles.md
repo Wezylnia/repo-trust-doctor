@@ -20,3 +20,9 @@ The current implementation records the selected profile and includes it in JSON 
 Each profile resolves to a built-in `TrustPolicy` preset. Presets include minimum overall score, category score thresholds, allowed and denied license placeholders, maximum vulnerability severity, SECURITY.md expectations, unpinned action handling, release checksum requirements, and allowed registry placeholders.
 
 Policy presets are intentionally conservative value objects. They do not make analyzers enforce enterprise decisions; analyzers still produce evidence and policy/scoring layers interpret that evidence.
+
+## Policy Evaluation
+
+The policy evaluator reads findings and the selected built-in policy, then produces violations, warnings, and blocking risks. Initial evaluation covers known vulnerability findings, unknown or policy-sensitive license findings, missing `SECURITY.md`, unpinned third-party GitHub Actions, and findings already marked blocking by analyzers.
+
+Policy evaluation does not execute repository code and does not change analyzer behavior.
