@@ -32,11 +32,12 @@ Current safeguards:
 - Static analyzers skip generated/local folders such as `.git`, `bin`, `obj`, `node_modules`, `.repo-trust`, and ignored private source notes.
 - Static analyzers apply a maximum readable text file size before reading file contents.
 - Report output refuses to overwrite an existing file unless `--force` is explicitly provided.
+- The API and worker hosts use in-memory scan state in `v1.0.0` and are intended for local development and controlled internal use.
 
 Current non-goals:
 
 - The project does not accept arbitrary uploaded files or archives. It accepts repository paths and public HTTP(S) Git repository URLs only.
 - The project does not execute package installation, build, test, Docker build, or repository scripts by default.
-- The current CLI does not provide hosted scanning or multi-user file intake.
+- The current API and worker do not provide authentication, authorization, durable multi-tenant storage, public hosted scanning, or multi-user file intake.
 
 Future upload or hosted scanning support must define explicit size limits, archive extraction policy, path traversal defenses (Zip Slip), malware scanning expectations, per-scan timeouts, workspace isolation, and cleanup before accepting user-provided archives or files.

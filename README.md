@@ -13,7 +13,7 @@ The project is intentionally evidence-based: analyzers produce findings with rul
 
 ## What It Checks Today
 
-The current alpha focuses on local, static repository trust signals:
+The stable `v1.0.0` release focuses on local, static repository trust signals:
 
 - repository health files such as README, LICENSE, SECURITY.md, contributing docs, CODEOWNERS, templates, and changelog,
 - GitHub Actions workflow risks such as broad permissions, `pull_request_target`, unpinned actions, shell pipe execution, and checkout credential persistence,
@@ -29,16 +29,20 @@ The current alpha focuses on local, static repository trust signals:
 
 ## Current Status
 
-This repository is at the `v0.9.0` milestone. It is a CLI-first static scanner intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, release trust review, deep code intelligence, and trust change review.
+This repository is at the `v1.0.0` milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, release trust review, deep code intelligence, trust change review, and API/worker-hosted scan flows.
 
-Implemented through `v0.9.0`:
+Implemented through `v1.0.0`:
 
 - a clean .NET solution structure,
 - pure domain models,
 - analyzer abstractions,
+- a shared application scan lifecycle with queue, status, cancellation, and progress models,
+- a reusable repository scan runner used by CLI, API, and worker hosts,
 - static-only scan orchestration,
 - console, JSON, Markdown, and SARIF report output,
 - a CLI-first workflow,
+- minimal API scan endpoints for health, start, status, progress, modules, findings, report export, and cancellation,
+- worker-based queued scan execution,
 - repository health, GitHub Actions, secret quick scan, Docker, and dependency lockfile analyzers,
 - expanded repository documentation quality checks,
 - expanded GitHub Actions release and artifact checks,
@@ -68,9 +72,9 @@ Implemented through `v0.9.0`:
 - scan snapshot, trust diff, repository comparison, scheduled scan, and regression alert models,
 - CLI `diff` command for comparing two JSON scan reports,
 - fixture-based analyzer tests,
-- public rule, architecture, security, web UI, and contributor documentation.
+- public rule, architecture, API/worker, security, web UI, and contributor documentation.
 
-The scanner does not execute repository code by default. API/worker hosting, persistence, hosted monitoring, and notification providers are planned future work.
+The scanner does not execute repository code by default. Persistence, hosted monitoring, and notification providers are planned future work.
 
 ## Requirements
 
@@ -116,6 +120,34 @@ Generate a JSON report from the repository root:
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format json --output reports/scan.json
 ```
 
+## API And Worker
+
+Run the local API host:
+
+```text
+dotnet run --project src/Apps/RepoTrustDoctor.Api
+```
+
+Start and poll a scan:
+
+```text
+curl -X POST http://localhost:5000/api/scans \
+  -H "Content-Type: application/json" \
+  -d "{\"target\":\".\",\"depth\":\"standard\",\"trustProfile\":\"production\"}"
+
+curl http://localhost:5000/api/scans/{scanId}
+curl http://localhost:5000/api/scans/{scanId}/progress
+curl http://localhost:5000/api/scans/{scanId}/report?format=json
+```
+
+The worker host uses the same application scan lifecycle and repository scan runner as the API:
+
+```text
+dotnet run --project src/Apps/RepoTrustDoctor.Worker
+```
+
+The current API and worker use in-memory scan state and queue implementations. They are intended for local development, integration tests, and future persistence integration.
+
 ## Contributing
 
 Contributor help is very welcome. The project has scoped dependency intelligence and reporting issues ready for external contributors:
@@ -123,7 +155,6 @@ Contributor help is very welcome. The project has scoped dependency intelligence
 - [good first issue](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22)
 - [help wanted](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22help%20wanted%22)
 - [contributor-ready](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3Acontributor-ready)
-- [v0.4 risk intelligence workstream](https://github.com/Wezylnia/repo-trust-doctor/issues?q=is%3Aissue%20is%3Aopen%20label%3Aphase%3Av0.4)
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, safety rules, validation commands, and pull request expectations. Use [Discussions](https://github.com/Wezylnia/repo-trust-doctor/discussions) for questions or help choosing an issue.
 
@@ -175,13 +206,14 @@ repo-trust-doctor diff before.json after.json --format markdown --output diff.md
 
 The architecture separates detection from interpretation:
 
-- `src/Apps` contains executable entry points such as the CLI.
+- `src/Apps` contains executable entry points such as the CLI, API, and worker.
 - `src/Apps/RepoTrustDoctor.Web` contains the local React report viewer.
 - `src/Core` contains domain, application, contracts, and shared primitives.
 - `src/Engine` contains analyzer abstractions, execution, orchestration, scoring, policies, and reporting.
 - `src/Analyzers` contains independent analyzer modules.
-- `src/Infrastructure` will contain Git, GitHub, package registry, persistence, security feed, caching, and background job integrations.
+- `src/Infrastructure` contains Git, package registry, security feed, scan runner, and future persistence/caching integrations.
 - `src/Infrastructure/RepoTrustDoctor.Infrastructure.Git` currently prepares local workspaces and shallow-clones public HTTP(S) Git URLs.
+- `src/Infrastructure/RepoTrustDoctor.Infrastructure.Scanning` composes the default analyzer pipeline for CLI, API, and worker hosts.
 - `tests` contains unit, analyzer, integration, and fixture-based tests.
 
 Read the public architecture overview in [docs/architecture.md](docs/architecture.md).
@@ -200,8 +232,8 @@ The roadmap grows the platform gradually:
 | `v0.6.x` | Built-in policies, blocking risks, and profile-aware scoring |
 | `v0.7.x` | Release hygiene, artifact integrity, SBOM/provenance, and supply-chain evidence |
 | `v0.8.x` | Coverage import, code criticality, public API analysis, and deep scan signals |
-| `v0.9.x` | Current: trust history, comparison, trust diff, and monitoring models |
-| `v1.0.0` | Stable public platform with documented contracts and reliable reports |
+| `v0.9.x` | Trust history, comparison, trust diff, and monitoring models |
+| `v1.0.0` | Current: stable public platform with documented contracts, CLI/API/worker hosts, and reliable reports |
 
 See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scope boundaries, and success criteria.
 
@@ -223,6 +255,7 @@ See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scop
 - [CI usage](docs/ci-usage.md)
 - [Analyzer authoring guide](docs/analyzer-authoring.md)
 - [Report format](docs/report-format.md)
+- [API and worker](docs/api-worker.md)
 - [Trust history and diff](docs/trust-history.md)
 - [Web UI](docs/web-ui.md)
 - [Release checklist](docs/release-checklist.md)

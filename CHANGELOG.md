@@ -2,6 +2,33 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v1.0.0 - 2026-06-10
+
+This release promotes Repository Trust Doctor to a stable public platform with shared scan lifecycle services, CLI/API/worker scan hosts, centralized analyzer composition, documented API contracts, and refreshed release documentation.
+
+### Added
+
+- Shared application scan lifecycle services for validation, queuing, status, progress, cancellation, completion, and failure handling.
+- In-memory scan store and job queue suitable for local API/worker hosting and future persistence adapters.
+- Central `DefaultRepositoryScanRunner` used by CLI, API, and worker hosts.
+- API host with health, start scan, list scans, scan status, scan progress, modules, findings, report export, and cancellation endpoints.
+- Worker host using the same queued scan processor as the API.
+- API and worker documentation with endpoint reference, current storage model, and safety notes.
+- Unit tests for scan lifecycle behavior and default runner composition.
+
+### Changed
+
+- Product version is now `1.0.0`.
+- CLI scan execution now uses the centralized repository scan runner instead of composing analyzers in the app entry point.
+- README, roadmap, architecture, development, report format, ADR, release checklist, and trust profile docs now reflect the stable 1.0 platform.
+
+### Security
+
+- API and worker scans keep the same static-only default safety posture as CLI scans.
+- Credentialed repository URLs remain rejected before workspace preparation.
+- API report export uses existing JSON, Markdown, and SARIF writers instead of introducing a separate report path.
+- `v1.0.0` API/worker state is in-memory and local-host oriented; durable hosted deployments should add persistence, queue, authentication, authorization, and intake controls before public exposure.
+
 ## v0.9.0 - 2026-06-10
 
 This release adds trust history, scan snapshots, trust diff, repository comparison, scheduled scan contracts, and regression alert foundations.

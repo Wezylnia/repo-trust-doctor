@@ -2,7 +2,7 @@
 
 Trust profiles describe the context in which a repository will be used. They are recorded in reports so a scan result can be interpreted with the intended use case in mind.
 
-The current implementation records the selected profile and includes it in JSON and Markdown reports. Scoring is currently profile-neutral: the same findings produce the same score and final decision for every profile until policy thresholds are implemented.
+The current implementation records the selected profile and includes it in JSON and Markdown reports. Scoring and policy evaluation are profile-aware: the same findings may produce different category weights, warnings, violations, blocking risks, and final decisions depending on the selected use case.
 
 ## Built-In Profiles
 

@@ -31,6 +31,18 @@ Each finding includes:
 
 Reports should be readable in Markdown and deterministic in JSON and SARIF.
 
+## API Report Export
+
+`v1.0.0` exposes completed scan reports from the API host:
+
+```text
+GET /api/scans/{scanId}/report?format=json
+GET /api/scans/{scanId}/report?format=markdown
+GET /api/scans/{scanId}/report?format=sarif
+```
+
+The API uses the same reporting writers as the CLI. A report request returns `409 Conflict` until the scan has completed.
+
 ## Dependency Inventory Artifact
 
 `v0.3.0` added a structured dependency inventory artifact under the stable key `dependency.inventory`. `v0.4.0` adds static package-origin fields and metrics to the same artifact.

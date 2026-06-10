@@ -7,11 +7,13 @@ Repository Trust Doctor is designed as a modular analysis platform rather than a
 ```text
 src/
   Apps/
+    RepoTrustDoctor.Cli/
+    RepoTrustDoctor.Api/
+    RepoTrustDoctor.Worker/
   Core/
   Engine/
   Analyzers/
   Infrastructure/
-  Presentation/
 tests/
   Unit/
   Analyzers/
@@ -26,7 +28,7 @@ tools/
 
 | Area | Responsibility |
 | --- | --- |
-| `Apps` | Executable entry points such as CLI, API, and worker |
+| `Apps` | Executable entry points such as CLI, API, worker, and local report viewer |
 | `Core` | Domain model, use cases, contracts, and tiny shared primitives |
 | `Engine` | Analyzer contracts, execution, orchestration, scoring, policies, and reporting |
 | `Analyzers` | Independent analysis modules grouped by domain |
@@ -42,6 +44,7 @@ Allowed direction:
 ```text
 Apps -> Application -> Domain
 Apps -> Engine abstractions/orchestration
+Apps -> Infrastructure.Scanning
 Engine -> Domain + Analysis.Abstractions
 Analyzers -> Analysis.Abstractions + Domain
 Infrastructure -> abstractions + Domain
@@ -68,7 +71,19 @@ Analyzers detect evidence and emit structured findings. They do not calculate fi
 - `Standard`: dependency, vulnerability, license, package metadata, workflow, and release checks.
 - `Deep`: coverage, code criticality, public API, history, and comparison checks.
 
-`v0.1` starts with static-only local scanning and the foundation required for future scan modes.
+`v1.0` ships static-only local/API/worker scanning and the foundation required for future persisted scan modes.
+
+## Application Scan Lifecycle
+
+`RepoTrustDoctor.Application` owns scan lifecycle behavior:
+
+- `ScanRequestValidator` normalizes target, depth, and trust profile values,
+- `ScanCoordinator` creates scan IDs, stores queued state, and enqueues work,
+- `IScanStore` tracks status, progress, result, failure, and cancellation state,
+- `IScanJobQueue` decouples API requests from worker execution,
+- `ScanJobProcessor` runs the shared repository scan runner and records completed or failed scans.
+
+`RepoTrustDoctor.Infrastructure.Scanning` owns the default analyzer pipeline and repository workspace preparation. This prevents CLI, API, and worker hosts from each composing analyzer lists independently.
 
 ## Repository Workspace Preparation
 
@@ -97,3 +112,5 @@ Queued -> PreparingRepository -> RunningFastModules -> RunningStaticAnalyzers ->
 ```
 
 Failure and cancellation are represented with `Failed` and `Cancelled`. Module progress uses the existing domain `ModuleStatus` values so API and worker implementations can report completed, warning, failed, timed-out, skipped, or cancelled modules consistently.
+
+The API host exposes these contracts directly through `/api/scans/{scanId}` and `/api/scans/{scanId}/progress`. The worker host consumes the same queued job model.

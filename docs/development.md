@@ -42,6 +42,29 @@ Existing report files are not overwritten unless `--force` is supplied.
 
 Trust profile values are normalized by the CLI. Canonical values are `Personal`, `ProductionDependency`, `EnterpriseDependency`, `CiCdTool`, `SecuritySensitiveDependency`, and `ContainerDependency`; common aliases such as `production`, `enterprise`, `ci-cd`, `security`, and `container` are also accepted.
 
+## Local API Smoke Test
+
+```powershell
+dotnet run --project src/Apps/RepoTrustDoctor.Api
+```
+
+In another shell:
+
+```powershell
+Invoke-RestMethod http://localhost:5000/health
+Invoke-RestMethod http://localhost:5000/api/scans -Method Post -ContentType "application/json" -Body '{"target":".","depth":"fast","trustProfile":"production"}'
+```
+
+The API uses in-memory state in `v1.0.0`, so local smoke tests should treat scan IDs as process-local.
+
+## Local Worker Smoke Test
+
+```powershell
+dotnet run --project src/Apps/RepoTrustDoctor.Worker
+```
+
+The worker uses the shared scan queue and processor contracts. In `v1.0.0`, it is primarily a host foundation for future persistent queues and scheduled scans.
+
 ## Dependency Analyzer Fixtures
 
 Dependency analyzer tests should prefer small synthetic fixtures for NuGet, npm, and Python manifests. Fixtures must not include real credentials, internal registry URLs, customer data, or generated lockfiles larger than the test actually needs.
@@ -62,6 +85,7 @@ Static dependency tests may parse manifests and lockfiles, but they must not run
 
 - Keep domain models free of infrastructure concerns.
 - Keep analyzer logic out of CLI, API, and worker entry points.
+- Compose the default scan pipeline in infrastructure, not separately in each app.
 - Keep scoring separate from analyzers.
 - Keep policies separate from detection.
 - Every meaningful finding needs evidence.
