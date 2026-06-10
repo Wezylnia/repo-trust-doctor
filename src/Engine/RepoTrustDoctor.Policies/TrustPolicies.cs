@@ -123,3 +123,135 @@ public static class TrustPolicyPresets
             new HashSet<string>(["nuget.org", "registry.npmjs.org", "pypi.org"], StringComparer.OrdinalIgnoreCase));
     }
 }
+
+public sealed record PolicyViolation(
+    string RuleId,
+    string Message,
+    Severity Severity,
+    string? FindingFingerprint = null);
+
+public sealed record PolicyEvaluation(
+    string PolicyName,
+    TrustProfile Profile,
+    IReadOnlyList<PolicyViolation> Violations,
+    IReadOnlyList<PolicyViolation> BlockingRisks,
+    IReadOnlyList<string> Warnings)
+{
+    public bool HasBlockingRisks => BlockingRisks.Count > 0;
+}
+
+public sealed class TrustPolicyEvaluator
+{
+    public PolicyEvaluation Evaluate(IReadOnlyList<Finding> findings, TrustPolicy policy)
+    {
+        var violations = new List<PolicyViolation>();
+        var blocking = new List<PolicyViolation>();
+        var warnings = new List<string>();
+
+        foreach (var finding in findings)
+        {
+            var violation = EvaluateFinding(finding, policy);
+            if (violation is null)
+            {
+                continue;
+            }
+
+            violations.Add(violation);
+            if (IsBlocking(finding, policy, violation))
+            {
+                blocking.Add(violation);
+            }
+            else if (violation.Severity >= Severity.Medium)
+            {
+                warnings.Add(violation.Message);
+            }
+        }
+
+        return new PolicyEvaluation(policy.Name, policy.Profile, violations, blocking, warnings.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+    }
+
+    private static PolicyViolation? EvaluateFinding(Finding finding, TrustPolicy policy)
+    {
+        if (finding.RuleId.StartsWith("TRUST-VULN", StringComparison.OrdinalIgnoreCase) &&
+            finding.Severity >= policy.MaximumVulnerabilitySeverity)
+        {
+            return new PolicyViolation(
+                "POLICY-VULN",
+                $"{finding.RuleId} exceeds policy maximum vulnerability severity {policy.MaximumVulnerabilitySeverity}.",
+                finding.Severity,
+                finding.Fingerprint);
+        }
+
+        if (finding.RuleId == "TRUST-LIC001" && policy.UnknownLicenseHandling != UnknownLicenseHandling.Allow)
+        {
+            return new PolicyViolation(
+                "POLICY-LICENSE-UNKNOWN",
+                "Unknown dependency license requires policy review.",
+                policy.UnknownLicenseHandling == UnknownLicenseHandling.Block ? Severity.High : Severity.Medium,
+                finding.Fingerprint);
+        }
+
+        if (finding.RuleId == "TRUST-LIC002")
+        {
+            return new PolicyViolation(
+                "POLICY-LICENSE-SENSITIVE",
+                "Policy-sensitive dependency license requires review.",
+                policy.DeniedLicenses.Count > 0 ? Severity.High : Severity.Medium,
+                finding.Fingerprint);
+        }
+
+        if (finding.RuleId == "TRUST-REPO003" && policy.RequireSecurityPolicy)
+        {
+            return new PolicyViolation(
+                "POLICY-SECURITY-MD",
+                "The selected policy requires SECURITY.md.",
+                Severity.Medium,
+                finding.Fingerprint);
+        }
+
+        if (finding.RuleId == "TRUST-GHA005" && policy.UnpinnedActionHandling != PolicyRiskHandling.Allow)
+        {
+            return new PolicyViolation(
+                "POLICY-GHA-PINNING",
+                "The selected policy requires pinned GitHub Actions.",
+                policy.UnpinnedActionHandling == PolicyRiskHandling.Block ? Severity.High : Severity.Medium,
+                finding.Fingerprint);
+        }
+
+        if (finding.IsBlocking)
+        {
+            return new PolicyViolation(
+                "POLICY-BLOCKING-FINDING",
+                $"{finding.RuleId} is marked as a blocking risk.",
+                finding.Severity,
+                finding.Fingerprint);
+        }
+
+        return null;
+    }
+
+    private static bool IsBlocking(Finding finding, TrustPolicy policy, PolicyViolation violation)
+    {
+        if (finding.IsBlocking || finding.Severity == Severity.Critical)
+        {
+            return true;
+        }
+
+        if (violation.RuleId == "POLICY-VULN" && finding.Severity >= Severity.High && policy.Profile != TrustProfile.Personal)
+        {
+            return true;
+        }
+
+        if (violation.RuleId == "POLICY-LICENSE-UNKNOWN" && policy.UnknownLicenseHandling == UnknownLicenseHandling.Block)
+        {
+            return true;
+        }
+
+        if (violation.RuleId == "POLICY-GHA-PINNING" && policy.UnpinnedActionHandling == PolicyRiskHandling.Block)
+        {
+            return true;
+        }
+
+        return violation.RuleId == "POLICY-LICENSE-SENSITIVE" && policy.DeniedLicenses.Count > 0;
+    }
+}
