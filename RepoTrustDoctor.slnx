@@ -39,6 +39,7 @@
     <Project Path="src/Engine/RepoTrustDoctor.Policies/RepoTrustDoctor.Policies.csproj" />
     <Project Path="src/Engine/RepoTrustDoctor.Reporting/RepoTrustDoctor.Reporting.csproj" />
     <Project Path="src/Engine/RepoTrustDoctor.Scoring/RepoTrustDoctor.Scoring.csproj" />
+    <Project Path="src/Engine/RepoTrustDoctor.TrustHistory/RepoTrustDoctor.TrustHistory.csproj" />
   </Folder>
   <Folder Name="/src/Infrastructure/">
     <Project Path="src/Infrastructure/RepoTrustDoctor.Infrastructure.Git/RepoTrustDoctor.Infrastructure.Git.csproj" />

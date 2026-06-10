@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\..\src\Engine\RepoTrustDoctor.Analysis.Engine\RepoTrustDoctor.Analysis.Engine.csproj" />
     <ProjectReference Include="..\..\..\src\Engine\RepoTrustDoctor.Analysis.Orchestration\RepoTrustDoctor.Analysis.Orchestration.csproj" />
     <ProjectReference Include="..\..\..\src\Engine\RepoTrustDoctor.Reporting\RepoTrustDoctor.Reporting.csproj" />
+    <ProjectReference Include="..\..\..\src\Engine\RepoTrustDoctor.TrustHistory\RepoTrustDoctor.TrustHistory.csproj" />
     <ProjectReference Include="..\..\..\src\Engine\RepoTrustDoctor.Policies\RepoTrustDoctor.Policies.csproj" />
     <ProjectReference Include="..\..\..\src\Infrastructure\RepoTrustDoctor.Infrastructure.PackageRegistries\RepoTrustDoctor.Infrastructure.PackageRegistries.csproj" />
     <ProjectReference Include="..\..\..\src\Infrastructure\RepoTrustDoctor.Infrastructure.SecurityFeeds\RepoTrustDoctor.Infrastructure.SecurityFeeds.csproj" />
