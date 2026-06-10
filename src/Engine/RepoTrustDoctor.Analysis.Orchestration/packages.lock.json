@@ -18,10 +18,17 @@
       "repotrustdoctor.domain": {
         "type": "Project"
       },
-      "repotrustdoctor.scoring": {
+      "repotrustdoctor.policies": {
         "type": "Project",
         "dependencies": {
           "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.scoring": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Domain": "[1.0.0, )",
+          "RepoTrustDoctor.Policies": "[1.0.0, )"
         }
       },
       "repotrustdoctor.shared": {

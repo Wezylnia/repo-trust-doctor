@@ -369,30 +369,20 @@ Goal: explain whether users can trust what a repository publishes.
 
 Release hygiene analyzer:
 
-- releases exist,
-- tags exist,
-- latest release age,
 - changelog includes latest version,
-- stable vs prerelease distinction,
-- default branch drift from latest release.
+- package version metadata aligns with changelog release headings.
 
 Artifact trust analyzer:
 
-- release artifacts exist,
 - checksums exist,
 - SBOM exists,
-- provenance or attestation exists,
-- signed tag/commit signals where safely available,
-- Docker digest evidence where declared.
+- provenance or attestation exists.
 
 Release workflow analyzer:
 
 - release workflow exists,
-- release workflow depends on tests,
-- release workflow permissions,
 - package publish triggers,
-- artifact creation steps,
-- package publishing steps.
+- artifact integrity evidence steps.
 
 Version consistency:
 
