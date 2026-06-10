@@ -2,6 +2,29 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v0.6.0 - 2026-06-10
+
+This release introduces built-in trust policy presets, policy evaluation, blocking risks, and profile-aware scoring.
+
+### Added
+
+- Built-in `TrustPolicy` presets for all trust profiles.
+- Policy fields for license handling, vulnerability severity, minimum scores, SECURITY.md requirement, unpinned action handling, release checksum expectations, and allowed registries.
+- Policy evaluation results with violations, warnings, and blocking risks.
+- Profile-aware scoring multipliers for personal, production, enterprise, CI/CD, security-sensitive, and container use cases.
+- Blocking policy risks can override high numeric scores.
+
+### Changed
+
+- Product version is now `0.6.0`.
+- Scoring is no longer profile-neutral.
+- Trust profile documentation now describes built-in presets and policy evaluation.
+
+### Security
+
+- Policy evaluation interprets findings; analyzers still only produce evidence.
+- Policy evaluation does not execute repository code or make legal conclusions.
+
 ## v0.5.0 - 2026-06-10
 
 This release adds SARIF reporting and shared scan progress contracts for API, worker, and frontend-ready scan lifecycle work.
