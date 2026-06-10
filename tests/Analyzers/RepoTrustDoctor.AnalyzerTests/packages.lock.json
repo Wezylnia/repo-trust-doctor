@@ -112,6 +112,15 @@
           "RepoTrustDoctor.Domain": "[1.0.0, )"
         }
       },
+      "repotrustdoctor.analyzers.dependencyrisk": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.PackageRegistries": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.SecurityFeeds": "[1.0.0, )"
+        }
+      },
       "repotrustdoctor.analyzers.docker": {
         "type": "Project",
         "dependencies": {
@@ -142,6 +151,20 @@
       },
       "repotrustdoctor.domain": {
         "type": "Project"
+      },
+      "repotrustdoctor.infrastructure.packageregistries": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.infrastructure.securityfeeds": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.PackageRegistries": "[1.0.0, )"
+        }
       }
     }
   }

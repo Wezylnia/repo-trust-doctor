@@ -2,6 +2,26 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v0.4.1 - 2026-06-10
+
+This release completes the first dependency risk intelligence layer with safe package metadata and advisory foundations. Registry and advisory access is isolated behind allowlisted lookup clients and analyzer failures remain partial-result friendly.
+
+### Added
+
+- Safe HTTP lookup abstraction with HTTPS, host allowlist, credential, redirect, timeout, and response-size protections.
+- Common package registry metadata and vulnerability advisory models.
+- NuGet, npm, and PyPI metadata clients with fixture-oriented parsers.
+- OSV advisory client and parser.
+- License normalization for common permissive and copyleft license families.
+- Dependency risk analyzers for package freshness, known vulnerabilities, license metadata, package origin metadata, and dependency-confusion review signals.
+- Analyzer and unit tests for safe lookup, parser behavior, license normalization, and dependency risk findings.
+
+### Security
+
+- Metadata and advisory clients do not follow package-provided repository or homepage URLs.
+- Tests do not require real registry or OSV network calls.
+- Dependency risk findings use cautious language and do not claim exploitability, legal conclusions, or malicious package intent.
+
 ## v0.4.0 - 2026-06-05
 
 This release starts the risk intelligence milestone with static package-origin checks. It builds on the dependency inventory artifact without adding package downloads, registry metadata calls, vulnerability lookups, or license claims.

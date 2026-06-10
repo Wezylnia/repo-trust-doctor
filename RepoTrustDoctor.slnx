@@ -9,6 +9,7 @@
   </Folder>
   <Folder Name="/src/Analyzers/Dependencies/">
     <Project Path="src/Analyzers/Dependencies/RepoTrustDoctor.Analyzers.DependencyInventory/RepoTrustDoctor.Analyzers.DependencyInventory.csproj" />
+    <Project Path="src/Analyzers/Dependencies/RepoTrustDoctor.Analyzers.DependencyRisk/RepoTrustDoctor.Analyzers.DependencyRisk.csproj" />
   </Folder>
   <Folder Name="/src/Analyzers/Repository/">
     <Project Path="src/Analyzers/Repository/RepoTrustDoctor.Analyzers.Repository/RepoTrustDoctor.Analyzers.Repository.csproj" />
@@ -35,6 +36,8 @@
   </Folder>
   <Folder Name="/src/Infrastructure/">
     <Project Path="src/Infrastructure/RepoTrustDoctor.Infrastructure.Git/RepoTrustDoctor.Infrastructure.Git.csproj" />
+    <Project Path="src/Infrastructure/RepoTrustDoctor.Infrastructure.PackageRegistries/RepoTrustDoctor.Infrastructure.PackageRegistries.csproj" />
+    <Project Path="src/Infrastructure/RepoTrustDoctor.Infrastructure.SecurityFeeds/RepoTrustDoctor.Infrastructure.SecurityFeeds.csproj" />
   </Folder>
   <Folder Name="/tests/" />
   <Folder Name="/tests/Analyzers/">

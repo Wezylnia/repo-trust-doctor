@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Engine\RepoTrustDoctor.Analysis.Abstractions\RepoTrustDoctor.Analysis.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\Core\RepoTrustDoctor.Domain\RepoTrustDoctor.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Infrastructure\RepoTrustDoctor.Infrastructure.PackageRegistries\RepoTrustDoctor.Infrastructure.PackageRegistries.csproj" />
+    <ProjectReference Include="..\..\..\Infrastructure\RepoTrustDoctor.Infrastructure.SecurityFeeds\RepoTrustDoctor.Infrastructure.SecurityFeeds.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

@@ -199,7 +199,7 @@ Success criteria:
 
 Goal: turn dependency inventory into cautious risk intelligence.
 
-Delivered in `v0.4.0`:
+Delivered in `v0.4.0` and `v0.4.1`:
 
 - static npm direct remote source detection,
 - static npm local source detection,
@@ -234,7 +234,6 @@ Risk analyzers:
 - dependency vulnerability analyzer,
 - license analyzer,
 - package origin analyzer,
-- typosquatting heuristics,
 - dependency confusion checks.
 
 Reporting work:
