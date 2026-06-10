@@ -229,6 +229,7 @@
           "RepoTrustDoctor.Domain": "[1.0.0, )",
           "RepoTrustDoctor.Infrastructure.Git": "[1.0.0, )",
           "RepoTrustDoctor.Infrastructure.PackageRegistries": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.Scanning": "[1.0.0, )",
           "RepoTrustDoctor.Infrastructure.SecurityFeeds": "[1.0.0, )",
           "RepoTrustDoctor.Reporting": "[1.0.0, )",
           "RepoTrustDoctor.Scoring": "[1.0.0, )",
@@ -256,6 +257,28 @@
         "dependencies": {
           "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
           "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.infrastructure.scanning": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Analysis.Engine": "[1.0.0, )",
+          "RepoTrustDoctor.Analysis.Orchestration": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.Codebase": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.DependencyInventory": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.DependencyRisk": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.Docker": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.GitHubActions": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.ReleaseEvidence": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.Repository": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.Secrets": "[1.0.0, )",
+          "RepoTrustDoctor.Application": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.Git": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.PackageRegistries": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.SecurityFeeds": "[1.0.0, )",
+          "RepoTrustDoctor.Scoring": "[1.0.0, )"
         }
       },
       "repotrustdoctor.infrastructure.securityfeeds": {

@@ -1,23 +1,10 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using RepoTrustDoctor.Analysis.Abstractions;
-using RepoTrustDoctor.Analysis.Engine;
-using RepoTrustDoctor.Analysis.Orchestration;
-using RepoTrustDoctor.Analyzers.Docker;
-using RepoTrustDoctor.Analyzers.GitHubActions;
-using RepoTrustDoctor.Analyzers.Repository;
-using RepoTrustDoctor.Analyzers.Secrets;
-using RepoTrustDoctor.Analyzers.DependencyInventory;
-using RepoTrustDoctor.Analyzers.DependencyRisk;
-using RepoTrustDoctor.Analyzers.Codebase;
-using RepoTrustDoctor.Analyzers.ReleaseEvidence;
+using RepoTrustDoctor.Application.Scanning;
 using RepoTrustDoctor.Domain;
-using RepoTrustDoctor.Infrastructure.Git;
-using RepoTrustDoctor.Infrastructure.PackageRegistries;
-using RepoTrustDoctor.Infrastructure.SecurityFeeds;
+using RepoTrustDoctor.Infrastructure.Scanning;
 using RepoTrustDoctor.Reporting;
-using RepoTrustDoctor.Scoring;
 using RepoTrustDoctor.Shared;
 using RepoTrustDoctor.TrustHistory;
 
@@ -92,35 +79,9 @@ internal static class CliProgram
             return 1;
         }
 
-        var packageLookup = new SafeHttpLookup(["api.nuget.org", "registry.npmjs.org", "pypi.org"]);
-        var osvLookup = new SafeHttpLookup(["api.osv.dev"]);
-        IRepositoryAnalyzer[] analyzers =
-        [
-            new RepositoryHealthAnalyzer(),
-            new GitHubActionsBasicAnalyzer(),
-            new SecretQuickScanAnalyzer(),
-            new DockerBasicAnalyzer(),
-            new DependencyInventoryAnalyzer(),
-            new ReleaseEvidenceAnalyzer(),
-            new CoverageImportAnalyzer(),
-            new CodeCriticalityAnalyzer(),
-            new CoverageCriticalityAnalyzer(),
-            new PublicApiAnalyzer(),
-            new PackageMetadataAnalyzer(
-            [
-                new NuGetPackageMetadataClient(packageLookup),
-                new NpmPackageMetadataClient(packageLookup),
-                new PyPiPackageMetadataClient(packageLookup)
-            ]),
-            new PackageFreshnessAnalyzer(),
-            new DependencyVulnerabilityAnalyzer(new OsvAdvisoryClient(osvLookup)),
-            new DependencyLicenseAnalyzer(),
-            new PackageOriginAnalyzer()
-        ];
-
-        using var workspace = await PrepareWorkspaceAsync(options.Target, cancellationToken);
-        var orchestrator = new ScanOrchestrator(analyzers, new AnalyzerExecutor(), new TrustScorer());
-        var scan = await orchestrator.RunAsync(options.Target, workspace.Path, options.Depth, options.TrustProfile, cancellationToken);
+        var scan = await new DefaultRepositoryScanRunner().RunAsync(
+            new ScanRequestOptions(options.Target, options.Depth, options.TrustProfile),
+            cancellationToken);
 
         var output = options.Format.ToLowerInvariant() switch
         {
@@ -380,16 +341,6 @@ internal static class CliProgram
         await using var stream = File.OpenRead(reportPath);
         return await JsonSerializer.DeserializeAsync<RepositoryScan>(stream, JsonOptions, cancellationToken)
             ?? throw new JsonException("Scan report is empty or invalid.");
-    }
-
-    private static Task<RepositoryWorkspace> PrepareWorkspaceAsync(string target, CancellationToken cancellationToken)
-    {
-        if (target.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || target.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-        {
-            return RepositoryWorkspace.CloneFromUrlAsync(target, cancellationToken);
-        }
-
-        return Task.FromResult(RepositoryWorkspace.ForLocalPath(target));
     }
 
     private static bool TryReadOptionValue(string[] args, ref int index, string name, out string value, out string error)
