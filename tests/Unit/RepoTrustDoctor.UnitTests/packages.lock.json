@@ -146,6 +146,13 @@
           "RepoTrustDoctor.Shared": "[1.0.0, )"
         }
       },
+      "repotrustdoctor.analyzers.codebase": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
       "repotrustdoctor.analyzers.dependencyinventory": {
         "type": "Project",
         "dependencies": {
@@ -203,6 +210,7 @@
           "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
           "RepoTrustDoctor.Analysis.Engine": "[1.0.0, )",
           "RepoTrustDoctor.Analysis.Orchestration": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.Codebase": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.DependencyInventory": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.DependencyRisk": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.Docker": "[1.0.0, )",
@@ -270,6 +278,13 @@
       },
       "repotrustdoctor.shared": {
         "type": "Project"
+      },
+      "repotrustdoctor.trusthistory": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Domain": "[1.0.0, )",
+          "RepoTrustDoctor.Reporting": "[1.0.0, )"
+        }
       }
     }
   }
