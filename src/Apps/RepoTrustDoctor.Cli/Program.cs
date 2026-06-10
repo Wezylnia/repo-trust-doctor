@@ -6,8 +6,11 @@ using RepoTrustDoctor.Analyzers.GitHubActions;
 using RepoTrustDoctor.Analyzers.Repository;
 using RepoTrustDoctor.Analyzers.Secrets;
 using RepoTrustDoctor.Analyzers.DependencyInventory;
+using RepoTrustDoctor.Analyzers.DependencyRisk;
 using RepoTrustDoctor.Domain;
 using RepoTrustDoctor.Infrastructure.Git;
+using RepoTrustDoctor.Infrastructure.PackageRegistries;
+using RepoTrustDoctor.Infrastructure.SecurityFeeds;
 using RepoTrustDoctor.Reporting;
 using RepoTrustDoctor.Scoring;
 using RepoTrustDoctor.Shared;
@@ -70,13 +73,25 @@ internal static class CliProgram
             return 1;
         }
 
+        var packageLookup = new SafeHttpLookup(["api.nuget.org", "registry.npmjs.org", "pypi.org"]);
+        var osvLookup = new SafeHttpLookup(["api.osv.dev"]);
         IRepositoryAnalyzer[] analyzers =
         [
             new RepositoryHealthAnalyzer(),
             new GitHubActionsBasicAnalyzer(),
             new SecretQuickScanAnalyzer(),
             new DockerBasicAnalyzer(),
-            new DependencyInventoryAnalyzer()
+            new DependencyInventoryAnalyzer(),
+            new PackageMetadataAnalyzer(
+            [
+                new NuGetPackageMetadataClient(packageLookup),
+                new NpmPackageMetadataClient(packageLookup),
+                new PyPiPackageMetadataClient(packageLookup)
+            ]),
+            new PackageFreshnessAnalyzer(),
+            new DependencyVulnerabilityAnalyzer(new OsvAdvisoryClient(osvLookup)),
+            new DependencyLicenseAnalyzer(),
+            new PackageOriginAnalyzer()
         ];
 
         using var workspace = await PrepareWorkspaceAsync(options.Target, cancellationToken);

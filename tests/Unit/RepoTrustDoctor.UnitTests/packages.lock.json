@@ -153,6 +153,15 @@
           "RepoTrustDoctor.Domain": "[1.0.0, )"
         }
       },
+      "repotrustdoctor.analyzers.dependencyrisk": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.PackageRegistries": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.SecurityFeeds": "[1.0.0, )"
+        }
+      },
       "repotrustdoctor.analyzers.docker": {
         "type": "Project",
         "dependencies": {
@@ -188,12 +197,15 @@
           "RepoTrustDoctor.Analysis.Engine": "[1.0.0, )",
           "RepoTrustDoctor.Analysis.Orchestration": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.DependencyInventory": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.DependencyRisk": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.Docker": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.GitHubActions": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.Repository": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.Secrets": "[1.0.0, )",
           "RepoTrustDoctor.Domain": "[1.0.0, )",
           "RepoTrustDoctor.Infrastructure.Git": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.PackageRegistries": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.SecurityFeeds": "[1.0.0, )",
           "RepoTrustDoctor.Reporting": "[1.0.0, )",
           "RepoTrustDoctor.Scoring": "[1.0.0, )",
           "RepoTrustDoctor.Shared": "[1.0.0, )"
@@ -203,6 +215,26 @@
         "type": "Project"
       },
       "repotrustdoctor.infrastructure.git": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.infrastructure.packageregistries": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.infrastructure.securityfeeds": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.PackageRegistries": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.policies": {
         "type": "Project",
         "dependencies": {
           "RepoTrustDoctor.Domain": "[1.0.0, )"

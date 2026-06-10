@@ -167,3 +167,99 @@ Detects NuGet package sources that point to local filesystem paths.
 Why it matters: local package sources can be legitimate for development, but they change package-origin assumptions and may hide dependency confusion or provenance gaps.
 
 Recommendation: review local package sources and document whether they are development-only or part of the supported build process.
+
+## TRUST-DEP015: Dependency Appears Outdated
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: Medium
+
+Detects direct dependencies where package metadata reports a newer major version than the requested version.
+
+Why it matters: major-version drift can indicate missed maintenance, unfixed defects, or delayed security updates. It is not automatically unsafe, but it is useful review evidence.
+
+Recommendation: review the dependency changelog and plan an update if compatible.
+
+## TRUST-DEP016: Dependency Package Is Deprecated or Yanked
+
+- Category: Dependencies
+- Default severity: High
+- Default confidence: High
+
+Detects package metadata that clearly marks a dependency as deprecated or yanked.
+
+Why it matters: deprecated or yanked packages may no longer receive fixes or may have been withdrawn because of correctness, security, or maintenance concerns.
+
+Recommendation: replace deprecated packages or upgrade to a maintained version.
+
+## TRUST-ORIGIN001: Package Repository URL Does Not Match Analyzed Repository
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: Medium
+
+Detects package registry metadata whose repository URL points to a different repository than the scanned target when both URLs can be compared safely.
+
+Why it matters: repository metadata mismatches can make package provenance harder to verify.
+
+Recommendation: verify that package metadata points to the expected source repository.
+
+## TRUST-ORIGIN002: Package Has Official-Looking Name From Unverified Origin
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: Low
+
+Detects package names that resemble official namespaces while package origin metadata is incomplete.
+
+Why it matters: official-looking package names deserve manual review when provenance metadata is missing or weak.
+
+Recommendation: manually verify the package publisher and repository before relying on it.
+
+## TRUST-ORIGIN003: Package Origin Metadata Is Incomplete
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: Medium
+
+Detects package metadata that does not include a repository URL.
+
+Why it matters: missing source metadata makes it harder to trace package origin, review source history, or compare package and repository state.
+
+Recommendation: prefer dependencies with traceable repository metadata.
+
+## TRUST-ORIGIN004: Package Source Mapping Is Missing for Mixed NuGet Sources
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: Medium
+
+Detects NuGet configuration that mixes public and non-public package sources without visible package source mapping.
+
+Why it matters: mixed feeds without source mapping can increase dependency confusion risk.
+
+Recommendation: add NuGet package source mapping to reduce dependency confusion risk.
+
+## TRUST-ORIGIN005: npm Scope Registry Configuration Appears Risky
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: Medium
+
+Detects internal-looking scoped npm dependencies without matching scoped registry configuration.
+
+Why it matters: private scopes should normally map explicitly to private registries so package resolution does not accidentally fall back to a public registry.
+
+Recommendation: add explicit scope registry mapping in `.npmrc` for private scopes.
+
+## TRUST-ORIGIN006: Internal-Looking Package Is Resolved From a Public Registry
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: Medium
+
+Detects internal-looking package names that appear to use normal public registry resolution.
+
+Why it matters: internal-looking names on public registries can be dependency-confusion review signals.
+
+Recommendation: verify whether the package should come from a private registry.
