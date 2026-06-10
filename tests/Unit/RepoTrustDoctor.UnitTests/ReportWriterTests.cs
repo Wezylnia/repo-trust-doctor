@@ -212,6 +212,65 @@ public sealed class ReportWriterTests
     }
 
     [Fact]
+    public void SarifReport_MapsFindingToSarifResult()
+    {
+        var finding = CreateFinding(
+            "TRUST-VULN001",
+            Severity.High,
+            AnalysisCategory.Dependencies,
+            evidenceKind: "vulnerability-advisory",
+            filePath: "src/app.csproj",
+            lineNumber: 7);
+        var scan = CreateMinimalScan() with { Findings = [finding] };
+
+        var sarif = new SarifReportWriter().Write(scan);
+
+        using var document = JsonDocument.Parse(sarif);
+        var root = document.RootElement;
+        Assert.Equal("2.1.0", root.GetProperty("version").GetString());
+        Assert.Equal("TRUST-VULN001", root.GetProperty("runs")[0].GetProperty("results")[0].GetProperty("ruleId").GetString());
+        Assert.Equal("error", root.GetProperty("runs")[0].GetProperty("results")[0].GetProperty("level").GetString());
+        Assert.Equal("src/app.csproj", root.GetProperty("runs")[0].GetProperty("results")[0].GetProperty("locations")[0].GetProperty("physicalLocation").GetProperty("artifactLocation").GetProperty("uri").GetString());
+        Assert.Matches("^[a-f0-9]{64}$", root.GetProperty("runs")[0].GetProperty("results")[0].GetProperty("partialFingerprints").GetProperty("repoTrustDoctorFingerprint").GetString());
+    }
+
+    [Fact]
+    public void SarifReport_DeduplicatesRules()
+    {
+        var scan = CreateMinimalScan() with
+        {
+            Findings =
+            [
+                CreateFinding("TRUST-GHA005", Severity.Medium, AnalysisCategory.CiCd),
+                CreateFinding("TRUST-GHA005", Severity.Medium, AnalysisCategory.CiCd, lineNumber: 2)
+            ]
+        };
+
+        var sarif = new SarifReportWriter().Write(scan);
+        using var document = JsonDocument.Parse(sarif);
+        var rules = document.RootElement.GetProperty("runs")[0].GetProperty("tool").GetProperty("driver").GetProperty("rules");
+
+        Assert.Equal(1, rules.GetArrayLength());
+    }
+
+    [Fact]
+    public void SarifReport_DoesNotIncludeEvidenceValue()
+    {
+        var finding = CreateFinding(
+            "TRUST-SECRET005",
+            Severity.High,
+            AnalysisCategory.Security,
+            evidenceKind: "secret-pattern",
+            filePath: "appsettings.json",
+            evidenceValue: "postgres://user:raw-secret@example/db");
+        var scan = CreateMinimalScan() with { Findings = [finding] };
+
+        var sarif = new SarifReportWriter().Write(scan);
+
+        Assert.DoesNotContain("raw-secret", sarif, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void FindingFingerprint_ChangesWhenLineNumberChanges()
     {
         var first = CreateFinding(

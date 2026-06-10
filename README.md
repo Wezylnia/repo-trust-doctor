@@ -20,7 +20,7 @@ The current alpha focuses on local, static repository trust signals:
 - possible committed secrets or sensitive files with redacted evidence,
 - Dockerfile hygiene signals such as `latest` tags, missing `.dockerignore`, root user risk, missing healthcheck, secret-like `ENV`, and missing multi-stage builds,
 - dependency lockfile coverage and static package-origin signals for npm, NuGet, and Python manifests,
-- deterministic JSON and Markdown reports with stable finding fingerprints,
+- deterministic JSON, Markdown, and SARIF reports with stable finding fingerprints,
 - a local-first React report viewer for JSON report inspection,
 - CI gate behavior through score and severity thresholds.
 
@@ -34,7 +34,7 @@ Implemented through `v0.4.0`:
 - pure domain models,
 - analyzer abstractions,
 - static-only scan orchestration,
-- console, JSON, and Markdown report output,
+- console, JSON, Markdown, and SARIF report output,
 - a CLI-first workflow,
 - repository health, GitHub Actions, secret quick scan, Docker, and dependency lockfile analyzers,
 - expanded repository documentation quality checks,
@@ -122,6 +122,7 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan .
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan https://github.com/owner/repo
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format json
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format sarif --output reports/scan.sarif
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md --force
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --profile enterprise
@@ -149,6 +150,7 @@ repo-trust-doctor scan .
 repo-trust-doctor scan https://github.com/owner/repo
 repo-trust-doctor scan . --format json
 repo-trust-doctor scan . --format markdown
+repo-trust-doctor scan . --format sarif
 repo-trust-doctor scan . --format json --output report.json
 ```
 

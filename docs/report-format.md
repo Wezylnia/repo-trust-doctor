@@ -29,7 +29,7 @@ Each finding includes:
 - recommendation,
 - blocking flag.
 
-Reports should be readable in Markdown and deterministic in JSON.
+Reports should be readable in Markdown and deterministic in JSON and SARIF.
 
 ## Dependency Inventory Artifact
 
@@ -60,10 +60,21 @@ Reports can be printed to stdout or written to disk:
 ```powershell
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format json
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format sarif --output reports/scan.sarif
 ```
 
 When `--output` is provided, the CLI creates the parent directory if needed and writes the selected report format to that file.
 If the file already exists, the CLI refuses to overwrite it unless `--force` is supplied.
+
+## SARIF Export
+
+SARIF output uses SARIF `2.1.0` and is generated from the same `RepositoryScan` model as JSON and Markdown reports.
+
+- `Finding.RuleId` maps to SARIF rule and result IDs.
+- Critical and High findings map to `error`; Medium and Low map to `warning`; Info maps to `note`.
+- Stable finding fingerprints map to `partialFingerprints.repoTrustDoctorFingerprint`.
+- Repository-relative evidence file paths map to SARIF locations when available.
+- Raw evidence values are not written to SARIF.
 
 ## CLI Exit Codes
 

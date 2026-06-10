@@ -36,7 +36,7 @@ Delivered:
 - analyzer abstraction with metadata, scan depth, dependencies, execution safety, timeout, and cancellation,
 - isolated analyzer execution and partial-result behavior,
 - local path scans and shallow public HTTP(S) Git URL scans,
-- console, JSON, and Markdown report output,
+- console, JSON, Markdown, and SARIF report output,
 - stable finding fingerprints,
 - repository health analyzer,
 - GitHub Actions analyzer,

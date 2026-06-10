@@ -178,3 +178,105 @@ public sealed class MarkdownReportWriter
         }
     }
 }
+
+public sealed class SarifReportWriter
+{
+    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    public string Write(RepositoryScan scan)
+    {
+        var findings = JsonReportWriter.SortFindings(FindingFingerprinter.AddFingerprints(scan.Findings));
+        var rules = findings
+            .GroupBy(finding => finding.RuleId, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var finding = group.First();
+                return new SarifRule(
+                    finding.RuleId,
+                    new SarifText(finding.Title),
+                    new SarifText(finding.Recommendation.Message),
+                    new Dictionary<string, object?>
+                    {
+                        ["category"] = finding.Category.ToString(),
+                        ["defaultSeverity"] = finding.Severity.ToString()
+                    });
+            })
+            .ToArray();
+
+        var results = findings.Select(finding =>
+        {
+            var evidence = finding.Evidence.FirstOrDefault(evidence => !string.IsNullOrWhiteSpace(evidence.FilePath));
+            var locations = evidence is null
+                ? null
+                : new[]
+                {
+                    new SarifLocation(new SarifPhysicalLocation(
+                        new SarifArtifactLocation(evidence.FilePath!.Replace('\\', '/')),
+                        evidence.LineNumber is null ? null : new SarifRegion(evidence.LineNumber.Value)))
+                };
+
+            return new SarifResult(
+                finding.RuleId,
+                MapLevel(finding.Severity),
+                new SarifText($"{finding.Title}. {finding.Message}"),
+                locations,
+                new Dictionary<string, string>
+                {
+                    ["repoTrustDoctorFingerprint"] = finding.Fingerprint ?? FindingFingerprinter.Compute(finding)
+                },
+                new Dictionary<string, object?>
+                {
+                    ["confidence"] = finding.Confidence.ToString(),
+                    ["category"] = finding.Category.ToString(),
+                    ["evidenceKind"] = finding.Evidence.FirstOrDefault()?.Kind,
+                    ["isBlocking"] = finding.IsBlocking,
+                    ["tags"] = finding.Tags
+                });
+        }).ToArray();
+
+        var sarif = new SarifLog(
+            "2.1.0",
+            "https://json.schemastore.org/sarif-2.1.0.json",
+            [
+                new SarifRun(
+                    new SarifTool(new SarifDriver("Repository Trust Doctor", scan.ToolVersion, rules)),
+                    results)
+            ]);
+
+        return JsonSerializer.Serialize(sarif, Options);
+    }
+
+    private static string MapLevel(Severity severity) => severity switch
+    {
+        Severity.Critical or Severity.High => "error",
+        Severity.Medium or Severity.Low => "warning",
+        Severity.Info => "note",
+        _ => "none"
+    };
+
+    private sealed record SarifLog(
+        string Version,
+        [property: JsonPropertyName("$schema")] string Schema,
+        IReadOnlyList<SarifRun> Runs);
+    private sealed record SarifRun(SarifTool Tool, IReadOnlyList<SarifResult> Results);
+    private sealed record SarifTool(SarifDriver Driver);
+    private sealed record SarifDriver(string Name, string SemanticVersion, IReadOnlyList<SarifRule> Rules);
+    private sealed record SarifRule(string Id, SarifText ShortDescription, SarifText Help, IReadOnlyDictionary<string, object?> Properties);
+    private sealed record SarifResult(
+        string RuleId,
+        string Level,
+        SarifText Message,
+        IReadOnlyList<SarifLocation>? Locations,
+        IReadOnlyDictionary<string, string> PartialFingerprints,
+        IReadOnlyDictionary<string, object?> Properties);
+    private sealed record SarifText(string Text);
+    private sealed record SarifLocation(SarifPhysicalLocation PhysicalLocation);
+    private sealed record SarifPhysicalLocation(SarifArtifactLocation ArtifactLocation, SarifRegion? Region);
+    private sealed record SarifArtifactLocation(string Uri);
+    private sealed record SarifRegion(int StartLine);
+}
