@@ -224,7 +224,8 @@
           "RepoTrustDoctor.Infrastructure.SecurityFeeds": "[1.0.0, )",
           "RepoTrustDoctor.Reporting": "[1.0.0, )",
           "RepoTrustDoctor.Scoring": "[1.0.0, )",
-          "RepoTrustDoctor.Shared": "[1.0.0, )"
+          "RepoTrustDoctor.Shared": "[1.0.0, )",
+          "RepoTrustDoctor.TrustHistory": "[1.0.0, )"
         }
       },
       "repotrustdoctor.contracts": {

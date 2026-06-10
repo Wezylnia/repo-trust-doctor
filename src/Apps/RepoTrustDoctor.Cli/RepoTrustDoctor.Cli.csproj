@@ -8,6 +8,7 @@
     <ProjectReference Include="..\..\Engine\RepoTrustDoctor.Analysis.Orchestration\RepoTrustDoctor.Analysis.Orchestration.csproj" />
     <ProjectReference Include="..\..\Engine\RepoTrustDoctor.Scoring\RepoTrustDoctor.Scoring.csproj" />
     <ProjectReference Include="..\..\Engine\RepoTrustDoctor.Reporting\RepoTrustDoctor.Reporting.csproj" />
+    <ProjectReference Include="..\..\Engine\RepoTrustDoctor.TrustHistory\RepoTrustDoctor.TrustHistory.csproj" />
     <ProjectReference Include="..\..\Analyzers\Repository\RepoTrustDoctor.Analyzers.Repository\RepoTrustDoctor.Analyzers.Repository.csproj" />
     <ProjectReference Include="..\..\Analyzers\CiCd\RepoTrustDoctor.Analyzers.GitHubActions\RepoTrustDoctor.Analyzers.GitHubActions.csproj" />
     <ProjectReference Include="..\..\Analyzers\Security\RepoTrustDoctor.Analyzers.Secrets\RepoTrustDoctor.Analyzers.Secrets.csproj" />
