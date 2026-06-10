@@ -137,6 +137,40 @@ public sealed class ScanCommandOptionsTests
     }
 
     [Fact]
+    public void TryParseDiffOptions_AllOptionsProvided_ParsesCorrectly()
+    {
+        var args = new[] { "diff", "before.json", "after.json", "--format", "markdown", "--output", "diff.md", "--force" };
+        var ok = CliProgram.TryParseDiffOptions(args, out var options, out _);
+
+        Assert.True(ok);
+        Assert.Equal("before.json", options.BeforeReportPath);
+        Assert.Equal("after.json", options.AfterReportPath);
+        Assert.Equal("markdown", options.Format);
+        Assert.Equal("diff.md", options.OutputPath);
+        Assert.True(options.ForceOutput);
+    }
+
+    [Fact]
+    public void TryParseDiffOptions_RequiresTwoReportPaths()
+    {
+        var args = new[] { "diff", "before.json" };
+        var ok = CliProgram.TryParseDiffOptions(args, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("exactly two", error);
+    }
+
+    [Fact]
+    public void TryParseDiffOptions_RejectsUnsupportedFormat()
+    {
+        var args = new[] { "diff", "before.json", "after.json", "--format", "sarif" };
+        var ok = CliProgram.TryParseDiffOptions(args, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("Unsupported diff format", error);
+    }
+
+    [Fact]
     public void TryParseScanOptions_SecondPositionalArgument_ReturnsFalse()
     {
         var args = new[] { "scan", "first", "second" };
