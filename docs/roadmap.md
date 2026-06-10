@@ -6,7 +6,7 @@ The roadmap is intentionally conservative. Each milestone should leave the proje
 
 ## Current Release
 
-`v0.8.0` is a CLI-first static scanner focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, dependency risk intelligence, policy-aware scoring, SARIF output, release evidence review, deep code intelligence, deterministic reports, and CI gate options.
+`v0.9.0` is a CLI-first static scanner focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, dependency risk intelligence, policy-aware scoring, SARIF output, release evidence review, deep code intelligence, trust history/diff, deterministic reports, and CI gate options.
 
 Current scans are static-only by default. The tool does not execute repository code, install packages, run tests, run builds, or build containers as part of a scan.
 
@@ -21,8 +21,8 @@ Current scans are static-only by default. The tool does not execute repository c
 | `v0.5.x` | Reporting and progress foundation | SARIF output and progress DTOs |
 | `v0.6.x` | Policies and profiles | Built-in policies, blocking risks, profile-aware scoring |
 | `v0.7.x` | Release trust | Release hygiene, artifact integrity, SBOM/provenance evidence |
-| `v0.8.x` | Deep code intelligence | Current: coverage import, code criticality, public API risk |
-| `v0.9.x` | History and comparison | Trust diff, historical trend, repository comparison, monitoring |
+| `v0.8.x` | Deep code intelligence | Coverage import, code criticality, public API risk |
+| `v0.9.x` | History and comparison | Current: trust diff, historical trend, repository comparison, monitoring models |
 | `v1.0.0` | Stable public release | Stable contracts, documented reports, contributor-ready platform |
 
 ## v0.1.x: Foundation Alpha
@@ -443,31 +443,21 @@ Success criteria:
 
 Goal: make trust changes understandable over time.
 
-History:
+Delivered in `v0.9.0`:
 
-- store scan snapshots,
-- track score trend,
-- track category trend,
-- track new and resolved findings.
+- derive compact scan snapshots from reports,
+- track score and category deltas,
+- track new, resolved, worsened, improved, and unchanged findings,
+- compare two JSON scan reports with the CLI `diff` command,
+- compare multiple repository snapshots in the engine layer,
+- provide a scheduled scan model,
+- provide score, decision, new blocking, and new high-severity regression alerts.
 
-Trust diff:
+Remaining `v0.9.x` follow-up candidates:
 
-- compare two scans,
-- compare branches/tags/commits where safe,
-- show worsened, improved, new, and resolved risks.
-
-Comparison:
-
-- compare multiple repositories,
-- highlight strongest signals and biggest risks,
-- support dependency selection workflows.
-
-Monitoring:
-
-- scheduled scan model,
-- trust regression alerts,
-- stale release alerts,
-- newly introduced critical finding alerts.
+- compare branches/tags/commits by running scans into temporary reports,
+- stale release regression alerts,
+- richer repository comparison report output.
 
 Out of scope:
 
