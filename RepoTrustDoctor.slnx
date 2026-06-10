@@ -4,6 +4,9 @@
   <Folder Name="/src/Analyzers/CiCd/">
     <Project Path="src/Analyzers/CiCd/RepoTrustDoctor.Analyzers.GitHubActions/RepoTrustDoctor.Analyzers.GitHubActions.csproj" />
   </Folder>
+  <Folder Name="/src/Analyzers/Codebase/">
+    <Project Path="src/Analyzers/Codebase/RepoTrustDoctor.Analyzers.Codebase/RepoTrustDoctor.Analyzers.Codebase.csproj" />
+  </Folder>
   <Folder Name="/src/Analyzers/Containers/">
     <Project Path="src/Analyzers/Containers/RepoTrustDoctor.Analyzers.Docker/RepoTrustDoctor.Analyzers.Docker.csproj" />
   </Folder>
