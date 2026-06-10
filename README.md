@@ -23,14 +23,15 @@ The current alpha focuses on local, static repository trust signals:
 - deterministic JSON, Markdown, and SARIF reports with stable finding fingerprints,
 - release artifact checksum, SBOM/provenance, changelog, package-version, and release workflow evidence,
 - deep scan coverage import, critical code heuristics, and .NET public API baseline review,
+- trust diff between JSON scan reports with new/resolved/worsened/improved finding changes,
 - a local-first React report viewer for JSON report inspection,
 - CI gate behavior through score and severity thresholds.
 
 ## Current Status
 
-This repository is at the `v0.8.0` milestone. It is a CLI-first static scanner intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, release trust review, and deep code intelligence.
+This repository is at the `v0.9.0` milestone. It is a CLI-first static scanner intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, release trust review, deep code intelligence, and trust change review.
 
-Implemented through `v0.8.0`:
+Implemented through `v0.9.0`:
 
 - a clean .NET solution structure,
 - pure domain models,
@@ -64,10 +65,12 @@ Implemented through `v0.8.0`:
 - critical code heuristics for auth, authorization, payments, data access, file operations, network calls, cryptography, secrets, large files, and broad exception handling,
 - low or missing coverage correlation for critical code,
 - .NET public API surface extraction and baseline diff review,
+- scan snapshot, trust diff, repository comparison, scheduled scan, and regression alert models,
+- CLI `diff` command for comparing two JSON scan reports,
 - fixture-based analyzer tests,
 - public rule, architecture, security, web UI, and contributor documentation.
 
-The scanner does not execute repository code by default. API/worker hosting, persistence, historical trust diffing, and monitoring are planned future work.
+The scanner does not execute repository code by default. API/worker hosting, persistence, hosted monitoring, and notification providers are planned future work.
 
 ## Requirements
 
@@ -137,6 +140,7 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format sarif --out
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md --force
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --depth deep --format markdown
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- diff reports/before.json reports/after.json --format markdown
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --profile enterprise
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --fail-under 75
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --fail-on-severity High
@@ -164,6 +168,7 @@ repo-trust-doctor scan . --format json
 repo-trust-doctor scan . --format markdown
 repo-trust-doctor scan . --format sarif
 repo-trust-doctor scan . --format json --output report.json
+repo-trust-doctor diff before.json after.json --format markdown --output diff.md
 ```
 
 ## Architecture
@@ -194,8 +199,8 @@ The roadmap grows the platform gradually:
 | `v0.5.x` | SARIF output and progressive scan contracts |
 | `v0.6.x` | Built-in policies, blocking risks, and profile-aware scoring |
 | `v0.7.x` | Release hygiene, artifact integrity, SBOM/provenance, and supply-chain evidence |
-| `v0.8.x` | Current: coverage import, code criticality, public API analysis, and deep scan signals |
-| `v0.9.x` | Trust history, comparison, trust diff, and monitoring |
+| `v0.8.x` | Coverage import, code criticality, public API analysis, and deep scan signals |
+| `v0.9.x` | Current: trust history, comparison, trust diff, and monitoring models |
 | `v1.0.0` | Stable public platform with documented contracts and reliable reports |
 
 See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scope boundaries, and success criteria.
@@ -218,6 +223,7 @@ See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scop
 - [CI usage](docs/ci-usage.md)
 - [Analyzer authoring guide](docs/analyzer-authoring.md)
 - [Report format](docs/report-format.md)
+- [Trust history and diff](docs/trust-history.md)
 - [Web UI](docs/web-ui.md)
 - [Release checklist](docs/release-checklist.md)
 - [Trust profiles](docs/policies/trust-profiles.md)
