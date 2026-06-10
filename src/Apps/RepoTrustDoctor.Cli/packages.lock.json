@@ -55,6 +55,13 @@
           "RepoTrustDoctor.Domain": "[1.0.0, )"
         }
       },
+      "repotrustdoctor.analyzers.releaseevidence": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
       "repotrustdoctor.analyzers.repository": {
         "type": "Project",
         "dependencies": {
@@ -92,6 +99,12 @@
           "RepoTrustDoctor.Infrastructure.PackageRegistries": "[1.0.0, )"
         }
       },
+      "repotrustdoctor.policies": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
       "repotrustdoctor.reporting": {
         "type": "Project",
         "dependencies": {
@@ -102,7 +115,8 @@
       "repotrustdoctor.scoring": {
         "type": "Project",
         "dependencies": {
-          "RepoTrustDoctor.Domain": "[1.0.0, )"
+          "RepoTrustDoctor.Domain": "[1.0.0, )",
+          "RepoTrustDoctor.Policies": "[1.0.0, )"
         }
       },
       "repotrustdoctor.shared": {

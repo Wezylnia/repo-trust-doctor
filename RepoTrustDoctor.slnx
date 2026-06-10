@@ -14,6 +14,9 @@
   <Folder Name="/src/Analyzers/Repository/">
     <Project Path="src/Analyzers/Repository/RepoTrustDoctor.Analyzers.Repository/RepoTrustDoctor.Analyzers.Repository.csproj" />
   </Folder>
+  <Folder Name="/src/Analyzers/Releases/">
+    <Project Path="src/Analyzers/Releases/RepoTrustDoctor.Analyzers.ReleaseEvidence/RepoTrustDoctor.Analyzers.ReleaseEvidence.csproj" />
+  </Folder>
   <Folder Name="/src/Analyzers/Security/">
     <Project Path="src/Analyzers/Security/RepoTrustDoctor.Analyzers.Secrets/RepoTrustDoctor.Analyzers.Secrets.csproj" />
   </Folder>

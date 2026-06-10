@@ -27,3 +27,4 @@ The current catalog covers implemented static analyzer rules, dependency invento
 - [Dependencies](dependencies.md)
 - [Licenses](licenses.md)
 - [Vulnerabilities](vulnerabilities.md)
+- [Releases](releases.md)
