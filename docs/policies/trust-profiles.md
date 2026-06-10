@@ -15,8 +15,8 @@ The current implementation records the selected profile and includes it in JSON 
 | `SecuritySensitiveDependency` | Dependencies used in authentication, cryptography, authorization, secret handling, or security controls | Strictest on security and maintainer risk |
 | `ContainerDependency` | Base images, Dockerfiles, or containerized tools used as runtime or build dependencies | Strict on image provenance, pinning, and build surface |
 
-## Current Policy Behavior
+## Built-In Policy Presets
 
-All profiles currently use the same scoring thresholds and final decision logic. This keeps the first policy model conservative and predictable while analyzers and evidence quality are still expanding.
+Each profile resolves to a built-in `TrustPolicy` preset. Presets include minimum overall score, category score thresholds, allowed and denied license placeholders, maximum vulnerability severity, SECURITY.md expectations, unpinned action handling, release checksum requirements, and allowed registry placeholders.
 
-Future policy work may make profile-specific decisions, for example by treating CI/CD token exposure as more severe for `CiCdTool` or dependency provenance gaps as more severe for `EnterpriseDependency`. Any such change should update scorer tests, report documentation, and release notes together.
+Policy presets are intentionally conservative value objects. They do not make analyzers enforce enterprise decisions; analyzers still produce evidence and policy/scoring layers interpret that evidence.
