@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\RepoTrustDoctor.Application\RepoTrustDoctor.Application.csproj" />
+    <ProjectReference Include="..\..\Core\RepoTrustDoctor.Contracts\RepoTrustDoctor.Contracts.csproj" />
+    <ProjectReference Include="..\..\Core\RepoTrustDoctor.Shared\RepoTrustDoctor.Shared.csproj" />
+    <ProjectReference Include="..\..\Engine\RepoTrustDoctor.Reporting\RepoTrustDoctor.Reporting.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\RepoTrustDoctor.Infrastructure.Scanning\RepoTrustDoctor.Infrastructure.Scanning.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>
