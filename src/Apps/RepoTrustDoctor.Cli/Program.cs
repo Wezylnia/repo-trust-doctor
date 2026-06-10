@@ -30,7 +30,7 @@ internal sealed record ScanCommandOptions(
 
 internal static class CliProgram
 {
-    private static readonly string[] SupportedFormats = ["console", "json", "markdown", "md"];
+    private static readonly string[] SupportedFormats = ["console", "json", "markdown", "md", "sarif"];
     private static readonly string[] SupportedDepths = ["fast", "standard", "deep"];
     private static readonly string[] SupportedProfileNames = Enum.GetNames<TrustProfile>();
     private static readonly Dictionary<string, TrustProfile> SupportedProfileAliases = new(StringComparer.OrdinalIgnoreCase)
@@ -102,6 +102,7 @@ internal static class CliProgram
         {
             "json" => new JsonReportWriter().Write(scan),
             "markdown" or "md" => new MarkdownReportWriter().Write(scan),
+            "sarif" => new SarifReportWriter().Write(scan),
             "console" => BuildConsoleSummary(scan),
             _ => throw new ArgumentException($"Unsupported format: {options.Format}")
         };
@@ -352,7 +353,8 @@ internal static class CliProgram
           repo-trust-doctor scan <path-or-url> [options]
 
         Options:
-          --format console|json|markdown|md   Report format (default: console)
+          --format console|json|markdown|md|sarif
+                                              Report format (default: console)
           --output <file>                     Write report to file instead of stdout
           --force                             Overwrite existing report file
           --depth fast|standard|deep          Scan depth (default: fast)

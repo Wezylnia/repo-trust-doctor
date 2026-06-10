@@ -151,6 +151,7 @@ public sealed class ScanCommandOptionsTests
     [InlineData("json")]
     [InlineData("markdown")]
     [InlineData("md")]
+    [InlineData("sarif")]
     public void TryParseScanOptions_SupportedFormats_Accepted(string format)
     {
         var args = new[] { "scan", ".", "--format", format };
