@@ -2,6 +2,28 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v0.5.0 - 2026-06-10
+
+This release adds SARIF reporting and shared scan progress contracts for API, worker, and frontend-ready scan lifecycle work.
+
+### Added
+
+- SARIF 2.1.0 report writer with deterministic rule/result output.
+- CLI support for `--format sarif` with the same output overwrite protection as JSON and Markdown.
+- SARIF mapping for rule IDs, severity levels, locations, stable partial fingerprints, confidence, category, and blocking metadata.
+- Polling-friendly scan lifecycle and module progress DTOs in `RepoTrustDoctor.Contracts`.
+- Unit tests for SARIF output, CLI parsing, secret-safe SARIF evidence behavior, and progress DTO serialization.
+
+### Changed
+
+- Product version is now `0.5.0`.
+- README and report format docs document SARIF output.
+
+### Security
+
+- SARIF output does not include raw evidence values.
+- Progress DTO status messages are designed for sanitized status text and do not introduce API or hosted scan execution behavior.
+
 ## v0.4.1 - 2026-06-10
 
 This release completes the first dependency risk intelligence layer with safe package metadata and advisory foundations. Registry and advisory access is isolated behind allowlisted lookup clients and analyzer failures remain partial-result friendly.
