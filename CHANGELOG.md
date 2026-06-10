@@ -2,6 +2,32 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v0.8.0 - 2026-06-10
+
+This release adds deep code intelligence for imported coverage, critical source files, critical coverage gaps, and conservative .NET public API review.
+
+### Added
+
+- Codebase analyzer project registered in the CLI deep scan pipeline.
+- Coverage import analyzer for Cobertura XML and lcov reports.
+- Static critical code heuristics for auth, authorization, payments, data access, file operations, network calls, cryptography, secrets, large files, and broad exception handling.
+- Critical coverage correlation that blocks on critical files with low or missing imported coverage.
+- .NET public API extraction and optional baseline comparison with `.repo-trust/public-api-baseline.txt`, `docs/public-api-baseline.txt`, or `public-api-baseline.txt`.
+- Rule catalog page for `TRUST-CODE001` through `TRUST-CODE009`.
+- Analyzer tests covering Cobertura, lcov, unsafe XML handling, criticality signals, coverage correlation, and public API baselines.
+
+### Changed
+
+- Product version is now `0.8.0`.
+- README, roadmap, and report format docs now describe deep code intelligence artifacts and rules.
+
+### Security
+
+- Deep code intelligence remains static/imported-evidence based.
+- The scanner does not execute repository tests, builds, package managers, or source code to generate coverage.
+- Coverage XML parsing disables DTD processing and external resource resolution.
+- Public API diffs are review signals and do not claim every removed symbol is a breaking change.
+
 ## v0.7.0 - 2026-06-10
 
 This release adds release and supply-chain evidence checks for local release artifacts, package version consistency, changelog alignment, and release workflow integrity evidence.
