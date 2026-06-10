@@ -6,7 +6,7 @@ The roadmap is intentionally conservative. Each milestone should leave the proje
 
 ## Current Release
 
-`v0.7.0` is a CLI-first static scanner focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, dependency risk intelligence, policy-aware scoring, SARIF output, release evidence review, deterministic reports, and CI gate options.
+`v0.8.0` is a CLI-first static scanner focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, dependency risk intelligence, policy-aware scoring, SARIF output, release evidence review, deep code intelligence, deterministic reports, and CI gate options.
 
 Current scans are static-only by default. The tool does not execute repository code, install packages, run tests, run builds, or build containers as part of a scan.
 
@@ -20,8 +20,8 @@ Current scans are static-only by default. The tool does not execute repository c
 | `v0.4.x` | Risk intelligence | Safe metadata/advisory clients, vulnerability, license, freshness, origin, dependency confusion |
 | `v0.5.x` | Reporting and progress foundation | SARIF output and progress DTOs |
 | `v0.6.x` | Policies and profiles | Built-in policies, blocking risks, profile-aware scoring |
-| `v0.7.x` | Release trust | Current: release hygiene, artifact integrity, SBOM/provenance evidence |
-| `v0.8.x` | Deep code intelligence | Coverage import, code criticality, public API risk |
+| `v0.7.x` | Release trust | Release hygiene, artifact integrity, SBOM/provenance evidence |
+| `v0.8.x` | Deep code intelligence | Current: coverage import, code criticality, public API risk |
 | `v0.9.x` | History and comparison | Trust diff, historical trend, repository comparison, monitoring |
 | `v1.0.0` | Stable public release | Stable contracts, documented reports, contributor-ready platform |
 
@@ -407,26 +407,25 @@ Success criteria:
 
 Goal: add deeper static and imported-evidence signals about code quality and risk.
 
-Coverage work:
+Delivered in `v0.8.0`:
 
 - detect existing coverage reports,
 - parse Cobertura XML,
 - parse lcov,
 - record line and branch coverage where available,
-- report missing coverage as unknown/skipped instead of running tests.
-
-Criticality work:
-
+- report missing coverage as unknown/skipped instead of running tests,
 - identify auth/security/payment/database/file/network/crypto keyword areas,
 - detect large files and broad exception patterns,
-- approximate central files where static imports allow it,
-- combine low coverage with high criticality.
-
-Public API work:
-
+- combine low coverage with high criticality,
 - start with .NET public API surface where feasible,
 - detect exported API changes from available snapshots,
 - keep breaking-change claims conservative.
+
+Remaining `v0.8.x` follow-up candidates:
+
+- approximate central files where static imports allow it,
+- add language-specific API extractors beyond .NET,
+- improve coverage path matching for monorepos.
 
 Out of scope:
 

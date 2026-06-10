@@ -12,6 +12,7 @@
     <ProjectReference Include="..\..\Analyzers\CiCd\RepoTrustDoctor.Analyzers.GitHubActions\RepoTrustDoctor.Analyzers.GitHubActions.csproj" />
     <ProjectReference Include="..\..\Analyzers\Security\RepoTrustDoctor.Analyzers.Secrets\RepoTrustDoctor.Analyzers.Secrets.csproj" />
     <ProjectReference Include="..\..\Analyzers\Containers\RepoTrustDoctor.Analyzers.Docker\RepoTrustDoctor.Analyzers.Docker.csproj" />
+    <ProjectReference Include="..\..\Analyzers\Codebase\RepoTrustDoctor.Analyzers.Codebase\RepoTrustDoctor.Analyzers.Codebase.csproj" />
     <ProjectReference Include="..\..\Analyzers\Dependencies\RepoTrustDoctor.Analyzers.DependencyInventory\RepoTrustDoctor.Analyzers.DependencyInventory.csproj" />
     <ProjectReference Include="..\..\Analyzers\Dependencies\RepoTrustDoctor.Analyzers.DependencyRisk\RepoTrustDoctor.Analyzers.DependencyRisk.csproj" />
     <ProjectReference Include="..\..\Analyzers\Releases\RepoTrustDoctor.Analyzers.ReleaseEvidence\RepoTrustDoctor.Analyzers.ReleaseEvidence.csproj" />

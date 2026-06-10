@@ -13,7 +13,7 @@ The initial report model includes:
 - category scores,
 - overall score,
 - final decision,
-- recommended actions.
+- recommended actions,
 - analyzer artifacts such as dependency inventory when produced.
 
 Each finding includes:
@@ -51,6 +51,18 @@ Markdown reports include a dependency inventory summary when the artifact is pre
 
 The dependency inventory is static-only. It does not fetch registry metadata, resolve latest versions, look up vulnerabilities, or make license claims. Package-origin fields are review signals derived only from manifests and config files already present in the repository.
 
+## Deep Code Intelligence Artifacts
+
+`v0.8.0` adds deep code intelligence artifacts. They are produced only by deep scans and remain static/imported-evidence based.
+
+Artifact keys:
+
+- `code.coverage`: imported Cobertura XML or lcov reports, file coverage entries, and coverage metrics.
+- `code.criticality`: source files with heuristic criticality scores, line counts, reasons, and first relevant lines.
+- `code.public-api`: detected .NET public API symbols, optional baseline path, added symbols, removed symbols, and metrics.
+
+Coverage reports are imported from files already present in the repository workspace. The scanner does not run tests or generate coverage.
+
 Finding fingerprints are lowercase SHA-256 hex strings. They are computed from the rule ID, category, evidence kind, evidence file path, and evidence line number when present. Evidence messages, evidence values, and secret-like content are not fingerprint inputs.
 
 ## CLI Export
@@ -84,3 +96,4 @@ SARIF output uses SARIF `2.1.0` and is generated from the same `RepositoryScan` 
 | `1`  | CLI usage error |
 | `2`  | Input/output error |
 | `3`  | Scan completed with `AvoidAsProductionDependency` |
+| `4`  | Configured CI gate failed |

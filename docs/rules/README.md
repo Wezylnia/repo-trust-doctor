@@ -16,7 +16,7 @@ Each rule documents:
 - why it matters,
 - recommendation.
 
-The current catalog covers implemented static analyzer rules, dependency inventory rules, dependency risk intelligence, vulnerability advisory findings, license metadata review, and package-origin review rules.
+The current catalog covers implemented static analyzer rules, dependency inventory rules, dependency risk intelligence, vulnerability advisory findings, license metadata review, package-origin review rules, release evidence rules, and deep code intelligence rules.
 
 ## Categories
 
@@ -28,3 +28,4 @@ The current catalog covers implemented static analyzer rules, dependency invento
 - [Licenses](licenses.md)
 - [Vulnerabilities](vulnerabilities.md)
 - [Releases](releases.md)
+- [Codebase](codebase.md)
