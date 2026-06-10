@@ -293,8 +293,10 @@ Progress model:
 
 - queued,
 - preparing repository,
+- running fast modules,
 - running static analyzers,
 - running dependency analyzers,
+- running security analyzers,
 - scoring,
 - reporting,
 - completed,
