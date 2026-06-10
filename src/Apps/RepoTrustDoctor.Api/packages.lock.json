@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "repotrustdoctor.analysis.abstractions": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.analysis.engine": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.analysis.orchestration": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Analysis.Engine": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )",
+          "RepoTrustDoctor.Scoring": "[1.0.0, )",
+          "RepoTrustDoctor.Shared": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.analyzers.codebase": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.analyzers.dependencyinventory": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.analyzers.dependencyrisk": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.PackageRegistries": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.SecurityFeeds": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.analyzers.docker": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.analyzers.githubactions": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.analyzers.releaseevidence": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.analyzers.repository": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.analyzers.secrets": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.application": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Contracts": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )",
+          "RepoTrustDoctor.Shared": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.contracts": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.domain": {
+        "type": "Project"
+      },
+      "repotrustdoctor.infrastructure.git": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.infrastructure.packageregistries": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.infrastructure.scanning": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Analysis.Engine": "[1.0.0, )",
+          "RepoTrustDoctor.Analysis.Orchestration": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.Codebase": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.DependencyInventory": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.DependencyRisk": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.Docker": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.GitHubActions": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.ReleaseEvidence": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.Repository": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.Secrets": "[1.0.0, )",
+          "RepoTrustDoctor.Application": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.Git": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.PackageRegistries": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.SecurityFeeds": "[1.0.0, )",
+          "RepoTrustDoctor.Scoring": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.infrastructure.securityfeeds": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Infrastructure.PackageRegistries": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.policies": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.reporting": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.scoring": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Domain": "[1.0.0, )",
+          "RepoTrustDoctor.Policies": "[1.0.0, )"
+        }
+      },
+      "repotrustdoctor.shared": {
+        "type": "Project"
+      }
+    }
+  }
+}

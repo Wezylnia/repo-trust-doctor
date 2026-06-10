@@ -24,7 +24,9 @@
     <Project Path="src/Analyzers/Security/RepoTrustDoctor.Analyzers.Secrets/RepoTrustDoctor.Analyzers.Secrets.csproj" />
   </Folder>
   <Folder Name="/src/Apps/">
+    <Project Path="src/Apps/RepoTrustDoctor.Api/RepoTrustDoctor.Api.csproj" />
     <Project Path="src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj" />
+    <Project Path="src/Apps/RepoTrustDoctor.Worker/RepoTrustDoctor.Worker.csproj" />
   </Folder>
   <Folder Name="/src/Core/">
     <Project Path="src/Core/RepoTrustDoctor.Application/RepoTrustDoctor.Application.csproj" />
