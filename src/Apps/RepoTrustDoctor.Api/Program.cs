@@ -13,6 +13,7 @@ builder.Services.AddSingleton<ScanCoordinator>();
 builder.Services.AddSingleton<IRepositoryScanRunner, DefaultRepositoryScanRunner>();
 builder.Services.AddSingleton<ScanJobProcessor>();
 builder.Services.AddHostedService<QueuedScanBackgroundService>();
+builder.Services.ConfigureHttpJsonOptions(options => ScanJsonSerializerOptions.Configure(options.SerializerOptions));
 
 var app = builder.Build();
 

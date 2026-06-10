@@ -39,6 +39,8 @@ The response is `202 Accepted` with a scan ID and status URL:
 }
 ```
 
+API lifecycle and domain enum values are serialized as strings, for example `Completed`, `Fast`, and `ProductionDependency`.
+
 ## API Endpoints
 
 | Method | Path | Purpose |
@@ -46,7 +48,7 @@ The response is `202 Accepted` with a scan ID and status URL:
 | `GET` | `/health` | Returns API health and product version |
 | `POST` | `/api/scans` | Validates and queues a scan |
 | `GET` | `/api/scans` | Lists known scan statuses |
-| `GET` | `/api/scans/{scanId}` | Returns scan status, score, decision, and counts |
+| `GET` | `/api/scans/{scanId}` | Returns scan status, module count, finding count, score, and decision |
 | `GET` | `/api/scans/{scanId}/progress` | Returns lifecycle and module progress |
 | `GET` | `/api/scans/{scanId}/modules` | Returns completed scan modules |
 | `GET` | `/api/scans/{scanId}/findings` | Returns completed scan findings |

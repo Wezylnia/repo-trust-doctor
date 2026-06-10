@@ -35,6 +35,8 @@ public sealed record ScanState(
             UpdatedAt,
             CompletedAt,
             StatusMessage,
+            Result?.Modules.Count,
+            Result?.Findings.Count,
             Result?.Score.Overall,
             Result?.Score.Decision.Kind);
 
