@@ -22,14 +22,15 @@ The current alpha focuses on local, static repository trust signals:
 - dependency lockfile coverage and static package-origin signals for npm, NuGet, and Python manifests,
 - deterministic JSON, Markdown, and SARIF reports with stable finding fingerprints,
 - release artifact checksum, SBOM/provenance, changelog, package-version, and release workflow evidence,
+- deep scan coverage import, critical code heuristics, and .NET public API baseline review,
 - a local-first React report viewer for JSON report inspection,
 - CI gate behavior through score and severity thresholds.
 
 ## Current Status
 
-This repository is at the `v0.7.0` milestone. It is a CLI-first static scanner intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, and release trust review.
+This repository is at the `v0.8.0` milestone. It is a CLI-first static scanner intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, release trust review, and deep code intelligence.
 
-Implemented through `v0.7.0`:
+Implemented through `v0.8.0`:
 
 - a clean .NET solution structure,
 - pure domain models,
@@ -59,10 +60,14 @@ Implemented through `v0.7.0`:
 - scan progress DTOs for API/worker/frontend polling,
 - built-in trust policies and profile-aware scoring,
 - release evidence checks for checksums, SBOM/provenance, changelog/package version alignment, and release workflows,
+- coverage import for Cobertura XML and lcov in deep scans,
+- critical code heuristics for auth, authorization, payments, data access, file operations, network calls, cryptography, secrets, large files, and broad exception handling,
+- low or missing coverage correlation for critical code,
+- .NET public API surface extraction and baseline diff review,
 - fixture-based analyzer tests,
 - public rule, architecture, security, web UI, and contributor documentation.
 
-The scanner does not execute repository code by default. API/worker hosting, persistence, deep code intelligence, historical trust diffing, and monitoring are planned future work.
+The scanner does not execute repository code by default. API/worker hosting, persistence, historical trust diffing, and monitoring are planned future work.
 
 ## Requirements
 
@@ -131,6 +136,7 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format sarif --output reports/scan.sarif
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --output reports/scan.md --force
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --depth deep --format markdown
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --profile enterprise
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --fail-under 75
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --fail-on-severity High
@@ -187,8 +193,8 @@ The roadmap grows the platform gradually:
 | `v0.4.x` | Risk intelligence for dependency metadata, vulnerabilities, licenses, and origin signals |
 | `v0.5.x` | SARIF output and progressive scan contracts |
 | `v0.6.x` | Built-in policies, blocking risks, and profile-aware scoring |
-| `v0.7.x` | Current: release hygiene, artifact integrity, SBOM/provenance, and supply-chain evidence |
-| `v0.8.x` | Coverage import, code criticality, public API analysis, and deep scan signals |
+| `v0.7.x` | Release hygiene, artifact integrity, SBOM/provenance, and supply-chain evidence |
+| `v0.8.x` | Current: coverage import, code criticality, public API analysis, and deep scan signals |
 | `v0.9.x` | Trust history, comparison, trust diff, and monitoring |
 | `v1.0.0` | Stable public platform with documented contracts and reliable reports |
 

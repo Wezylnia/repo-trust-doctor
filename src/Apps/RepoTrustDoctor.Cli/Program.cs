@@ -7,6 +7,7 @@ using RepoTrustDoctor.Analyzers.Repository;
 using RepoTrustDoctor.Analyzers.Secrets;
 using RepoTrustDoctor.Analyzers.DependencyInventory;
 using RepoTrustDoctor.Analyzers.DependencyRisk;
+using RepoTrustDoctor.Analyzers.Codebase;
 using RepoTrustDoctor.Analyzers.ReleaseEvidence;
 using RepoTrustDoctor.Domain;
 using RepoTrustDoctor.Infrastructure.Git;
@@ -84,6 +85,10 @@ internal static class CliProgram
             new DockerBasicAnalyzer(),
             new DependencyInventoryAnalyzer(),
             new ReleaseEvidenceAnalyzer(),
+            new CoverageImportAnalyzer(),
+            new CodeCriticalityAnalyzer(),
+            new CoverageCriticalityAnalyzer(),
+            new PublicApiAnalyzer(),
             new PackageMetadataAnalyzer(
             [
                 new NuGetPackageMetadataClient(packageLookup),
