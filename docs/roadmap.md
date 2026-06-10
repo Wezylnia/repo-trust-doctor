@@ -6,7 +6,7 @@ The roadmap is intentionally conservative. Each milestone should leave the proje
 
 ## Current Release
 
-`v0.9.0` is a CLI-first static scanner focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, dependency risk intelligence, policy-aware scoring, SARIF output, release evidence review, deep code intelligence, trust history/diff, deterministic reports, and CI gate options.
+`v1.0.0` is a stable static scanner and local platform focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, dependency risk intelligence, policy-aware scoring, SARIF output, release evidence review, deep code intelligence, trust history/diff, deterministic reports, CI gate options, and API/worker-hosted scan flows.
 
 Current scans are static-only by default. The tool does not execute repository code, install packages, run tests, run builds, or build containers as part of a scan.
 
@@ -22,8 +22,8 @@ Current scans are static-only by default. The tool does not execute repository c
 | `v0.6.x` | Policies and profiles | Built-in policies, blocking risks, profile-aware scoring |
 | `v0.7.x` | Release trust | Release hygiene, artifact integrity, SBOM/provenance evidence |
 | `v0.8.x` | Deep code intelligence | Coverage import, code criticality, public API risk |
-| `v0.9.x` | History and comparison | Current: trust diff, historical trend, repository comparison, monitoring models |
-| `v1.0.0` | Stable public release | Stable contracts, documented reports, contributor-ready platform |
+| `v0.9.x` | History and comparison | Trust diff, historical trend, repository comparison, monitoring models |
+| `v1.0.0` | Stable public release | Current: stable contracts, API/worker hosts, documented reports, contributor-ready platform |
 
 ## v0.1.x: Foundation Alpha
 
@@ -481,6 +481,8 @@ Stable by `v1.0.0`:
 - finding and evidence model,
 - report JSON shape,
 - CLI command structure,
+- API scan lifecycle contract,
+- worker job processing contract,
 - rule ID convention,
 - basic scoring model,
 - policy model,
@@ -507,6 +509,24 @@ Required feature set:
 - blocking risks,
 - rule documentation,
 - fixture-based analyzer tests.
+
+Delivered in `v1.0.0`:
+
+- shared application scan lifecycle services,
+- in-memory scan store and job queue for local hosting,
+- cancellation-aware scan processing,
+- central repository scan runner used by CLI, API, and worker,
+- API endpoints for health, start, list, status, progress, modules, findings, reports, and cancellation,
+- Worker host using the shared queued scan processor,
+- API/worker documentation and local smoke-test guidance.
+
+Remaining post-1.0 candidates:
+
+- durable persistence adapter,
+- shared queue adapter for API/worker split deployments,
+- scheduled scan execution,
+- hosted notification providers,
+- branch/tag comparison commands that run scans into temporary reports.
 
 Required documentation:
 

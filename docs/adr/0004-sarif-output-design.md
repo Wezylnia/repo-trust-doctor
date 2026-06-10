@@ -1,16 +1,16 @@
 # ADR 0004: SARIF Output Design
 
-Status: Proposed
+Status: Accepted
 
 ## Context
 
 SARIF is useful because GitHub code scanning and other security tools can ingest structured analysis results, show findings inline with source locations, track alerts across runs, and suppress duplicate noise when stable fingerprints are available.
 
-Repository Trust Doctor currently emits JSON and Markdown reports. Those reports already include structured rule IDs, categories, severity, confidence, evidence, recommendations, and stable finding fingerprints. Full SARIF output should build on that model rather than become a separate analyzer output path.
+Repository Trust Doctor emits JSON, Markdown, and SARIF reports. Those reports already include structured rule IDs, categories, severity, confidence, evidence, recommendations, and stable finding fingerprints. SARIF output builds on that model rather than becoming a separate analyzer output path.
 
 ## Decision
 
-Future SARIF output should be produced by the reporting layer from `RepositoryScan` and `Finding` models.
+SARIF output is produced by the reporting layer from `RepositoryScan` and `Finding` models.
 
 | RepoTrustDoctor field | SARIF target |
 | --------------------- | ------------ |
@@ -32,6 +32,6 @@ Secret-like evidence values must not be written to SARIF. Evidence messages shou
 
 ## Consequences
 
-SARIF implementation is deferred until the fingerprint contract has stayed stable through more report and analyzer changes. Deferring avoids creating code-scanning alerts that churn because fingerprints or rule metadata are still moving.
+SARIF output is implemented in the reporting layer and shares the CLI overwrite protections used by JSON and Markdown reports.
 
-When SARIF output is added, tests should cover deterministic JSON, location mapping, partial fingerprint mapping, and secret-safe evidence handling.
+Tests cover deterministic rule/result output, location mapping, partial fingerprint mapping, and secret-safe evidence handling.

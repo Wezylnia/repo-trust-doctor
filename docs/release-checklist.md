@@ -21,7 +21,10 @@ Use this checklist before publishing a Repository Trust Doctor release.
 git status --short --branch
 dotnet build RepoTrustDoctor.slnx --no-restore
 dotnet test RepoTrustDoctor.slnx --no-build
+dotnet run --project src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj -- --version
 dotnet run --project src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj -- scan . --format console
+dotnet run --project src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj -- scan . --format json --output artifacts/release-scan.json --force
+dotnet run --project src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj -- diff artifacts/release-scan.json artifacts/release-scan.json --format console
 ```
 
 ## Security Review
