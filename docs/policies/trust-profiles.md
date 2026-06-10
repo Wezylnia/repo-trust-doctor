@@ -19,7 +19,7 @@ The current implementation records the selected profile and includes it in JSON 
 
 Each profile resolves to a built-in `TrustPolicy` preset. Presets include minimum overall score, category score thresholds, allowed and denied license placeholders, maximum vulnerability severity, SECURITY.md expectations, unpinned action handling, release checksum requirements, and allowed registry placeholders.
 
-Policy presets are intentionally conservative value objects. They do not make analyzers enforce enterprise decisions; analyzers still produce evidence and policy/scoring layers interpret that evidence.
+Policy presets are intentionally conservative value objects. They do not make analyzers enforce enterprise decisions; analyzers still produce evidence and policy/scoring layers interpret that evidence. Scoring is profile-aware as of `v0.6.0`.
 
 ## Policy Evaluation
 
