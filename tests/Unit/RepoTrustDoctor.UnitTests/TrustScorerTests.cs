@@ -34,11 +34,8 @@ public sealed class TrustScorerTests
         Assert.Contains(score.Decision.Reasons, reason => reason.Contains("TRUST-SECRET002", StringComparison.Ordinal));
     }
 
-    [Theory]
-    [InlineData(TrustProfile.Personal)]
-    [InlineData(TrustProfile.ProductionDependency)]
-    [InlineData(TrustProfile.EnterpriseDependency)]
-    public void Score_WithTrustProfile_KeepsCurrentProfileNeutralBehavior(TrustProfile profile)
+    [Fact]
+    public void Score_WithTrustProfile_AdjustsScoreByProfile()
     {
         var findings = new[]
         {
@@ -47,14 +44,33 @@ public sealed class TrustScorerTests
             CreateFinding("TRUST-REPO010", AnalysisCategory.RepositoryHealth, Severity.Info)
         };
         var scorer = new TrustScorer();
-        var baseline = scorer.Score(findings, TrustProfile.ProductionDependency);
 
-        var score = scorer.Score(findings, profile);
+        var personal = scorer.Score(findings, TrustProfile.Personal);
+        var securitySensitive = scorer.Score(findings, TrustProfile.SecuritySensitiveDependency);
 
-        Assert.Equal(baseline.Overall, score.Overall);
-        Assert.Equal(baseline.Decision.Kind, score.Decision.Kind);
-        Assert.Equal(baseline.Decision.Reasons, score.Decision.Reasons);
-        Assert.Equal(baseline.Categories, score.Categories);
+        Assert.True(personal.Overall > securitySensitive.Overall);
+    }
+
+    [Fact]
+    public void Score_BlockingPolicyRiskOverridesHighNumericScore()
+    {
+        var finding = CreateFinding("TRUST-GHA005", AnalysisCategory.CiCd, Severity.Medium);
+
+        var score = new TrustScorer().Score([finding], TrustProfile.CiCdTool);
+
+        Assert.Equal(FinalDecisionKind.AvoidAsProductionDependency, score.Decision.Kind);
+        Assert.Contains(score.Decision.Reasons, reason => reason.Contains("POLICY-GHA-PINNING", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Score_PolicyViolationCanRequireManualReview()
+    {
+        var finding = CreateFinding("TRUST-REPO003", AnalysisCategory.RepositoryHealth, Severity.Low);
+
+        var score = new TrustScorer().Score([finding], TrustProfile.ProductionDependency);
+
+        Assert.Equal(FinalDecisionKind.NeedsManualReview, score.Decision.Kind);
+        Assert.Contains(score.Decision.Reasons, reason => reason.Contains("POLICY-SECURITY-MD", StringComparison.Ordinal));
     }
 
     private static Finding CreateFinding(string ruleId, AnalysisCategory category, Severity severity)

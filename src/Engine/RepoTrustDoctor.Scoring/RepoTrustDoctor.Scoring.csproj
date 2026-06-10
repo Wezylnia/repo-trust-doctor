@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\RepoTrustDoctor.Domain\RepoTrustDoctor.Domain.csproj" />
+    <ProjectReference Include="..\RepoTrustDoctor.Policies\RepoTrustDoctor.Policies.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
