@@ -2,6 +2,32 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v0.9.0 - 2026-06-10
+
+This release adds trust history, scan snapshots, trust diff, repository comparison, scheduled scan contracts, and regression alert foundations.
+
+### Added
+
+- `RepoTrustDoctor.TrustHistory` engine project.
+- `ScanSnapshot` model derived from existing scan reports without storing raw repository source files.
+- Trust diff engine for score deltas, category deltas, new findings, resolved findings, worsened findings, improved findings, and unchanged findings.
+- Repository comparison engine for sorting multiple snapshots by trust risk.
+- Scheduled scan contract and regression alert detector for score drops, worsened decisions, new blocking findings, and new high-severity findings.
+- CLI `diff <before.json> <after.json>` command with console, JSON, and Markdown output.
+- Unit tests for snapshot creation, diff behavior, repository comparison, regression alerts, and diff option parsing.
+- Trust history and diff documentation.
+
+### Changed
+
+- Product version is now `0.9.0`.
+- README, roadmap, and report format docs now describe trust diff and history models.
+
+### Security
+
+- Trust diff reads local JSON reports and does not clone repositories, execute code, or contact remote services.
+- Snapshots store finding metadata and primary file paths, not raw repository source files.
+- Regression alerts are local model outputs and do not send notifications by default.
+
 ## v0.8.0 - 2026-06-10
 
 This release adds deep code intelligence for imported coverage, critical source files, critical coverage gaps, and conservative .NET public API review.
