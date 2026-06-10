@@ -87,3 +87,13 @@ Static analyzers also apply bounded text reads so unusually large files are not 
 ## Security Baseline
 
 Repository code is untrusted input. Hosted scans should only allow static file reads and safe network metadata lookups unless execution is explicitly enabled in a sandboxed mode.
+
+## Scan Progress Contracts
+
+`RepoTrustDoctor.Contracts` exposes polling-friendly scan progress DTOs for future API and worker surfaces. The lifecycle states are:
+
+```text
+Queued -> PreparingRepository -> RunningFastModules -> RunningStaticAnalyzers -> RunningDependencyAnalyzers -> RunningSecurityAnalyzers -> Scoring -> Reporting -> Completed
+```
+
+Failure and cancellation are represented with `Failed` and `Cancelled`. Module progress uses the existing domain `ModuleStatus` values so API and worker implementations can report completed, warning, failed, timed-out, skipped, or cancelled modules consistently.
