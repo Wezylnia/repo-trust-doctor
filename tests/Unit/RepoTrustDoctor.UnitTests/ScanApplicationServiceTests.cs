@@ -1,6 +1,7 @@
 using RepoTrustDoctor.Application.Scanning;
 using RepoTrustDoctor.Contracts;
 using RepoTrustDoctor.Domain;
+using System.Text.Json;
 
 namespace RepoTrustDoctor.UnitTests;
 
@@ -62,6 +63,8 @@ public sealed class ScanApplicationServiceTests
         Assert.Equal(ScanLifecycleState.Completed, state!.State);
         Assert.NotNull(state.Result);
         Assert.Equal(100, state.Result.Score.Overall);
+        Assert.Equal(1, state.ToStatusResponse().ModuleCount);
+        Assert.Equal(0, state.ToStatusResponse().FindingCount);
         Assert.Equal(1, state.ToProgressDto().CompletionRatio);
     }
 
@@ -80,6 +83,33 @@ public sealed class ScanApplicationServiceTests
         Assert.True(store.TryGet(result.ScanId, out var state));
         Assert.Equal(ScanLifecycleState.Failed, state!.State);
         Assert.Contains("Scan failed", state.StatusMessage);
+    }
+
+    [Fact]
+    public void ScanJsonSerializerOptions_WritesApiEnumsAsStrings()
+    {
+        var dto = new ScanStatusResponse(
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            ".",
+            AnalysisDepth.Fast,
+            TrustProfile.ProductionDependency,
+            ScanLifecycleState.Completed,
+            DateTimeOffset.Parse("2026-06-10T00:00:00Z"),
+            DateTimeOffset.Parse("2026-06-10T00:00:01Z"),
+            DateTimeOffset.Parse("2026-06-10T00:00:01Z"),
+            "Completed.",
+            9,
+            3,
+            85,
+            FinalDecisionKind.SafeToTry);
+
+        var json = JsonSerializer.Serialize(dto, ScanJsonSerializerOptions.Create());
+
+        Assert.Contains("\"depth\":\"Fast\"", json);
+        Assert.Contains("\"trustProfile\":\"ProductionDependency\"", json);
+        Assert.Contains("\"state\":\"Completed\"", json);
+        Assert.Contains("\"decision\":\"SafeToTry\"", json);
+        Assert.DoesNotContain("\"state\":8", json);
     }
 
     private sealed class FakeScanRunner : IRepositoryScanRunner

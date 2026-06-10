@@ -20,6 +20,8 @@ public sealed record ScanStatusResponse(
     DateTimeOffset UpdatedAt,
     DateTimeOffset? CompletedAt,
     string? StatusMessage,
+    int? ModuleCount,
+    int? FindingCount,
     int? OverallScore,
     FinalDecisionKind? Decision);
 
