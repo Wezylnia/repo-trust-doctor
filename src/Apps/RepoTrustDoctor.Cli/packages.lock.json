@@ -25,6 +25,13 @@
           "RepoTrustDoctor.Shared": "[1.0.0, )"
         }
       },
+      "repotrustdoctor.analyzers.codebase": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
       "repotrustdoctor.analyzers.dependencyinventory": {
         "type": "Project",
         "dependencies": {
