@@ -104,4 +104,29 @@ public sealed class DockerComposeAnalyzerTests
 
         Assert.Empty(result.Findings);
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_SecureCompose_NoSecurityFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "docker-compose.yml"), """
+        services:
+          app:
+            image: nginx:1.25
+            ports:
+              - "127.0.0.1:8080:80"
+            volumes:
+              - appdata:/data
+        volumes:
+          appdata:
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP001");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP002");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP004");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP005");
+    }
 }

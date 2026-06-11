@@ -109,4 +109,43 @@ public sealed class GitLabCiAnalyzerTests
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GLCI003");
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_SafeScriptWithoutCiVariables_NoInjectionFinding()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".gitlab-ci.yml"), """
+        stages:
+          - build
+        build:
+          script:
+            - echo "Building app"
+            - make build
+        """);
+
+        var analyzer = new GitLabCiAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GLCI002");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_RulesInsteadOfOnlyExcept_NoDeprecatedFinding()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".gitlab-ci.yml"), """
+        stages:
+          - build
+        build:
+          rules:
+            - if: '$CI_COMMIT_BRANCH == "main"'
+          script:
+            - make
+        """);
+
+        var analyzer = new GitLabCiAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GLCI004");
+    }
 }
