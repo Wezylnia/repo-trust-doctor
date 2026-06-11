@@ -1015,3 +1015,61 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+.drilldown-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 8px 0;
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #cfd6e0;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #344054;
+  padding: 6px 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.back-button:hover {
+  background: #f8fafc;
+}
+
+.area-score-card.clickable {
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+}
+
+.area-score-card.clickable:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.dependency-ecosystem-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.ecosystem-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  font-size: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.ecosystem-row span:first-child {
+  color: #475467;
+}
+
+.ecosystem-row span:last-child {
+  font-weight: 700;
+}

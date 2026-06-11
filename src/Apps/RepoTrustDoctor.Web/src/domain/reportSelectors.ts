@@ -153,6 +153,26 @@ export function explainFinding(finding: Finding): string {
     return 'This finding affects release trust. Strong release evidence helps users verify what changed, where artifacts came from, and whether downloaded files match the published source.';
   }
 
+  if (finding.ruleId.startsWith('TRUST-WS')) {
+    return 'This repository uses a monorepo workspace pattern. Workspaces are a valid choice but may require different review strategies for each project within the repository.';
+  }
+
+  if (finding.ruleId.startsWith('TRUST-GLCI')) {
+    return 'This finding affects GitLab CI/CD pipeline safety. Remote includes, unpinned images, and CI variable interpolation can introduce supply-chain or injection risks.';
+  }
+
+  if (finding.ruleId.startsWith('TRUST-COMP')) {
+    return 'This finding affects Docker Compose configuration. Privileged containers, host network access, and broad port exposure can weaken container isolation.';
+  }
+
+  if (finding.ruleId.startsWith('TRUST-K8S')) {
+    return 'This finding affects Kubernetes manifest security. Privileged pods, host namespace sharing, and writable root filesystems increase the blast radius of a compromised container.';
+  }
+
+  if (finding.ruleId.startsWith('TRUST-EVI')) {
+    return 'This finding relates to supply-chain evidence. SBOMs and provenance attestations help verify what went into a build and how it was produced.';
+  }
+
   return 'Review this finding together with its evidence and recommendation. The severity reflects expected impact, while confidence reflects how directly the scanner could prove the signal.';
 }
 
