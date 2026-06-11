@@ -118,6 +118,13 @@
           "RepoTrustDoctor.Domain": "[1.0.0, )"
         }
       },
+      "repotrustdoctor.analyzers.terraform": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
       "repotrustdoctor.application": {
         "type": "Project",
         "dependencies": {
