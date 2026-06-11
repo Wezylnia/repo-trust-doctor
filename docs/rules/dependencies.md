@@ -192,6 +192,66 @@ Why it matters: deprecated or yanked packages may no longer receive fixes or may
 
 Recommendation: replace deprecated packages or upgrade to a maintained version.
 
+## TRUST-DEP017: Java Dependency Manifest Does Not Have a Recognized Lockfile
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: Medium
+
+Detects Maven or Gradle repositories with `pom.xml`, `build.gradle`, or `build.gradle.kts` files but no recognized dependency lock evidence such as `gradle.lockfile`, `dependencies.lock`, or `maven-dependency-lock.json`.
+
+Why it matters: Java dependency resolution can drift when transitive dependencies are updated or when dynamic declarations are used. Lock evidence makes dependency review and repeatable builds easier.
+
+Recommendation: commit Gradle dependency locking output or equivalent dependency lock evidence for repeatable Java builds.
+
+## TRUST-DEP018: Java Dependency Uses a Dynamic or Unpinned Version
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Maven or Gradle dependencies with missing versions, dynamic Gradle versions such as `+`, Maven version ranges, unresolved Maven properties, or legacy `LATEST` / `RELEASE` declarations.
+
+Why it matters: dynamic Java dependency declarations can resolve to different artifacts over time, making security review and build reproduction harder.
+
+Recommendation: pin Java dependency versions or resolve them through a reviewed platform/BOM.
+
+## TRUST-DEP019: Java Dependency Uses a Snapshot or Prerelease Version
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: High
+
+Detects Java dependencies using `SNAPSHOT`, milestone, beta, alpha, release-candidate, or preview-style versions.
+
+Why it matters: prerelease and snapshot artifacts can change more frequently and may not carry the same production stability expectations as release artifacts.
+
+Recommendation: review whether the Java prerelease dependency is intentional before production use.
+
+## TRUST-DEP020: Gradle Project Does Not Include Wrapper Scripts
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: Medium
+
+Detects Gradle builds without both `gradlew` and `gradle/wrapper/gradle-wrapper.properties`.
+
+Why it matters: without a wrapper, reviewers cannot easily see the expected Gradle distribution and builds may depend on whichever Gradle version exists on the host.
+
+Recommendation: commit `gradlew`, `gradlew.bat`, and the wrapper properties file so reviewers can see the expected Gradle distribution.
+
+## TRUST-DEP021: Spring Boot Actuator Exposes Broad Endpoint Access
+
+- Category: Dependencies
+- Default severity: High
+- Default confidence: Medium
+
+Detects Spring Boot configuration where `management.endpoints.web.exposure.include` appears to expose all web endpoints.
+
+Why it matters: broad Actuator exposure can publish operational details or sensitive management endpoints if network controls and authentication are not strict.
+
+Recommendation: restrict `management.endpoints.web.exposure.include` to the minimum required endpoints and protect management interfaces.
+
 ## TRUST-ORIGIN001: Package Repository URL Does Not Match Analyzed Repository
 
 - Category: Dependencies

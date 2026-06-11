@@ -47,7 +47,8 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
             [
                 new NuGetPackageMetadataClient(packageLookup),
                 new NpmPackageMetadataClient(packageLookup),
-                new PyPiPackageMetadataClient(packageLookup)
+                new PyPiPackageMetadataClient(packageLookup),
+                new MavenCentralPackageMetadataClient(packageLookup)
             ]),
             new PackageFreshnessAnalyzer(),
             new DependencyVulnerabilityAnalyzer(new OsvAdvisoryClient(osvLookup)),

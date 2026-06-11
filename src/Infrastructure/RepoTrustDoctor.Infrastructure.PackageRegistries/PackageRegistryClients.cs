@@ -57,6 +57,28 @@ public sealed class PyPiPackageMetadataClient(SafeHttpLookup lookup) : IPackageM
     }
 }
 
+public sealed class MavenCentralPackageMetadataClient(SafeHttpLookup lookup) : IPackageMetadataClient
+{
+    public DependencyEcosystem Ecosystem => DependencyEcosystem.Maven;
+
+    public async Task<PackageRegistryMetadata?> GetMetadataAsync(DependencyPackageInfo package, CancellationToken cancellationToken)
+    {
+        var coordinates = package.Name.Split(':', 2);
+        if (coordinates.Length != 2)
+        {
+            return null;
+        }
+
+        var group = Uri.EscapeDataString(coordinates[0]);
+        var artifact = Uri.EscapeDataString(coordinates[1]);
+        var uri = new Uri($"https://search.maven.org/solrsearch/select?q=g:%22{group}%22+AND+a:%22{artifact}%22&rows=1&wt=json");
+        var result = await lookup.GetStringAsync(uri, cancellationToken);
+        return result.Success && result.Body is not null
+            ? PackageMetadataParser.ParseMavenCentral(package, result.Body)
+            : null;
+    }
+}
+
 public static class PackageMetadataParser
 {
     public static PackageRegistryMetadata? ParseNuGet(DependencyPackageInfo package, string json)
@@ -191,6 +213,33 @@ public static class PackageMetadataParser
             "pypi.org");
     }
 
+    public static PackageRegistryMetadata? ParseMavenCentral(DependencyPackageInfo package, string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (!document.RootElement.TryGetProperty("response", out var response) ||
+            !response.TryGetProperty("docs", out var docs) ||
+            docs.ValueKind != JsonValueKind.Array ||
+            docs.GetArrayLength() == 0)
+        {
+            return null;
+        }
+
+        var doc = docs[0];
+        return new PackageRegistryMetadata(
+            package.Ecosystem,
+            package.Name,
+            package.Version,
+            ReadString(doc, "latestVersion"),
+            ReadUnixMillis(doc, "timestamp"),
+            false,
+            false,
+            null,
+            null,
+            null,
+            null,
+            "search.maven.org");
+    }
+
     private static void CollectCatalogEntries(JsonElement element, List<JsonElement> entries)
     {
         if (element.ValueKind == JsonValueKind.Object)
@@ -228,6 +277,16 @@ public static class PackageMetadataParser
     {
         var value = ReadString(element, propertyName);
         return DateTimeOffset.TryParse(value, out var parsed) ? parsed : null;
+    }
+
+    private static DateTimeOffset? ReadUnixMillis(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.Number)
+        {
+            return null;
+        }
+
+        return property.TryGetInt64(out var millis) ? DateTimeOffset.FromUnixTimeMilliseconds(millis) : null;
     }
 }
 

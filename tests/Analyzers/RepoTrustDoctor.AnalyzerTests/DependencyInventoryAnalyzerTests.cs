@@ -393,6 +393,102 @@ public sealed class DependencyInventoryAnalyzerTests
         Assert.Empty(result.Findings);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_MavenPom_ParsesDependenciesAndReportsRiskyVersions()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "maven-dependency-lock.json"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "pom.xml"), """
+        <project>
+          <properties>
+            <spring.boot.version>3.3.1</spring.boot.version>
+          </properties>
+          <dependencies>
+            <dependency>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-web</artifactId>
+              <version>${spring.boot.version}</version>
+            </dependency>
+            <dependency>
+              <groupId>com.example</groupId>
+              <artifactId>floating</artifactId>
+              <version>[1.0,2.0)</version>
+            </dependency>
+            <dependency>
+              <groupId>com.example</groupId>
+              <artifactId>preview</artifactId>
+              <version>1.0.0-SNAPSHOT</version>
+            </dependency>
+          </dependencies>
+        </project>
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, package =>
+            package.Ecosystem == DependencyEcosystem.Maven &&
+            package.Name == "org.springframework.boot:spring-boot-starter-web" &&
+            package.Version == "3.3.1" &&
+            package.IsVersionPinned);
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP018" && finding.Message.Contains("com.example:floating", StringComparison.Ordinal));
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP019" && finding.Message.Contains("com.example:preview", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GradleBuild_ParsesDependenciesAndReportsMissingWrapper()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "gradle.lockfile"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "build.gradle"), """
+        dependencies {
+          implementation 'org.springframework.boot:spring-boot-starter-actuator:3.3.+'
+          testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, package => package.Name == "org.springframework.boot:spring-boot-starter-actuator" && package.Scope == DependencyScope.Production);
+        Assert.Contains(inventory.Packages, package => package.Name == "org.junit.jupiter:junit-jupiter" && package.Scope == DependencyScope.Development);
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP018" && finding.Message.Contains("spring-boot-starter-actuator", StringComparison.Ordinal));
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP020");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_JavaManifestWithoutLockfile_ReportsDep017()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "pom.xml"), "<project />");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-DEP017");
+        Assert.Equal(Severity.Low, finding.Severity);
+        Assert.Equal("pom.xml", Assert.Single(finding.Evidence).FilePath);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_SpringBootActuatorExposure_ReportsDep021()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "src", "main", "resources"));
+        File.WriteAllText(Path.Combine(fixture.Path, "src", "main", "resources", "application.properties"), """
+        management.endpoints.web.exposure.include=*
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-DEP021");
+        Assert.Equal(Severity.High, finding.Severity);
+        Assert.Equal("src/main/resources/application.properties", Assert.Single(finding.Evidence).FilePath);
+    }
+
     private static DependencyInventoryArtifact GetInventory(AnalyzerResult result)
     {
         var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == DependencyInventoryArtifact.ArtifactKey);

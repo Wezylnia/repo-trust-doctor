@@ -6,7 +6,7 @@ The roadmap is intentionally conservative. Each milestone should leave the proje
 
 ## Current Release
 
-`v1.0.6` is a stable static scanner and local platform focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, dependency risk intelligence, policy-aware scoring, SARIF output, release evidence review, deep code intelligence, trust history/diff, deterministic reports, CI gate options, API/worker-hosted scan flows, and a local React scan workbench.
+`v1.1.0` is a stable static scanner and local platform focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory for npm, NuGet, Python, Maven, and Gradle, Spring Boot configuration signals, dependency risk intelligence, policy-aware scoring, SARIF output, release evidence review, deep code intelligence, trust history/diff, deterministic reports, CI gate options, API/worker-hosted scan flows, and a local React scan workbench.
 
 Current scans are static-only by default. The tool does not execute repository code, install packages, run tests, run builds, or build containers as part of a scan.
 
@@ -24,7 +24,7 @@ Current scans are static-only by default. The tool does not execute repository c
 | `v0.8.x` | Deep code intelligence | Coverage import, code criticality, public API risk |
 | `v0.9.x` | History and comparison | Trust diff, historical trend, repository comparison, monitoring models |
 | `v1.0.x` | Stable public release | Current: stable contracts, API/worker hosts, React scan workbench, documented reports |
-| `v1.1.0` | React and backend scan experience | Planned: live progress, persistence-backed report history, richer scan management |
+| `v1.1.0` | Java and Spring Boot support | Maven/Gradle inventory, Maven metadata/advisory lookup, Spring Boot Actuator exposure checks |
 
 ## v0.1.x: Foundation Alpha
 

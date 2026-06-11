@@ -97,6 +97,31 @@ public sealed class PackageInfrastructureTests
     }
 
     [Fact]
+    public void PackageMetadataParser_ParsesMavenCentralFixture()
+    {
+        var package = CreatePackage(DependencyEcosystem.Maven, "org.springframework.boot:spring-boot-starter-web", "3.3.1");
+        var metadata = PackageMetadataParser.ParseMavenCentral(package, """
+        {
+          "response": {
+            "docs": [
+              {
+                "g": "org.springframework.boot",
+                "a": "spring-boot-starter-web",
+                "latestVersion": "3.5.0",
+                "timestamp": 1760000000000
+              }
+            ]
+          }
+        }
+        """);
+
+        Assert.NotNull(metadata);
+        Assert.Equal("3.5.0", metadata!.LatestVersion);
+        Assert.Equal("search.maven.org", metadata.SourceRegistry);
+        Assert.Equal(DependencyEcosystem.Maven, metadata.Ecosystem);
+    }
+
+    [Fact]
     public void OsvAdvisoryClient_ParsesAdvisoryFixture()
     {
         var advisories = OsvAdvisoryClient.Parse("""
