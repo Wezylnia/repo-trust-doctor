@@ -11,7 +11,8 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new NuGetDependencyCollector(),
         new PythonDependencyCollector(),
         new JavaDependencyCollector(),
-        new GoDependencyCollector()
+        new GoDependencyCollector(),
+        new CargoDependencyCollector()
     ];
 
     public string Id => "dependency-inventory";
@@ -52,7 +53,12 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new("TRUST-DEP022", "Go module does not have a go.sum file", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A go.mod file exists but no go.sum was found.", "Run 'go mod tidy' and commit go.sum to the repository for reproducible builds."),
         new("TRUST-DEP023", "Go module uses replace directive", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "The go.mod file contains a replace directive.", "Review replace directives because they override resolved module versions."),
         new("TRUST-DEP024", "Go dependency uses a non-exact version", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Go module dependency does not use an exact pinned version.", "Use exact versions with a committed go.sum for reproducible Go builds."),
-        new("TRUST-DEP025", "Go dependency uses a pseudo-version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Go module dependency references a pseudo-version.", "Prefer tagged releases over pseudo-versions and review pseudo-version origins.")
+        new("TRUST-DEP025", "Go dependency uses a pseudo-version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Go module dependency references a pseudo-version.", "Prefer tagged releases over pseudo-versions and review pseudo-version origins."),
+        new("TRUST-DEP026", "Cargo project does not have a Cargo.lock file", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Cargo.toml file exists but no Cargo.lock was found.", "Commit Cargo.lock to the repository for reproducible builds (recommended for binaries)."),
+        new("TRUST-DEP027", "Cargo dependency uses a Git source", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Cargo dependency references a Git source instead of a registry version.", "Review Git-sourced dependencies and prefer crates.io packages with pinned versions when possible."),
+        new("TRUST-DEP028", "Cargo dependency uses a path source", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Cargo dependency references a local path instead of a registry version.", "Review path-sourced dependencies because they depend on repository layout and may bypass registry provenance."),
+        new("TRUST-DEP029", "Cargo dependency uses a non-exact version", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Cargo dependency does not use an exact pinned version.", "Use exact versions with a committed Cargo.lock for reproducible Cargo builds."),
+        new("TRUST-DEP030", "Cargo dependency uses a prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Cargo dependency uses a prerelease version.", "Review whether the prerelease dependency is intentional before production use.")
     ];
 
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)

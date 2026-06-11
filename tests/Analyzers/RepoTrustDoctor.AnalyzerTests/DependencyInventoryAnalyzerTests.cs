@@ -642,6 +642,182 @@ public sealed class DependencyInventoryAnalyzerTests
         Assert.Equal("2", inventory.Metrics["dependency.package.go.count"]);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_CargoTomlWithoutCargoLock_ReportsDep026()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
+        [package]
+        name = "mycrate"
+        version = "0.1.0"
+
+        [dependencies]
+        serde = "1.0"
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP026");
+        Assert.Equal(Severity.Medium, finding.Severity);
+        Assert.Equal(Confidence.High, finding.Confidence);
+        Assert.Equal("Cargo.toml", Assert.Single(finding.Evidence).FilePath);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CargoTomlWithCargoLock_DoesNotReportDep026()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
+        [package]
+        name = "mycrate"
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), "");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP026");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CargoExactVersions_AreRecorded()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
+        [package]
+        name = "mycrate"
+        version = "0.1.0"
+
+        [dependencies]
+        serde = "1.0.210"
+        tokio = { version = "1.41.0", features = ["full"] }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Manifests, m => m.Ecosystem == DependencyEcosystem.Cargo && m.Kind == "Cargo.toml");
+        Assert.Contains(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Cargo && p.Name == "serde" && p.IsVersionPinned);
+        Assert.Contains(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Cargo && p.Name == "tokio" && p.IsVersionPinned);
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP029");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CargoNonExactVersion_ReportsDep029()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
+        [package]
+        name = "mycrate"
+
+        [dependencies]
+        serde = "1"
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP029" && f.Message.Contains("serde", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CargoGitDependency_ReportsDep027()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
+        [package]
+        name = "mycrate"
+
+        [dependencies]
+        mylib = { git = "https://github.com/example/mylib", branch = "main" }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP027" && f.Message.Contains("mylib", StringComparison.Ordinal));
+        var inventory = GetInventory(result);
+        var package = Assert.Single(inventory.Packages, p => p.Name == "mylib");
+        Assert.Equal("git", package.Metadata?["sourceKind"]);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CargoPathDependency_ReportsDep028()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
+        [package]
+        name = "mycrate"
+
+        [dependencies]
+        mylib = { path = "../mylib" }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP028" && f.Message.Contains("mylib", StringComparison.Ordinal));
+        var inventory = GetInventory(result);
+        var package = Assert.Single(inventory.Packages, p => p.Name == "mylib");
+        Assert.Equal("path", package.Metadata?["sourceKind"]);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CargoDevAndBuildDependencies_AreScopedCorrectly()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
+        [package]
+        name = "mycrate"
+
+        [dependencies]
+        serde = "1.0.210"
+
+        [dev-dependencies]
+        tokio-test = "1.0.0"
+
+        [build-dependencies]
+        cc = "1.0.0"
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, p => p.Name == "serde" && p.Scope == DependencyScope.Production);
+        Assert.Contains(inventory.Packages, p => p.Name == "tokio-test" && p.Scope == DependencyScope.Development);
+        Assert.Contains(inventory.Packages, p => p.Name == "cc" && p.Scope == DependencyScope.Development);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CargoMetrics_ReflectPackageCounts()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
+        [package]
+        name = "mycrate"
+
+        [dependencies]
+        serde = "1.0.210"
+        tokio = "1.41.0"
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Equal("1", inventory.Metrics["dependency.manifest.cargo.count"]);
+        Assert.Equal("2", inventory.Metrics["dependency.package.cargo.count"]);
+    }
+
     private static DependencyInventoryArtifact GetInventory(AnalyzerResult result)
     {
         var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == DependencyInventoryArtifact.ArtifactKey);
