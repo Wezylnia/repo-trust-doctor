@@ -6,6 +6,7 @@ using RepoTrustDoctor.Analyzers.DependencyInventory;
 using RepoTrustDoctor.Analyzers.DependencyRisk;
 using RepoTrustDoctor.Analyzers.Docker;
 using RepoTrustDoctor.Analyzers.DockerCompose;
+using RepoTrustDoctor.Analyzers.Kubernetes;
 using RepoTrustDoctor.Analyzers.GitHubActions;
 using RepoTrustDoctor.Analyzers.GitLabCi;
 using RepoTrustDoctor.Analyzers.ReleaseEvidence;
@@ -42,6 +43,7 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
             new SecretQuickScanAnalyzer(),
             new DockerBasicAnalyzer(),
             new DockerComposeAnalyzer(),
+            new KubernetesAnalyzer(),
             new DependencyInventoryAnalyzer(),
             new ReleaseEvidenceAnalyzer(),
             new CoverageImportAnalyzer(),
