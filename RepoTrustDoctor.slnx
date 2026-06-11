@@ -18,6 +18,7 @@
   <Folder Name="/src/Analyzers/Dependencies/">
     <Project Path="src/Analyzers/Dependencies/RepoTrustDoctor.Analyzers.DependencyInventory/RepoTrustDoctor.Analyzers.DependencyInventory.csproj" />
     <Project Path="src/Analyzers/Dependencies/RepoTrustDoctor.Analyzers.DependencyRisk/RepoTrustDoctor.Analyzers.DependencyRisk.csproj" />
+    <Project Path="src/Analyzers/Dependencies/RepoTrustDoctor.Analyzers.PackageRegistryConfig/RepoTrustDoctor.Analyzers.PackageRegistryConfig.csproj" />
   </Folder>
   <Folder Name="/src/Analyzers/Iac/">
     <Project Path="src/Analyzers/Iac/RepoTrustDoctor.Analyzers.Terraform/RepoTrustDoctor.Analyzers.Terraform.csproj" />
