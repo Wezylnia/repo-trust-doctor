@@ -334,6 +334,22 @@ public sealed class SecretQuickScanAnalyzerTests
         var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET001");
         Assert.Contains(".git-credentials", finding.Evidence[0].FilePath, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportGenericApiKey_ForPlaceholderValues()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), """
+        api_key=your-api-key-here-12345
+        api_secret=changeme1234567890
+        apikey=placeholder-abcdefghij
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-SECRET012");
+    }
 }
 
 
