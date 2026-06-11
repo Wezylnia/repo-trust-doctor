@@ -74,19 +74,21 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
 
     private static void CheckPrivileged(string content, string relativePath, List<Finding> findings)
     {
-        if (PrivilegedPattern().IsMatch(content))
+        foreach (Match match in PrivilegedPattern().Matches(content))
         {
             findings.Add(CreateFinding("TRUST-K8S001", "Kubernetes container runs in privileged mode",
-                Severity.High, relativePath, "securityContext.privileged is set to true."));
+                Severity.High, relativePath, "securityContext.privileged is set to true.",
+                GetLineNumber(content, match.Index)));
         }
     }
 
     private static void CheckHostNamespace(string content, string relativePath, List<Finding> findings)
     {
-        if (HostNamespacePattern().IsMatch(content))
+        foreach (Match match in HostNamespacePattern().Matches(content))
         {
             findings.Add(CreateFinding("TRUST-K8S002", "Kubernetes pod shares host namespace",
-                Severity.High, relativePath, "Pod uses hostNetwork, hostPID, or hostIPC."));
+                Severity.High, relativePath, "Pod uses hostNetwork, hostPID, or hostIPC.",
+                GetLineNumber(content, match.Index)));
         }
     }
 
@@ -110,18 +112,27 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
 
     private static void CheckSecretManifest(string content, string relativePath, List<Finding> findings)
     {
-        if (SecretKindPattern().IsMatch(content))
+        foreach (Match match in SecretKindPattern().Matches(content))
         {
             findings.Add(CreateFinding("TRUST-K8S005", "Kubernetes Secret manifest in repository",
-                Severity.Medium, relativePath, "A Kubernetes Secret manifest was found. Values are base64-encoded, not encrypted."));
+                Severity.Medium, relativePath, "A Kubernetes Secret manifest was found. Values are base64-encoded, not encrypted.",
+                GetLineNumber(content, match.Index)));
         }
     }
 
-    private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence)
+    private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null)
     {
         return new Finding(ruleId, title, AnalysisCategory.Containers, severity, Confidence.High, title,
-            [new Evidence("kubernetes", evidence, filePath)],
+            [new Evidence("kubernetes", evidence, filePath, lineNumber)],
             new Recommendation("Review the Kubernetes manifest and apply the recommended security hardening."));
+    }
+
+    private static int GetLineNumber(string content, int matchIndex)
+    {
+        var line = 1;
+        for (var i = 0; i < matchIndex && i < content.Length; i++)
+            if (content[i] == '\n') line++;
+        return line;
     }
 
     [GeneratedRegex(@"privileged\s*:\s*true", RegexOptions.IgnoreCase)]
