@@ -818,6 +818,140 @@ public sealed class DependencyInventoryAnalyzerTests
         Assert.Equal("2", inventory.Metrics["dependency.package.cargo.count"]);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_ComposerJsonWithoutComposerLock_ReportsDep031()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.json"), """
+        {
+            "require": {
+                "php": ">=8.1",
+                "monolog/monolog": "^3.0"
+            }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP031");
+        Assert.Equal(Severity.Medium, finding.Severity);
+        Assert.Equal(Confidence.High, finding.Confidence);
+        Assert.Equal("composer.json", Assert.Single(finding.Evidence).FilePath);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ComposerJsonWithComposerLock_DoesNotReportDep031()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.json"), """
+        {
+            "require": {
+                "monolog/monolog": "3.5.0"
+            }
+        }
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.lock"), "{}");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP031");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ComposerNonExactConstraint_ReportsDep032()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.lock"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.json"), """
+        {
+            "require": {
+                "monolog/monolog": "^3.0"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "~10.0"
+            }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP032" && f.Message.Contains("monolog/monolog", StringComparison.Ordinal));
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP032" && f.Message.Contains("phpunit/phpunit", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ComposerExactVersion_IsRecorded()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.lock"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.json"), """
+        {
+            "require": {
+                "monolog/monolog": "3.5.0"
+            }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Manifests, m => m.Ecosystem == DependencyEcosystem.Composer && m.Kind == "composer.json");
+        var package = Assert.Single(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Composer && p.Name == "monolog/monolog");
+        Assert.True(package.IsVersionPinned);
+        Assert.Equal(DependencyScope.Production, package.Scope);
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP032");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ComposerDevDependencies_AreScopedCorrectly()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.lock"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.json"), """
+        {
+            "require": {
+                "monolog/monolog": "3.5.0"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "10.5.0"
+            }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, p => p.Name == "monolog/monolog" && p.Scope == DependencyScope.Production);
+        Assert.Contains(inventory.Packages, p => p.Name == "phpunit/phpunit" && p.Scope == DependencyScope.Development);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ComposerMetrics_ReflectPackageCounts()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.lock"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.json"), """
+        {
+            "require": {
+                "monolog/monolog": "3.5.0",
+                "guzzlehttp/guzzle": "7.8.0"
+            }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Equal("1", inventory.Metrics["dependency.manifest.composer.count"]);
+        Assert.Equal("2", inventory.Metrics["dependency.package.composer.count"]);
+    }
+
     private static DependencyInventoryArtifact GetInventory(AnalyzerResult result)
     {
         var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == DependencyInventoryArtifact.ArtifactKey);
