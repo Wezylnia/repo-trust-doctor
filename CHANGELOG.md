@@ -2,6 +2,23 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v1.1.0 - 2026-06-11
+
+This release adds Java and Spring Boot dependency analysis.
+
+### Added
+
+- Maven ecosystem support in dependency inventory, package metadata lookup, and OSV vulnerability queries.
+- Static Maven `pom.xml` parsing for direct dependency coordinates and Maven property-resolved versions.
+- Static Gradle `build.gradle` and `build.gradle.kts` parsing for common dependency declarations.
+- Java dependency rules for missing lock evidence, dynamic versions, SNAPSHOT/prerelease versions, missing Gradle wrapper files, and broad Spring Boot Actuator exposure.
+- Analyzer and infrastructure tests covering Maven, Gradle, Spring Boot configuration, Maven Central metadata, and Maven OSV routing.
+
+### Changed
+
+- Product version is now `1.1.0`.
+- Web app version is now `1.1.0`.
+
 ## v1.0.9 - 2026-06-11
 
 This release improves the React scan and report experience.

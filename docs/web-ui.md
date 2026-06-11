@@ -42,9 +42,9 @@ npm run build
 npm test
 ```
 
-## v1.1.0 Direction
+## Next React Direction
 
-The next React/backend milestone should keep the same primary flow and deepen it:
+After `v1.1.0`, the React/backend scan experience should keep the same primary flow and deepen it:
 
 - richer live progress by module while scans are running,
 - API health and compatibility detection in the web app,

@@ -18,6 +18,8 @@ Each rule documents:
 
 The current catalog covers implemented static analyzer rules, dependency inventory rules, dependency risk intelligence, vulnerability advisory findings, license metadata review, package-origin review rules, release evidence rules, and deep code intelligence rules.
 
+See also [Language Support](../language-support.md) for ecosystem coverage by language and package manager.
+
 ## Categories
 
 - [Repository Health](repository-health.md)

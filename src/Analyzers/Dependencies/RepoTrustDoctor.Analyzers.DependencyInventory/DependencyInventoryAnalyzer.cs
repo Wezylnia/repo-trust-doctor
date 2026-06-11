@@ -15,6 +15,7 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
 {
     private static readonly string[] NpmLockfileNames = ["package-lock.json", "pnpm-lock.yaml", "yarn.lock"];
     private static readonly string[] PythonLockfileNames = ["Pipfile.lock", "poetry.lock", "uv.lock"];
+    private static readonly string[] JavaLockfileNames = ["gradle.lockfile", "dependencies.lock", "maven-dependency-lock.json"];
 
     public string Id => "dependency-inventory";
 
@@ -45,7 +46,12 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new("TRUST-DEP011", "npm dependency uses a direct remote source", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A package.json dependency points directly at a Git or URL source instead of a registry version.", "Review direct remote dependency sources and prefer registry packages with pinned versions when possible."),
         new("TRUST-DEP012", "npm dependency uses a local file source", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A package.json dependency points at a local file, link, workspace, or portal source.", "Review local dependency sources because they depend on repository layout and may bypass registry provenance."),
         new("TRUST-DEP013", "NuGet package source uses insecure transport", AnalysisCategory.Dependencies, Severity.High, Confidence.High, "NuGet.config defines an HTTP package source.", "Use HTTPS package sources and avoid sending package metadata or credentials over plaintext transport."),
-        new("TRUST-DEP014", "NuGet package source uses a local path", AnalysisCategory.Dependencies, Severity.Low, Confidence.Medium, "NuGet.config defines a local package source.", "Review local package sources because they can change package origin assumptions and may hide dependency confusion risk.")
+        new("TRUST-DEP014", "NuGet package source uses a local path", AnalysisCategory.Dependencies, Severity.Low, Confidence.Medium, "NuGet.config defines a local package source.", "Review local package sources because they can change package origin assumptions and may hide dependency confusion risk."),
+        new("TRUST-DEP017", "Java dependency manifest does not have a recognized lockfile", AnalysisCategory.Dependencies, Severity.Low, Confidence.Medium, "A Maven or Gradle dependency manifest exists without a recognized dependency lockfile.", "Commit Gradle dependency locking output or equivalent dependency lock evidence for repeatable Java builds."),
+        new("TRUST-DEP018", "Java dependency uses a dynamic or unpinned version", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Maven or Gradle dependency uses a missing, dynamic, property-based, or ranged version.", "Pin Java dependency versions or resolve them through a reviewed platform/BOM."),
+        new("TRUST-DEP019", "Java dependency uses a snapshot or prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Maven or Gradle dependency uses a SNAPSHOT or prerelease version.", "Review whether the Java prerelease dependency is intentional before production use."),
+        new("TRUST-DEP020", "Gradle project does not include wrapper scripts", AnalysisCategory.Dependencies, Severity.Low, Confidence.Medium, "A Gradle build exists but the repository does not include Gradle wrapper scripts.", "Commit gradlew, gradlew.bat, and the wrapper properties file so reviewers can see the expected Gradle distribution."),
+        new("TRUST-DEP021", "Spring Boot Actuator exposes broad endpoint access", AnalysisCategory.Dependencies, Severity.High, Confidence.Medium, "Spring Boot Actuator appears configured to expose all web endpoints.", "Restrict management.endpoints.web.exposure.include to the minimum required endpoints and protect management interfaces.")
     ];
 
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -60,6 +66,7 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         AnalyzeNpm(context, findings, warnings, manifests, lockfiles, packages, cancellationToken);
         AnalyzeNuGet(context, findings, warnings, manifests, lockfiles, packages, sources, cancellationToken);
         AnalyzePython(context, findings, warnings, manifests, lockfiles, packages, cancellationToken);
+        AnalyzeJava(context, findings, warnings, manifests, lockfiles, packages, cancellationToken);
 
         var metrics = BuildMetrics(manifests, lockfiles, packages, sources);
         var artifact = new DependencyInventoryArtifact(manifests, lockfiles, packages, sources, metrics);
@@ -372,6 +379,177 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
                     packages.Add(package);
                     AddPythonVersionFindings(package, findings);
                 }
+            }
+        }
+    }
+
+    private static void AnalyzeJava(
+        AnalysisContext context,
+        List<Finding> findings,
+        List<string> warnings,
+        List<DependencyManifestInfo> manifests,
+        List<DependencyLockfileInfo> lockfiles,
+        List<DependencyPackageInfo> packages,
+        CancellationToken cancellationToken)
+    {
+        foreach (var lockfile in JavaLockfileNames.SelectMany(name => RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, name)))
+        {
+            lockfiles.Add(new DependencyLockfileInfo(DependencyEcosystem.Maven, Relative(context, lockfile), Path.GetFileName(lockfile)));
+        }
+
+        var hasJavaLockfile = lockfiles.Any(lockfile => lockfile.Ecosystem == DependencyEcosystem.Maven);
+        var pomFiles = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "pom.xml").ToArray();
+        var gradleFiles = RepositoryFileSystem
+            .EnumerateFiles(context.RepositoryPath, "build.gradle")
+            .Concat(RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "build.gradle.kts"))
+            .ToArray();
+
+        if ((pomFiles.Length > 0 || gradleFiles.Length > 0) && !hasJavaLockfile)
+        {
+            var evidencePath = pomFiles.Length > 0 ? Relative(context, pomFiles[0]) : Relative(context, gradleFiles[0]);
+            findings.Add(new Finding(
+                "TRUST-DEP017",
+                "Java dependency manifest does not have a recognized lockfile",
+                AnalysisCategory.Dependencies,
+                Severity.Low,
+                Confidence.Medium,
+                "Java dependency manifest does not have a recognized lockfile",
+                [new Evidence("package-manifest", "A Maven or Gradle dependency manifest exists without recognized lock evidence.", evidencePath)],
+                new Recommendation("Commit Gradle dependency locking output or equivalent dependency lock evidence for repeatable Java builds.")));
+        }
+
+        foreach (var pom in pomFiles)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            AnalyzeMavenPom(context, pom, warnings, manifests, packages, findings);
+        }
+
+        foreach (var gradle in gradleFiles)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            AnalyzeGradleBuild(context, gradle, warnings, manifests, packages, findings);
+        }
+
+        if (gradleFiles.Length > 0)
+        {
+            var hasWrapper = File.Exists(Path.Combine(context.RepositoryPath, "gradlew")) &&
+                             File.Exists(Path.Combine(context.RepositoryPath, "gradle", "wrapper", "gradle-wrapper.properties"));
+            if (!hasWrapper)
+            {
+                findings.Add(new Finding(
+                    "TRUST-DEP020",
+                    "Gradle project does not include wrapper scripts",
+                    AnalysisCategory.Dependencies,
+                    Severity.Low,
+                    Confidence.Medium,
+                    "Gradle project does not include wrapper scripts",
+                    [new Evidence("gradle-wrapper", "Gradle build files exist but gradlew and gradle-wrapper.properties were not both found.", Relative(context, gradleFiles[0]))],
+                    new Recommendation("Commit gradlew, gradlew.bat, and the wrapper properties file so reviewers can see the expected Gradle distribution.")));
+            }
+        }
+
+        AnalyzeSpringBootConfiguration(context, findings, warnings, cancellationToken);
+    }
+
+    private static void AnalyzeMavenPom(
+        AnalysisContext context,
+        string pom,
+        List<string> warnings,
+        List<DependencyManifestInfo> manifests,
+        List<DependencyPackageInfo> packages,
+        List<Finding> findings)
+    {
+        var relativePath = Relative(context, pom);
+        manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Maven, relativePath, "pom.xml"));
+
+        if (!TryLoadXml(pom, warnings, relativePath, out var document))
+        {
+            return;
+        }
+
+        var properties = ReadMavenProperties(document);
+        foreach (var dependency in document.Descendants().Where(element =>
+            element.Name.LocalName == "dependency" &&
+            !element.Ancestors().Any(ancestor => ancestor.Name.LocalName == "dependencyManagement")))
+        {
+            var groupId = dependency.Elements().FirstOrDefault(element => element.Name.LocalName == "groupId")?.Value?.Trim();
+            var artifactId = dependency.Elements().FirstOrDefault(element => element.Name.LocalName == "artifactId")?.Value?.Trim();
+            if (string.IsNullOrWhiteSpace(groupId) || string.IsNullOrWhiteSpace(artifactId))
+            {
+                continue;
+            }
+
+            var version = dependency.Elements().FirstOrDefault(element => element.Name.LocalName == "version")?.Value?.Trim();
+            var scopeValue = dependency.Elements().FirstOrDefault(element => element.Name.LocalName == "scope")?.Value?.Trim();
+            var package = CreateJavaPackage($"{groupId}:{artifactId}", version, MapMavenScope(scopeValue), relativePath, properties);
+            packages.Add(package);
+            AddJavaVersionFindings(package, findings, "maven-package");
+        }
+    }
+
+    private static void AnalyzeGradleBuild(
+        AnalysisContext context,
+        string gradle,
+        List<string> warnings,
+        List<DependencyManifestInfo> manifests,
+        List<DependencyPackageInfo> packages,
+        List<Finding> findings)
+    {
+        var relativePath = Relative(context, gradle);
+        manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Maven, relativePath, Path.GetFileName(gradle)));
+        if (!TryReadText(gradle, out var content, warnings, relativePath))
+        {
+            return;
+        }
+
+        foreach (Match match in GradleDependencyPattern().Matches(content))
+        {
+            var configuration = match.Groups["configuration"].Value;
+            var coordinates = match.Groups["coordinates"].Value;
+            var parts = coordinates.Split(':');
+            if (parts.Length < 2)
+            {
+                continue;
+            }
+
+            var name = $"{parts[0]}:{parts[1]}";
+            var version = parts.Length >= 3 ? parts[2] : null;
+            var package = CreateJavaPackage(name, version, MapGradleScope(configuration), relativePath, null);
+            packages.Add(package);
+            AddJavaVersionFindings(package, findings, "gradle-package");
+        }
+    }
+
+    private static void AnalyzeSpringBootConfiguration(
+        AnalysisContext context,
+        List<Finding> findings,
+        List<string> warnings,
+        CancellationToken cancellationToken)
+    {
+        var configFiles = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "application.properties")
+            .Concat(RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "application.yml"))
+            .Concat(RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "application.yaml"));
+
+        foreach (var config in configFiles)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var relativePath = Relative(context, config);
+            if (!TryReadText(config, out var content, warnings, relativePath))
+            {
+                continue;
+            }
+
+            if (SpringActuatorExposurePattern().IsMatch(content))
+            {
+                findings.Add(new Finding(
+                    "TRUST-DEP021",
+                    "Spring Boot Actuator exposes broad endpoint access",
+                    AnalysisCategory.Dependencies,
+                    Severity.High,
+                    Confidence.Medium,
+                    "Spring Boot Actuator appears configured to expose all web endpoints.",
+                    [new Evidence("spring-boot-config", "management.endpoints.web.exposure.include appears to include all endpoints.", relativePath)],
+                    new Recommendation("Restrict management.endpoints.web.exposure.include to the minimum required endpoints and protect management interfaces.")));
             }
         }
     }
@@ -776,9 +954,117 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
                 "python-package",
                 $"Package `{package.Name}` version is `{package.Version}`.",
                 package.ManifestPath,
-                "Review whether the prerelease dependency is intentional before production use."));
+            "Review whether the prerelease dependency is intentional before production use."));
         }
     }
+
+    private static Dictionary<string, string> ReadMavenProperties(XDocument document)
+    {
+        var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in document.Descendants().Where(element => element.Parent?.Name.LocalName == "properties"))
+        {
+            var name = property.Name.LocalName;
+            var value = property.Value?.Trim();
+            if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(value))
+            {
+                properties[name] = value;
+            }
+        }
+
+        return properties;
+    }
+
+    private static DependencyPackageInfo CreateJavaPackage(
+        string name,
+        string? rawVersion,
+        DependencyScope scope,
+        string manifestPath,
+        IReadOnlyDictionary<string, string>? properties)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var version = NormalizeVersion(rawVersion);
+        if (version is not null && TryResolveMavenProperty(version, properties, out var resolvedVersion))
+        {
+            metadata["versionSource"] = "property";
+            metadata["declaredVersion"] = version;
+            version = resolvedVersion;
+        }
+
+        return new DependencyPackageInfo(
+            DependencyEcosystem.Maven,
+            name,
+            version,
+            scope,
+            manifestPath,
+            null,
+            true,
+            IsPinnedJavaVersion(version),
+            IsJavaPrereleaseVersion(version),
+            metadata.Count == 0 ? null : metadata);
+    }
+
+    private static bool TryResolveMavenProperty(
+        string version,
+        IReadOnlyDictionary<string, string>? properties,
+        out string resolvedVersion)
+    {
+        resolvedVersion = version;
+        var match = MavenPropertyPattern().Match(version);
+        if (!match.Success || properties is null)
+        {
+            return false;
+        }
+
+        return properties.TryGetValue(match.Groups["name"].Value, out resolvedVersion!);
+    }
+
+    private static void AddJavaVersionFindings(DependencyPackageInfo package, List<Finding> findings, string evidenceKind)
+    {
+        if (!package.IsVersionPinned)
+        {
+            findings.Add(CreateDependencyFinding(
+                "TRUST-DEP018",
+                "Java dependency uses a dynamic or unpinned version",
+                Severity.Medium,
+                Confidence.High,
+                $"Java dependency `{package.Name}` uses a dynamic or unpinned version.",
+                evidenceKind,
+                $"Package `{package.Name}` version is `{DisplayVersion(package.Version)}`.",
+                package.ManifestPath,
+                "Pin Java dependency versions or resolve them through a reviewed platform/BOM."));
+        }
+
+        if (package.IsPrerelease)
+        {
+            findings.Add(CreateDependencyFinding(
+                "TRUST-DEP019",
+                "Java dependency uses a snapshot or prerelease version",
+                Severity.Low,
+                Confidence.High,
+                $"Java dependency `{package.Name}` uses snapshot or prerelease version `{package.Version}`.",
+                evidenceKind,
+                $"Package `{package.Name}` version is `{package.Version}`.",
+                package.ManifestPath,
+                "Review whether the Java prerelease dependency is intentional before production use."));
+        }
+    }
+
+    private static DependencyScope MapMavenScope(string? scope) => scope?.Trim().ToLowerInvariant() switch
+    {
+        "test" => DependencyScope.Development,
+        "provided" => DependencyScope.Development,
+        "runtime" => DependencyScope.Production,
+        "compile" => DependencyScope.Production,
+        _ => DependencyScope.Production
+    };
+
+    private static DependencyScope MapGradleScope(string configuration) => configuration.ToLowerInvariant() switch
+    {
+        "testimplementation" or "testcompileonly" or "testcompile" or "testapi" => DependencyScope.Development,
+        "compileonly" or "annotationprocessor" => DependencyScope.Development,
+        "runtimeonly" or "implementation" or "api" or "compile" => DependencyScope.Production,
+        _ => DependencyScope.Unknown
+    };
 
     private static Finding CreateDependencyFinding(
         string ruleId,
@@ -878,6 +1164,22 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         !string.IsNullOrWhiteSpace(version) &&
         Regex.IsMatch(version, @"\d+\.\d+(\.\d+)?[-][0-9A-Za-z]", RegexOptions.CultureInvariant);
 
+    private static bool IsPinnedJavaVersion(string? version) =>
+        !string.IsNullOrWhiteSpace(version) &&
+        !version.Contains("${", StringComparison.Ordinal) &&
+        !version.Contains('+', StringComparison.Ordinal) &&
+        !version.Contains('[', StringComparison.Ordinal) &&
+        !version.Contains(']', StringComparison.Ordinal) &&
+        !version.Contains('(', StringComparison.Ordinal) &&
+        !version.Contains(')', StringComparison.Ordinal) &&
+        !version.Equals("LATEST", StringComparison.OrdinalIgnoreCase) &&
+        !version.Equals("RELEASE", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsJavaPrereleaseVersion(string? version) =>
+        !string.IsNullOrWhiteSpace(version) &&
+        (version.Contains("SNAPSHOT", StringComparison.OrdinalIgnoreCase) ||
+         Regex.IsMatch(version, @"\d+\.\d+(\.\d+)?[-.](alpha|beta|milestone|m|rc|cr|preview)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant));
+
     private static string DisplayVersion(string? version) => string.IsNullOrWhiteSpace(version) ? "missing" : version;
 
     private static NpmSourceKind ClassifyNpmVersionSpec(string? version)
@@ -940,6 +1242,15 @@ public sealed partial class DependencyInventoryAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"^\d+\.\d+(\.\d+)?$", RegexOptions.CultureInvariant)]
     private static partial Regex ExactSemVerPattern();
+
+    [GeneratedRegex(@"(?m)^\s*(?<configuration>implementation|api|compileOnly|runtimeOnly|testImplementation|annotationProcessor|compile|testCompile)\s*(?:\(|\s+)[""'](?<coordinates>[^""']+)[""']", RegexOptions.CultureInvariant)]
+    private static partial Regex GradleDependencyPattern();
+
+    [GeneratedRegex(@"^\$\{(?<name>[A-Za-z0-9_.-]+)\}$", RegexOptions.CultureInvariant)]
+    private static partial Regex MavenPropertyPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*management\.endpoints\.web\.exposure\.include\s*[:=]\s*(?:['""]?\*['""]?|.*\*)\s*$")]
+    private static partial Regex SpringActuatorExposurePattern();
 
     private sealed record NpmSourceKind(string Kind, bool IsRemote, bool IsLocal);
 

@@ -28,6 +28,7 @@ public sealed class OsvAdvisoryClient(SafeHttpLookup lookup) : IOsvAdvisoryClien
             DependencyEcosystem.Npm => "npm",
             DependencyEcosystem.NuGet => "NuGet",
             DependencyEcosystem.Python => "PyPI",
+            DependencyEcosystem.Maven => "Maven",
             _ => null
         };
 

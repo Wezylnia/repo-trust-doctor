@@ -71,7 +71,7 @@ Analyzers detect evidence and emit structured findings. They do not calculate fi
 - `Standard`: dependency, vulnerability, license, package metadata, workflow, and release checks.
 - `Deep`: coverage, code criticality, public API, history, and comparison checks.
 
-`v1.0` ships static-only local/API/worker scanning and the foundation required for future persisted scan modes.
+`v1.1` ships static-only local/API/worker scanning with dependency inventory support for npm, NuGet, Python, Maven, Gradle, and Spring Boot configuration signals.
 
 ## Application Scan Lifecycle
 
