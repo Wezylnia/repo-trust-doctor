@@ -21,7 +21,9 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         new(CodeCriticalityReason.FileSystem, ["file.", "filesystem", "readall", "writeall", "upload", "download"]),
         new(CodeCriticalityReason.Network, ["httpclient", "fetch(", "axios", "request", "socket", "webhook"]),
         new(CodeCriticalityReason.Cryptography, ["encrypt", "decrypt", "hash", "hmac", "rsa", "aes", "crypto"]),
-        new(CodeCriticalityReason.Secrets, ["secret", "password", "token", "apikey", "api_key", "credential"])
+        new(CodeCriticalityReason.Secrets, ["secret", "password", "token", "apikey", "api_key", "credential"]),
+        new(CodeCriticalityReason.Deserialization, ["binaryformatter", "objectinputstream", "pickle.load", "yaml.unsafe_load", "xmlserializer", "deserialize", "unmarshal", "readobject"]),
+        new(CodeCriticalityReason.CommandExecution, ["process.start", "runtime.exec", "subprocess", "os.system", "exec(", "eval(", "popen", "system("])
     ];
 
     public string Id => "codebase-02-criticality";
@@ -63,7 +65,15 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             Severity.Medium,
             Confidence.Medium,
             "A critical source file uses broad exception handling that can hide failures.",
-            "Catch specific exception types and preserve enough context for diagnosis and rollback.")
+            "Catch specific exception types and preserve enough context for diagnosis and rollback."),
+        new(
+            "TRUST-CODE014",
+            "Deserialization in critical code",
+            AnalysisCategory.Codebase,
+            Severity.High,
+            Confidence.Medium,
+            "A source file uses deserialization APIs that are known vectors for remote code execution.",
+            "Use safe deserialization methods, avoid BinaryFormatter, restrict allowed types, and validate deserialized input.")
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -125,6 +135,17 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 "code.broad_exception",
                 file)));
 
+        findings.AddRange(ordered
+            .Where(file => file.Reasons.Contains(CodeCriticalityReason.Deserialization))
+            .Take(FindingLimit)
+            .Select(file => CreateCriticalityFinding(
+                "TRUST-CODE014",
+                Severity.High,
+                "Deserialization in critical code",
+                $"{file.FilePath} uses deserialization APIs that may enable remote code execution.",
+                "code.deserialization",
+                file)));
+
         var artifact = new CodeCriticalityArtifact(
             ordered,
             new Dictionary<string, string>
@@ -180,6 +201,8 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 
     private static int ScoreReason(CodeCriticalityReason reason) => reason switch
     {
+        CodeCriticalityReason.Deserialization => 30,
+        CodeCriticalityReason.CommandExecution => 28,
         CodeCriticalityReason.Authentication or
         CodeCriticalityReason.Authorization or
         CodeCriticalityReason.Payments or
