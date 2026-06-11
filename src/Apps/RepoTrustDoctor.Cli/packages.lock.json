@@ -25,6 +25,13 @@
           "RepoTrustDoctor.Shared": "[1.0.0, )"
         }
       },
+      "repotrustdoctor.analyzers.azurepipelines": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
       "repotrustdoctor.analyzers.codebase": {
         "type": "Project",
         "dependencies": {
@@ -140,6 +147,7 @@
           "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
           "RepoTrustDoctor.Analysis.Engine": "[1.0.0, )",
           "RepoTrustDoctor.Analysis.Orchestration": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.AzurePipelines": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.Codebase": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.DependencyInventory": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.DependencyRisk": "[1.0.0, )",
