@@ -5,7 +5,20 @@ using RepoTrustDoctor.Reporting;
 using RepoTrustDoctor.Shared;
 
 var builder = WebApplication.CreateBuilder(args);
+var localWebOrigins = builder.Configuration
+    .GetSection("RepoTrustDoctor:WebOrigins")
+    .Get<string[]>() ?? ["http://localhost:5174", "http://127.0.0.1:5174"];
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("LocalWeb", policy =>
+    {
+        policy
+            .WithOrigins(localWebOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
 builder.Services.AddSingleton<IScanStore, InMemoryScanStore>();
 builder.Services.AddSingleton<IScanJobQueue, InMemoryScanJobQueue>();
 builder.Services.AddSingleton<ScanRequestValidator>();
@@ -16,6 +29,8 @@ builder.Services.AddHostedService<QueuedScanBackgroundService>();
 builder.Services.ConfigureHttpJsonOptions(options => ScanJsonSerializerOptions.Configure(options.SerializerOptions));
 
 var app = builder.Build();
+
+app.UseCors("LocalWeb");
 
 app.MapGet("/health", () => Results.Ok(new
 {

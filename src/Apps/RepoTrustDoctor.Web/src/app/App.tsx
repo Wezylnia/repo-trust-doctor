@@ -1,14 +1,18 @@
 import { useMemo, useRef, useState } from 'react';
 import { Header } from '../components/Header';
 import { sampleReport } from '../data/sampleReport';
+import { ApiScanPanel } from '../features/api-scan/ApiScanPanel';
 import { ReportImport } from '../features/report-import/ReportImport';
 import { ReportViewer } from '../features/report-viewer/ReportViewer';
 import type { RepositoryScan } from '../domain/report';
+
+type WorkspaceMode = 'report' | 'import' | 'scan';
 
 function App() {
   const [report, setReport] = useState<RepositoryScan | null>(null);
   const [pasteValue, setPasteValue] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [mode, setMode] = useState<WorkspaceMode>('scan');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasReport = useMemo(() => report !== null, [report]);
@@ -17,6 +21,7 @@ function App() {
     setReport(nextReport);
     setImportError(null);
     setPasteValue('');
+    setMode('report');
   };
 
   const parseReport = (raw: string) => {
@@ -37,7 +42,11 @@ function App() {
       <Header
         fileInputRef={fileInputRef}
         showActions={hasReport}
+        mode={mode}
         onLoadSample={() => loadReport(sampleReport)}
+        onOpenImport={() => setMode('import')}
+        onOpenReport={() => setMode(report ? 'report' : 'scan')}
+        onOpenScan={() => setMode('scan')}
       />
       <input
         ref={fileInputRef}
@@ -52,7 +61,11 @@ function App() {
         }}
       />
 
-      {report ? (
+      {mode === 'scan' ? (
+        <section className="single-workspace" aria-label="Scan workspace">
+          <ApiScanPanel onReportLoaded={loadReport} />
+        </section>
+      ) : report && mode === 'report' ? (
         <ReportViewer report={report} />
       ) : (
         <ReportImport

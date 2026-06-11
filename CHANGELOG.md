@@ -2,6 +2,33 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v1.0.5 - 2026-06-11
+
+This release improves the React experience from a secondary JSON viewer into a local backend-backed trust workbench.
+
+### Added
+
+- React scan workspace that starts scans through the local API backend and opens completed reports directly.
+- Saved report fallback for opening or pasting existing JSON scan artifacts.
+- Report overview panels for final decision reasons and category scores.
+- Web unit tests for report selectors and API scan helper behavior.
+- Local web CORS policy for the API host, configurable through `RepoTrustDoctor:WebOrigins`.
+
+### Changed
+
+- Product version is now `1.0.5`.
+- Web app version is now `1.0.5`.
+- The web app opens on the scan flow by default instead of asking users to import JSON first.
+- The UI language now treats saved JSON as an artifact fallback, not the primary report flow.
+- The visual design is flatter, denser, and more operations-focused.
+- README, roadmap, and web UI docs now describe the React/backend scan direction and `v1.1.0` follow-up plan.
+
+### Security
+
+- Default scans remain static-only.
+- The React app talks to the local API backend; it does not introduce public hosted scan intake.
+- API CORS is limited to configured local web origins by default.
+
 ## v1.0.0 - 2026-06-10
 
 This release promotes Repository Trust Doctor to a stable public platform with shared scan lifecycle services, CLI/API/worker scan hosts, centralized analyzer composition, documented API contracts, and refreshed release documentation.

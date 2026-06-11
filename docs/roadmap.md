@@ -6,7 +6,7 @@ The roadmap is intentionally conservative. Each milestone should leave the proje
 
 ## Current Release
 
-`v1.0.0` is a stable static scanner and local platform focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, dependency risk intelligence, policy-aware scoring, SARIF output, release evidence review, deep code intelligence, trust history/diff, deterministic reports, CI gate options, and API/worker-hosted scan flows.
+`v1.0.5` is a stable static scanner and local platform focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, dependency risk intelligence, policy-aware scoring, SARIF output, release evidence review, deep code intelligence, trust history/diff, deterministic reports, CI gate options, API/worker-hosted scan flows, and a local React scan workbench.
 
 Current scans are static-only by default. The tool does not execute repository code, install packages, run tests, run builds, or build containers as part of a scan.
 
@@ -23,7 +23,8 @@ Current scans are static-only by default. The tool does not execute repository c
 | `v0.7.x` | Release trust | Release hygiene, artifact integrity, SBOM/provenance evidence |
 | `v0.8.x` | Deep code intelligence | Coverage import, code criticality, public API risk |
 | `v0.9.x` | History and comparison | Trust diff, historical trend, repository comparison, monitoring models |
-| `v1.0.0` | Stable public release | Current: stable contracts, API/worker hosts, documented reports, contributor-ready platform |
+| `v1.0.x` | Stable public release | Current: stable contracts, API/worker hosts, React scan workbench, documented reports |
+| `v1.1.0` | React and backend scan experience | Planned: live progress, persistence-backed report history, richer scan management |
 
 ## v0.1.x: Foundation Alpha
 
@@ -527,6 +528,49 @@ Remaining post-1.0 candidates:
 - scheduled scan execution,
 - hosted notification providers,
 - branch/tag comparison commands that run scans into temporary reports.
+
+## v1.0.5: React Workbench Update
+
+Goal: make the React app feel like a serious operational scan console instead of a secondary JSON viewer.
+
+Delivered in `v1.0.5`:
+
+- the web app opens on the backend scan flow by default,
+- completed API scans automatically load into the report workspace,
+- saved JSON import is kept as a fallback for CI artifacts and offline reports,
+- the visual design is flatter, denser, and more work-focused,
+- report review now foregrounds final decision reasons and category scores,
+- web unit tests cover selector behavior and API scan helper behavior,
+- the API allows configured local web origins for local development.
+
+Out of scope:
+
+- public hosted scanning,
+- authentication and authorization,
+- durable report history,
+- multi-user file intake.
+
+## v1.1.0: React And Backend Scan Experience
+
+Goal: continue turning the local API and React app into a coherent scan product.
+
+Planned work:
+
+- API health and version compatibility checks in React,
+- module-level live progress rendering while a scan is running,
+- clearer failed/cancelled scan recovery states,
+- persistence adapter for scan summaries and completed reports,
+- report history view backed by persisted scan records,
+- backend report export actions from the React UI,
+- scan comparison flow driven by completed backend scan IDs,
+- stronger API integration tests around CORS, status, report fetch, and cancellation.
+
+Safety boundaries:
+
+- default scans remain static-only,
+- no public arbitrary upload endpoint without an intake policy,
+- no execution of repository code,
+- saved reports and persisted records must not store raw secrets.
 
 Required documentation:
 

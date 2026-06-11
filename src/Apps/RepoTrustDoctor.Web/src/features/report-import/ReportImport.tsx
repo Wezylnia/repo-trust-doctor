@@ -21,13 +21,11 @@ export function ReportImport({
     <section className="import-layout">
       <div className="import-panel">
         <FileJson size={24} aria-hidden="true" />
-        <h2>Open a JSON scan report</h2>
-        <p>Reports stay in this browser tab. Generate one with:</p>
-        <code>dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format json --output reports/scan.json</code>
+        <h2>Saved report</h2>
         <div className="import-actions">
           <button type="button" className="button" onClick={onOpenFile}>
             <Upload size={16} aria-hidden="true" />
-            Choose file
+            Open file
           </button>
           <button type="button" className="button secondary" onClick={onLoadSample}>
             <FileText size={16} aria-hidden="true" />
@@ -42,7 +40,7 @@ export function ReportImport({
           onParseReport(pasteValue);
         }}
       >
-        <label htmlFor="paste-report">Paste report JSON</label>
+        <label htmlFor="paste-report">Paste saved JSON</label>
         <textarea
           id="paste-report"
           value={pasteValue}
@@ -52,7 +50,7 @@ export function ReportImport({
         {importError ? <div className="error-message">{importError}</div> : null}
         <button type="submit" className="button" disabled={!pasteValue.trim()}>
           <Clipboard size={16} aria-hidden="true" />
-          Parse JSON
+          Open saved report
         </button>
       </form>
     </section>
