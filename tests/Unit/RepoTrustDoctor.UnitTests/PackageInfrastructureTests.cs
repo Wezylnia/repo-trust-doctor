@@ -58,6 +58,33 @@ public sealed class PackageInfrastructureTests
     }
 
     [Fact]
+    public async Task SafeHttpLookup_HandlesHttpRequestException()
+    {
+        var lookup = new SafeHttpLookup(
+            ["registry.example.test"],
+            new StubHttpHandler(_ => throw new HttpRequestException("Network error")));
+
+        var result = await lookup.GetStringAsync(new Uri("https://registry.example.test/package"), CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal(SafeLookupErrorKind.TransportError, result.ErrorKind);
+    }
+
+    [Fact]
+    public async Task SafeHttpLookup_ThrowsOnUserCancellation()
+    {
+        var lookup = new SafeHttpLookup(
+            ["registry.example.test"],
+            new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)));
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<TaskCanceledException>(() =>
+            lookup.GetStringAsync(new Uri("https://registry.example.test/package"), cts.Token));
+    }
+
+    [Fact]
     public void PackageLicenseNormalizer_ClassifiesCommonLicenses()
     {
         Assert.Equal(PackageLicenseFamily.Permissive, PackageLicenseNormalizer.Normalize("MIT").Family);
