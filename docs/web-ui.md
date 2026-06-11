@@ -7,7 +7,12 @@ The web UI is a local-first React trust workbench. Its primary flow is to start 
 - starts GitHub repository scans through the local API backend,
 - polls scan status until completion,
 - opens the completed report automatically,
-- shows overall score, decision, metadata, severity totals, module status, and dependency inventory totals,
+- shows plain-language scan depth and profile labels,
+- includes a side guide for choosing one of three scan profiles,
+- shows a short product introduction before the scan form,
+- shows overall score, area scores, decision, metadata, severity totals, module status, and dependency inventory totals,
+- formats report enum values into readable labels instead of exposing API casing,
+- adds explanatory finding detail text alongside evidence and recommendations,
 - supports finding search, severity filtering, category filtering, and evidence inspection,
 - does not expose raw JSON import/export in the React UI.
 

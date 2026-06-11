@@ -17,7 +17,22 @@ public sealed class ScanApplicationServiceTests
         Assert.True(ok);
         Assert.Equal(".", options.Target);
         Assert.Equal(AnalysisDepth.Deep, options.Depth);
-        Assert.Equal(TrustProfile.EnterpriseDependency, options.TrustProfile);
+        Assert.Equal(TrustProfile.SecuritySensitiveDependency, options.TrustProfile);
+    }
+
+    [Theory]
+    [InlineData("ci-cd")]
+    [InlineData("container")]
+    [InlineData("CiCdTool")]
+    [InlineData("ContainerDependency")]
+    public void ScanRequestValidator_MergesLegacyAutomationProfilesIntoProduction(string profile)
+    {
+        var validator = new ScanRequestValidator();
+
+        var ok = validator.TryCreateOptions(new StartScanRequest(".", "fast", TrustProfile: profile), out var options, out _);
+
+        Assert.True(ok);
+        Assert.Equal(TrustProfile.ProductionDependency, options.TrustProfile);
     }
 
     [Fact]

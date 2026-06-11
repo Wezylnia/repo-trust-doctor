@@ -8,11 +8,8 @@ public sealed class TrustPolicyTests
     [Theory]
     [InlineData(TrustProfile.Personal)]
     [InlineData(TrustProfile.ProductionDependency)]
-    [InlineData(TrustProfile.EnterpriseDependency)]
-    [InlineData(TrustProfile.CiCdTool)]
     [InlineData(TrustProfile.SecuritySensitiveDependency)]
-    [InlineData(TrustProfile.ContainerDependency)]
-    public void ForProfile_ReturnsPolicyForEveryBuiltInProfile(TrustProfile profile)
+    public void ForProfile_ReturnsPolicyForEveryActiveProfile(TrustProfile profile)
     {
         var policy = TrustPolicyPresets.ForProfile(profile);
 
@@ -22,14 +19,14 @@ public sealed class TrustPolicyTests
     }
 
     [Fact]
-    public void EnterprisePolicy_IsStricterThanPersonalPolicy()
+    public void StrictPolicy_IsStricterThanPersonalPolicy()
     {
         var personal = TrustPolicyPresets.ForProfile(TrustProfile.Personal);
-        var enterprise = TrustPolicyPresets.ForProfile(TrustProfile.EnterpriseDependency);
+        var strict = TrustPolicyPresets.ForProfile(TrustProfile.SecuritySensitiveDependency);
 
-        Assert.True(enterprise.MinimumOverallScore > personal.MinimumOverallScore);
-        Assert.Equal(UnknownLicenseHandling.Block, enterprise.UnknownLicenseHandling);
-        Assert.True(enterprise.RequireReleaseChecksums);
+        Assert.True(strict.MinimumOverallScore > personal.MinimumOverallScore);
+        Assert.Equal(UnknownLicenseHandling.Block, strict.UnknownLicenseHandling);
+        Assert.True(strict.RequireReleaseChecksums);
     }
 
     [Fact]
@@ -40,5 +37,16 @@ public sealed class TrustPolicyTests
         Assert.Equal("Production Dependency", policy.Name);
         Assert.True(policy.RequireSecurityPolicy);
         Assert.Equal(Severity.High, policy.MaximumVulnerabilitySeverity);
+    }
+
+    [Theory]
+    [InlineData(TrustProfile.EnterpriseDependency, TrustProfile.SecuritySensitiveDependency)]
+    [InlineData(TrustProfile.CiCdTool, TrustProfile.ProductionDependency)]
+    [InlineData(TrustProfile.ContainerDependency, TrustProfile.ProductionDependency)]
+    public void ForProfile_MergesLegacyProfiles(TrustProfile legacy, TrustProfile expected)
+    {
+        var policy = TrustPolicyPresets.ForProfile(legacy);
+
+        Assert.Equal(expected, policy.Profile);
     }
 }

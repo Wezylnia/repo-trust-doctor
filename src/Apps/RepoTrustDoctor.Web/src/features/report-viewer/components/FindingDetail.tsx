@@ -1,6 +1,12 @@
 import { SeverityBadge } from '../../../components/SeverityBadge';
 import type { Finding } from '../../../domain/report';
-import { recommendationText } from '../../../domain/reportSelectors';
+import {
+  explainFinding,
+  formatCategory,
+  formatEvidenceKind,
+  formatStatus,
+  recommendationText
+} from '../../../domain/reportSelectors';
 
 export function FindingDetail({ finding }: { finding: Finding | null }) {
   if (!finding) {
@@ -19,11 +25,11 @@ export function FindingDetail({ finding }: { finding: Finding | null }) {
       <dl className="detail-meta">
         <div>
           <dt>Category</dt>
-          <dd>{finding.category}</dd>
+          <dd>{formatCategory(finding.category)}</dd>
         </div>
         <div>
           <dt>Confidence</dt>
-          <dd>{finding.confidence}</dd>
+          <dd>{formatStatus(finding.confidence)}</dd>
         </div>
         <div>
           <dt>Blocking</dt>
@@ -31,6 +37,10 @@ export function FindingDetail({ finding }: { finding: Finding | null }) {
         </div>
       </dl>
       <p className="finding-message">{finding.message}</p>
+      <section className="detail-section">
+        <h3>What this means</h3>
+        <p>{explainFinding(finding)}</p>
+      </section>
       <section className="detail-section">
         <h3>Recommendation</h3>
         <p>{recommendationText(finding)}</p>
@@ -40,7 +50,7 @@ export function FindingDetail({ finding }: { finding: Finding | null }) {
         <div className="evidence-list">
           {finding.evidence.map((evidence, index) => (
             <div className="evidence-row" key={`${evidence.kind}-${index}`}>
-              <strong>{evidence.kind}</strong>
+              <strong>{formatEvidenceKind(evidence.kind)}</strong>
               <span>{evidence.message}</span>
               {evidence.filePath ? (
                 <code>

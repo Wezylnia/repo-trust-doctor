@@ -16,14 +16,15 @@ interface ApiScanPanelProps {
   onReportLoaded: (report: RepositoryScan) => void;
 }
 
-const depths = ['Fast', 'Standard', 'Deep'];
+const depths = [
+  { label: 'Fast scan', value: 'Fast' },
+  { label: 'Standard scan', value: 'Standard' },
+  { label: 'Deep scan', value: 'Deep' }
+];
 const profiles = [
-  'Personal',
-  'ProductionDependency',
-  'EnterpriseDependency',
-  'CiCdTool',
-  'SecuritySensitiveDependency',
-  'ContainerDependency'
+  { label: 'Personal project', value: 'Personal' },
+  { label: 'Production dependency', value: 'ProductionDependency' },
+  { label: 'Enterprise or security-sensitive', value: 'SecuritySensitiveDependency' }
 ];
 
 export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
@@ -131,8 +132,8 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
             <span>Depth</span>
             <select value={depth} onChange={(event) => setDepth(event.target.value)}>
               {depths.map((item) => (
-                <option key={item} value={item}>
-                  {item}
+                <option key={item.value} value={item.value}>
+                  {item.label}
                 </option>
               ))}
             </select>
@@ -141,8 +142,8 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
             <span>Profile</span>
             <select value={trustProfile} onChange={(event) => setTrustProfile(event.target.value)}>
               {profiles.map((item) => (
-                <option key={item} value={item}>
-                  {item}
+                <option key={item.value} value={item.value}>
+                  {item.label}
                 </option>
               ))}
             </select>

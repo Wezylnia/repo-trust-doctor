@@ -4,20 +4,21 @@ Trust profiles describe the context in which a repository will be used. They are
 
 The current implementation records the selected profile and includes it in JSON and Markdown reports. Scoring and policy evaluation are profile-aware: the same findings may produce different category weights, warnings, violations, blocking risks, and final decisions depending on the selected use case.
 
-## Built-In Profiles
+## Active Profiles
 
-| Profile | Intended use | Future strictness |
-| ------- | ------------ | ----------------- |
-| `Personal` | Personal experiments, learning projects, and low-impact local tools | Least strict |
-| `ProductionDependency` | Libraries, tools, or services considered for production dependency use | Standard production strictness |
-| `EnterpriseDependency` | Dependencies considered for managed organization-wide use | Stricter than production dependency |
-| `CiCdTool` | Tools or actions that run inside CI/CD systems and may receive repository tokens or build secrets | Strict on workflow, token, and release provenance risk |
-| `SecuritySensitiveDependency` | Dependencies used in authentication, cryptography, authorization, secret handling, or security controls | Strictest on security and maintainer risk |
-| `ContainerDependency` | Base images, Dockerfiles, or containerized tools used as runtime or build dependencies | Strict on image provenance, pinning, and build surface |
+| Profile | Intended use | Strictness |
+| ------- | ------------ | ---------- |
+| `Personal` | Experiments, learning projects, and low-impact local tools | Least strict |
+| `ProductionDependency` | Libraries, tools, or services considered for production use | Standard production strictness |
+| `SecuritySensitiveDependency` | Organization-wide, authentication, cryptography, authorization, secret-handling, or security-control use | Strictest |
+
+Older `EnterpriseDependency`, `CiCdTool`, and `ContainerDependency` inputs are still accepted for compatibility. They are normalized before policy evaluation: enterprise maps to `SecuritySensitiveDependency`, while CI/CD and container aliases map to `ProductionDependency`.
+
+CI/CD and container checks are not separate user profiles. GitHub Actions workflows, pipeline YAML files, Dockerfiles, compose files, and container-related files are detected by analyzers automatically whenever they are present in the repository.
 
 ## Built-In Policy Presets
 
-Each profile resolves to a built-in `TrustPolicy` preset. Presets include minimum overall score, category score thresholds, allowed and denied license placeholders, maximum vulnerability severity, SECURITY.md expectations, unpinned action handling, release checksum requirements, and allowed registry placeholders.
+Each active profile resolves to a built-in `TrustPolicy` preset. Presets include minimum overall score, category score thresholds, allowed and denied license placeholders, maximum vulnerability severity, SECURITY.md expectations, unpinned action handling, release checksum requirements, and allowed registry placeholders.
 
 Policy presets are intentionally conservative value objects. They do not make analyzers enforce enterprise decisions; analyzers still produce evidence and policy/scoring layers interpret that evidence. Scoring is profile-aware as of `v0.6.0`.
 
