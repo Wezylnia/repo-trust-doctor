@@ -59,6 +59,8 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
             new CodeCriticalityAnalyzer(),
             new CoverageCriticalityAnalyzer(),
             new PublicApiAnalyzer(),
+            new ImportGraphAnalyzer(),
+            new FrameworkRouteAnalyzer(),
             new PackageMetadataAnalyzer(
             [
                 new NuGetPackageMetadataClient(packageLookup),

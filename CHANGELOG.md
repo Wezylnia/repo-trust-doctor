@@ -2,6 +2,21 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v1.7.0 - 2026-06-11
+
+This development milestone adds language-specific API extractors, static import graphs, framework route detection, and enhanced security heuristics.
+
+### Added
+
+- **Multi-language API extractors**: TypeScript, Python, Java, Go, and Rust public API extractors in `PublicApiAnalyzer`.
+- **Static Import Graph**: Adjacency-based file dependency analysis (TRUST-CODE010) and low-coverage central file correlation (TRUST-CODE011).
+- **Framework Route Detection**: Detects HTTP endpoints in ASP.NET, Express.js, Flask, Django, Spring Boot, Go (Gin/Echo), and Rust (Actix/Axum), and reports endpoints without authentication annotations (TRUST-CODE012) or framework routes (TRUST-CODE013).
+- **Enhanced Heuristics**: Added deserialization API usage detection in critical code (TRUST-CODE014) and command execution keyword coverage.
+
+### Changed
+
+- Improved path matching in `CoverageImportAnalyzer` and `CoverageCriticalityAnalyzer` to support monorepos with relative/absolute suffix and basename matching.
+
 ## v1.6.0 - 2026-06-11
 
 This development milestone hardens v1.5 analyzers and adds CI/CD, infrastructure, and evidence coverage.
