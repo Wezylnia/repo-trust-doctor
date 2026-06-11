@@ -31,3 +31,5 @@ See also [Analyzer Coverage](../analyzers.md) for a short description of each an
 - [Vulnerabilities](vulnerabilities.md)
 - [Releases](releases.md)
 - [Codebase](codebase.md)
+- [GitLab CI](gitlab-ci.md)
+- [Kubernetes](kubernetes.md)
