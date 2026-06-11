@@ -79,6 +79,58 @@ public sealed class EvidenceImportAnalyzerTests
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-EVI005");
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_SmallSbomWithoutDependencyInventory_NoEVI007()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
+        {"components":[{"name":"x"}]}
+        """);
+
+        var analyzer = new EvidenceImportAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-EVI007");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_SbomSmallerThanInventory_ReportsEVI007()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
+        {"components":[{"name":"x"},{"name":"y"}]}
+        """);
+
+        var context = new AnalysisContext("https://github.com/acme/service", fixture.Path, AnalysisDepth.Standard);
+        context.AddArtifact(new AnalyzerArtifact(DependencyInventoryArtifact.ArtifactKey, new DependencyInventoryArtifact(
+            [],
+            [],
+            Enumerable.Range(0, 20)
+                .Select(i => new DependencyPackageInfo(DependencyEcosystem.Npm, $"pkg-{i}", "1.0.0", DependencyScope.Production, "package.json", null, true, true, false))
+                .ToArray(),
+            [],
+            new Dictionary<string, string>())));
+
+        var analyzer = new EvidenceImportAnalyzer();
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-EVI007");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_MetadataTargetMatchingGitHubTarget_NoEVI009()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
+        {"metadata":{"component":{"name":"acme/service"}},"components":[{"name":"x"}]}
+        """);
+
+        var analyzer = new EvidenceImportAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext("git@github.com:acme/service.git", fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-EVI009");
+    }
+
     // ── EVI006: unparseable provenance ────────────────────────────────
 
     [Fact]

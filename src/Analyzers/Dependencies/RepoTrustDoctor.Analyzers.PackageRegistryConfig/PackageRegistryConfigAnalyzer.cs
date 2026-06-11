@@ -49,12 +49,15 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
                 if (!RepositoryFileSystem.CanReadAsText(file)) continue;
                 var relativePath = Path.GetRelativePath(context.RepositoryPath, file).Replace('\\', '/');
                 var content = await File.ReadAllTextAsync(file, cancellationToken);
+                var scanContent = file.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
+                    ? content
+                    : StripLineComments(content);
 
-                CheckHttpRegistry(content, relativePath, findings);
-                CheckAlwaysAuth(content, relativePath, findings);
-                CheckInlineToken(content, relativePath, findings);
+                CheckHttpRegistry(scanContent, relativePath, findings);
+                CheckAlwaysAuth(scanContent, relativePath, findings);
+                CheckInlineToken(scanContent, relativePath, findings);
                 CheckMavenMirrorAll(file, relativePath, findings);
-                CheckInsecureProtocol(content, relativePath, findings);
+                CheckInsecureProtocol(scanContent, relativePath, findings);
             }
         }
 
@@ -81,8 +84,8 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
     {
         foreach (Match m in InlineTokenPattern().Matches(content))
         {
-            var val = m.Groups["value"].Value;
-            if (val.Contains("${") || val.Contains('%') || val.Contains("$env:")) continue;
+            var val = m.Groups["value"].Value.Trim('"', '\'');
+            if (val.Contains("${") || val.Contains('%') || val.Contains("$env:") || val.StartsWith('$')) continue;
             findings.Add(F("TRUST-REG003", "Inline registry token", Severity.High, relativePath, $"Credential key '{m.Groups["key"].Value}' has a literal value.", Confidence.Medium));
         }
     }
@@ -115,6 +118,19 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
         => new(rid, title, AnalysisCategory.Dependencies, sev, conf, title,
             [new Evidence("registry-config", ev, path)],
             new Recommendation("Review the package registry configuration."));
+
+    private static string StripLineComments(string content)
+    {
+        var lines = content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var trimmed = lines[i].TrimStart();
+            if (trimmed.StartsWith('#') || trimmed.StartsWith("//"))
+                lines[i] = "";
+        }
+
+        return string.Join('\n', lines);
+    }
 
     [GeneratedRegex(@"http://[^\s""'>]+")]
     private static partial Regex HttpRegistryPattern();

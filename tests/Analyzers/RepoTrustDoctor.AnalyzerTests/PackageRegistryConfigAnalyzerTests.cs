@@ -29,6 +29,17 @@ public sealed class PackageRegistryConfigAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_CommentedHttpRegistry_NoREG001()
+    {
+        using var f = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(f.Path, ".npmrc"), "# registry=http://example.com\n");
+
+        var a = new PackageRegistryConfigAnalyzer();
+        var r = await a.AnalyzeAsync(new AnalysisContext(f.Path, f.Path, AnalysisDepth.Standard), CancellationToken.None);
+        Assert.DoesNotContain(r.Findings, x => x.RuleId == "TRUST-REG001");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_DetectsGlobalAlwaysAuth()
     {
         using var f = TemporaryRepository.Create();

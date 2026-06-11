@@ -12,6 +12,12 @@ public sealed partial class AzurePipelinesAnalyzer : IRepositoryAnalyzer
         "azure-pipelines.yaml"
     ];
 
+    private static readonly string[] PipelineDirectories =
+    [
+        ".azure/pipelines",
+        ".pipelines"
+    ];
+
     public string Id => "azure-pipelines";
 
     public string DisplayName => "Azure Pipelines Security";
@@ -44,23 +50,20 @@ public sealed partial class AzurePipelinesAnalyzer : IRepositoryAnalyzer
     {
         var findings = new List<Finding>();
 
-        foreach (var pattern in FileNames)
+        foreach (var file in EnumeratePipelineFiles(context.RepositoryPath))
         {
-            foreach (var file in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, pattern))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!RepositoryFileSystem.CanReadAsText(file))
-                    continue;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!RepositoryFileSystem.CanReadAsText(file))
+                continue;
 
-                var content = await File.ReadAllTextAsync(file, cancellationToken);
-                var relativePath = Path.GetRelativePath(context.RepositoryPath, file);
+            var content = await File.ReadAllTextAsync(file, cancellationToken);
+            var relativePath = Path.GetRelativePath(context.RepositoryPath, file);
 
-                CheckPrVariablesInScripts(content, relativePath, findings);
-                CheckPersistCredentials(content, relativePath, findings);
-                CheckLatestContainerImage(content, relativePath, findings);
-                CheckSelfHostedPool(content, relativePath, findings);
-                CheckBroadArtifactPath(content, relativePath, findings);
-            }
+            CheckPrVariablesInScripts(content, relativePath, findings);
+            CheckPersistCredentials(content, relativePath, findings);
+            CheckLatestContainerImage(content, relativePath, findings);
+            CheckSelfHostedPool(content, relativePath, findings);
+            CheckBroadArtifactPath(content, relativePath, findings);
         }
 
         return AnalyzerResult.Completed(findings);
@@ -120,14 +123,32 @@ public sealed partial class AzurePipelinesAnalyzer : IRepositoryAnalyzer
 
     private static void CheckPersistCredentials(string content, string relativePath, List<Finding> findings)
     {
-        if (PersistCredentialsPattern().IsMatch(content))
+        var lines = SplitLines(content);
+        for (var i = 0; i < lines.Length; i++)
         {
-            findings.Add(CreateFinding("TRUST-AZP002",
-                "Checkout persists credentials",
-                Severity.Medium,
-                relativePath,
-                "checkout: self has persistCredentials: true. Set false unless write access is needed.",
-                GetLineNumber(content, content.IndexOf("persistCredentials", StringComparison.OrdinalIgnoreCase))));
+            if (!CheckoutSelfPattern().IsMatch(lines[i]))
+                continue;
+
+            var baseIndent = GetIndentation(lines[i]);
+            for (var cursor = i + 1; cursor < lines.Length; cursor++)
+            {
+                if (string.IsNullOrWhiteSpace(lines[cursor]))
+                    continue;
+
+                if (GetIndentation(lines[cursor]) <= baseIndent)
+                    break;
+
+                if (!PersistCredentialsTruePattern().IsMatch(lines[cursor]))
+                    continue;
+
+                findings.Add(CreateFinding("TRUST-AZP002",
+                    "Checkout persists credentials",
+                    Severity.Medium,
+                    relativePath,
+                    "checkout: self has persistCredentials: true. Set false unless write access is needed.",
+                    cursor + 1));
+                break;
+            }
         }
     }
 
@@ -155,22 +176,58 @@ public sealed partial class AzurePipelinesAnalyzer : IRepositoryAnalyzer
 
     private static void CheckSelfHostedPool(string content, string relativePath, List<Finding> findings)
     {
-        // Skip if vmImage is used (hosted agent)
-        if (content.Contains("vmImage", StringComparison.OrdinalIgnoreCase))
-            return;
-
         var seen = new HashSet<string>();
-        foreach (Match match in SelfHostedPoolPattern().Matches(content))
+        var lines = SplitLines(content);
+        for (var i = 0; i < lines.Length; i++)
         {
-            var pool = match.Groups["pool"].Value.Trim();
-            if (seen.Add(pool))
+            var inline = InlinePoolPattern().Match(lines[i]);
+            if (inline.Success)
             {
+                var pool = inline.Groups["pool"].Value.Trim();
+                if (IsHostedPool(pool) || !seen.Add(pool))
+                    continue;
+
                 findings.Add(CreateFinding("TRUST-AZP004",
                     "Self-hosted agent pool",
                     Severity.Low,
                     relativePath,
                     $"Uses self-hosted pool '{pool}'. Isolate agents and rotate tokens.",
-                    GetLineNumber(content, match.Index),
+                    i + 1,
+                    Confidence.Medium));
+
+                continue;
+            }
+
+            if (!PoolHeaderPattern().IsMatch(lines[i]))
+                continue;
+
+            var baseIndent = GetIndentation(lines[i]);
+            var poolName = "";
+            var hasVmImage = false;
+            for (var cursor = i + 1; cursor < lines.Length; cursor++)
+            {
+                if (string.IsNullOrWhiteSpace(lines[cursor]))
+                    continue;
+
+                if (GetIndentation(lines[cursor]) <= baseIndent)
+                    break;
+
+                if (VmImagePattern().IsMatch(lines[cursor]))
+                    hasVmImage = true;
+
+                var name = PoolNamePattern().Match(lines[cursor]);
+                if (name.Success)
+                    poolName = name.Groups["pool"].Value.Trim();
+            }
+
+            if (!hasVmImage && !string.IsNullOrWhiteSpace(poolName) && seen.Add(poolName))
+            {
+                findings.Add(CreateFinding("TRUST-AZP004",
+                    "Self-hosted agent pool",
+                    Severity.Low,
+                    relativePath,
+                    $"Uses self-hosted pool '{poolName}'. Isolate agents and rotate tokens.",
+                    i + 1,
                     Confidence.Medium));
             }
         }
@@ -212,6 +269,47 @@ public sealed partial class AzurePipelinesAnalyzer : IRepositoryAnalyzer
     private static string[] SplitLines(string content) =>
         content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
 
+    private static IEnumerable<string> EnumeratePipelineFiles(string root)
+    {
+        foreach (var pattern in FileNames)
+        {
+            foreach (var file in RepositoryFileSystem.EnumerateFiles(root, pattern))
+                yield return file;
+        }
+
+        foreach (var relativeDirectory in PipelineDirectories)
+        {
+            var directory = Path.Combine(root, relativeDirectory.Replace('/', Path.DirectorySeparatorChar));
+            if (!Directory.Exists(directory))
+                continue;
+
+            foreach (var file in RepositoryFileSystem.EnumerateFiles(directory, "*.yml", SearchOption.TopDirectoryOnly)
+                         .Concat(RepositoryFileSystem.EnumerateFiles(directory, "*.yaml", SearchOption.TopDirectoryOnly)))
+            {
+                yield return file;
+            }
+        }
+    }
+
+    private static int GetIndentation(string line)
+    {
+        var count = 0;
+        foreach (var c in line)
+        {
+            if (c == ' ') count++;
+            else if (c == '\t') count += 4;
+            else break;
+        }
+
+        return count;
+    }
+
+    private static bool IsHostedPool(string pool) =>
+        pool.Equals("server", StringComparison.OrdinalIgnoreCase) ||
+        pool.Contains("ubuntu-latest", StringComparison.OrdinalIgnoreCase) ||
+        pool.Contains("windows-latest", StringComparison.OrdinalIgnoreCase) ||
+        pool.Contains("macos-latest", StringComparison.OrdinalIgnoreCase);
+
     private static int GetLineNumber(string content, int matchIndex)
     {
         var line = 1;
@@ -228,14 +326,26 @@ public sealed partial class AzurePipelinesAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"\$\((System\.PullRequest\.(SourceBranch|SourceRepositoryURI)|Build\.SourceBranch(Name)?)\)")]
     private static partial Regex PrVariablePattern();
 
-    [GeneratedRegex(@"persistCredentials\s*:\s*true", RegexOptions.IgnoreCase)]
-    private static partial Regex PersistCredentialsPattern();
+    [GeneratedRegex(@"^\s*-\s*checkout\s*:\s*self\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex CheckoutSelfPattern();
+
+    [GeneratedRegex(@"^\s*persistCredentials\s*:\s*true\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex PersistCredentialsTruePattern();
 
     [GeneratedRegex(@"(?:container|image)\s*:\s*['""]?(?<image>[^'""\s]+(?::latest|$))['""]?", RegexOptions.IgnoreCase)]
     private static partial Regex AzureLatestImagePattern();
 
-    [GeneratedRegex(@"(?m)^\s*(?:pool\s*:\s*(?<pool>\w+)|pool\s*:\s*\n\s*name\s*:\s*(?<pool>\w+))")]
-    private static partial Regex SelfHostedPoolPattern();
+    [GeneratedRegex(@"^\s*pool\s*:\s*(?<pool>[A-Za-z0-9_. -]+)\s*$")]
+    private static partial Regex InlinePoolPattern();
+
+    [GeneratedRegex(@"^\s*pool\s*:\s*$")]
+    private static partial Regex PoolHeaderPattern();
+
+    [GeneratedRegex(@"^\s*name\s*:\s*(?<pool>[A-Za-z0-9_. -]+)\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex PoolNamePattern();
+
+    [GeneratedRegex(@"^\s*vmImage\s*:", RegexOptions.IgnoreCase)]
+    private static partial Regex VmImagePattern();
 
     [GeneratedRegex(@"(?:PublishBuildArtifacts|PublishPipelineArtifact)@\d+[\s\S]*?(?:[Pp]athto[Pp]ublish|targetPath)\s*:\s*['""]?(?<path>[^'""\n]+)['""]?",
         RegexOptions.IgnoreCase)]
