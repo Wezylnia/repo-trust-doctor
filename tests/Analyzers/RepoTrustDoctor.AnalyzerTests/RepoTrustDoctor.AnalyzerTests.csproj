@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\..\src\Analyzers\CiCd\RepoTrustDoctor.Analyzers.GitLabCi\RepoTrustDoctor.Analyzers.GitLabCi.csproj" />
     <ProjectReference Include="..\..\..\src\Analyzers\Security\RepoTrustDoctor.Analyzers.Secrets\RepoTrustDoctor.Analyzers.Secrets.csproj" />
     <ProjectReference Include="..\..\..\src\Analyzers\Containers\RepoTrustDoctor.Analyzers.Docker\RepoTrustDoctor.Analyzers.Docker.csproj" />
+    <ProjectReference Include="..\..\..\src\Analyzers\Containers\RepoTrustDoctor.Analyzers.DockerCompose\RepoTrustDoctor.Analyzers.DockerCompose.csproj" />
     <ProjectReference Include="..\..\..\src\Analyzers\Dependencies\RepoTrustDoctor.Analyzers.DependencyInventory\RepoTrustDoctor.Analyzers.DependencyInventory.csproj" />
     <ProjectReference Include="..\..\..\src\Analyzers\Dependencies\RepoTrustDoctor.Analyzers.DependencyRisk\RepoTrustDoctor.Analyzers.DependencyRisk.csproj" />
     <ProjectReference Include="..\..\..\src\Analyzers\Releases\RepoTrustDoctor.Analyzers.ReleaseEvidence\RepoTrustDoctor.Analyzers.ReleaseEvidence.csproj" />
