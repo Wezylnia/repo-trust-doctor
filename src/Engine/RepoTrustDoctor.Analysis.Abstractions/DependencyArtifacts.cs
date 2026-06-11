@@ -9,7 +9,11 @@ public enum DependencyEcosystem
     Go,
     Cargo,
     Composer,
-    Ruby
+    Ruby,
+    Pub,
+    Hex,
+    Swift,
+    Cpp
 }
 
 public enum DependencyScope

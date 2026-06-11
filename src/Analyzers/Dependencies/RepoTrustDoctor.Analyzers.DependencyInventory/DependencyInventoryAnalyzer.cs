@@ -14,7 +14,11 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new GoDependencyCollector(),
         new CargoDependencyCollector(),
         new ComposerDependencyCollector(),
-        new BundlerDependencyCollector()
+        new BundlerDependencyCollector(),
+        new PubDependencyCollector(),
+        new HexDependencyCollector(),
+        new SwiftPmCollector(),
+        new CppDependencyCollector()
     ];
 
     public string Id => "dependency-inventory";
@@ -67,6 +71,16 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new("TRUST-DEP034", "Ruby Gemfile does not have a Gemfile.lock", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Gemfile exists but no Gemfile.lock was found.", "Run 'bundle install' and commit Gemfile.lock to the repository for reproducible builds."),
         new("TRUST-DEP035", "Ruby gem uses a non-exact version constraint", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Ruby gem uses a version constraint instead of an exact version.", "Use exact gem versions with a committed Gemfile.lock for reproducible builds."),
         new("TRUST-DEP036", "Ruby gem uses a Git or path source", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Ruby gem references a Git or path source instead of a registry version.", "Review non-registry gem sources and prefer RubyGems packages with pinned versions when possible."),
+        new("TRUST-DEP037", "Dart project does not have a pubspec.lock file", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A pubspec.yaml exists but no pubspec.lock was found.", "Run 'dart pub get' and commit pubspec.lock to the repository for reproducible builds."),
+        new("TRUST-DEP038", "Dart dependency uses a non-exact version constraint", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Dart dependency uses a version constraint instead of an exact version.", "Use exact version constraints with a committed pubspec.lock for reproducible builds."),
+        new("TRUST-DEP040", "Elixir project does not have a mix.lock file", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A mix.exs file exists but no mix.lock was found.", "Run 'mix deps.get' and commit mix.lock to the repository for reproducible builds."),
+        new("TRUST-DEP041", "Elixir dependency uses a non-exact version constraint", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "An Elixir dependency uses a version constraint instead of an exact version.", "Use exact version constraints with a committed mix.lock for reproducible builds."),
+        new("TRUST-DEP042", "Elixir dependency uses a non-Hex source", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "An Elixir dependency references a Git or path source instead of Hex.", "Review non-Hex dependency sources and prefer Hex packages with pinned versions when possible."),
+        new("TRUST-DEP043", "Swift package does not have a Package.resolved file", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Package.swift exists but no Package.resolved was found.", "Commit Package.resolved to the repository for reproducible builds."),
+        new("TRUST-DEP044", "Swift package uses a branch-based dependency", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Swift package dependency references a branch instead of a version.", "Prefer version-based dependencies with a committed Package.resolved for reproducible builds."),
+        new("TRUST-DEP046", "C/C++ project uses Conan package manager", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A conanfile.txt or conanfile.py was detected.", "Ensure Conan dependencies are reviewed and lockfiles are committed."),
+        new("TRUST-DEP047", "C/C++ project uses vcpkg", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A vcpkg.json manifest was detected.", "Ensure vcpkg dependencies are reviewed and the manifest is committed."),
+        new("TRUST-DEP048", "C/C++ project uses CMake external dependencies", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "CMakeLists.txt uses find_package or FetchContent.", "Review CMake external dependencies and ensure they are documented."),
     ];
 
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
