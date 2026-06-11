@@ -12,6 +12,7 @@ using RepoTrustDoctor.Analyzers.GitLabCi;
 using RepoTrustDoctor.Analyzers.AzurePipelines;
 using RepoTrustDoctor.Analyzers.CircleCi;
 using RepoTrustDoctor.Analyzers.Terraform;
+using RepoTrustDoctor.Analyzers.PackageRegistryConfig;
 using RepoTrustDoctor.Analyzers.ReleaseEvidence;
 using RepoTrustDoctor.Analyzers.Repository;
 using RepoTrustDoctor.Analyzers.Secrets;
@@ -46,6 +47,7 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
             new AzurePipelinesAnalyzer(),
             new CircleCiAnalyzer(),
             new TerraformAnalyzer(),
+            new PackageRegistryConfigAnalyzer(),
             new SecretQuickScanAnalyzer(),
             new DockerBasicAnalyzer(),
             new DockerComposeAnalyzer(),
