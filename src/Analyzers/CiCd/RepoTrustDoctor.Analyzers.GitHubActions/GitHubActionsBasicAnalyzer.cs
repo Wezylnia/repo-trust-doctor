@@ -36,6 +36,10 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         new("TRUST-GHA012", "Workflow deploys to an unprotected environment", AnalysisCategory.CiCd, Severity.Medium, Confidence.Medium, "The workflow targets an environment without visible protection rules or required reviewers.", "Add environment protection rules with required reviewers for production deployments."),
         new("TRUST-GHA013", "Workflow may contain hardcoded secret in step env", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "A step sets an environment variable that contains a secret-like value inline.", "Use GitHub Secrets instead of inline values for credentials and tokens."),
         new("TRUST-GHA014", "Workflow may interpolate matrix values in shell", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "The workflow interpolates a matrix variable directly inside a run block.", "Avoid direct inline shell interpolation of matrix values. Pass matrix values as environment variables instead."),
+        new("TRUST-GHA015", "pull_request_target workflow exposes secrets to untrusted code", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "A pull_request_target workflow checks out PR code or uses secrets in a risky context.", "Avoid checking out untrusted PR code in pull_request_target workflows. Use a separate untrusted workflow for PR validation."),
+        new("TRUST-GHA016", "Workflow-level write permissions are overly broad", AnalysisCategory.CiCd, Severity.Medium, Confidence.Medium, "Top-level permissions grant contents:write, packages:write, or actions:write.", "Reduce permissions to least privilege per job. Avoid broad write at the workflow level."),
+        new("TRUST-GHA017", "Workflow uses overly broad cache path", AnalysisCategory.CiCd, Severity.Low, Confidence.Medium, "An actions/cache step caches an overly broad path.", "Narrow cache paths to specific package directories."),
+        new("TRUST-GHA018", "Workflow job container or service image uses latest", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "A job container or service image uses :latest or no tag.", "Pin container images to specific versions or digests."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -127,6 +131,10 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
             CheckTokenScope(content, relativePath, findings);
             CheckHardcodedSecretsInEnv(content, relativePath, findings);
             CheckMatrixInjection(content, relativePath, findings);
+            CheckPrTargetSecretsExposure(content, relativePath, findings);
+            CheckWorkflowWritePermissions(content, relativePath, findings);
+            CheckBroadCachePaths(content, relativePath, findings);
+            CheckJobContainerLatest(content, relativePath, findings);
         }
 
         return AnalyzerResult.Completed(findings);
@@ -363,6 +371,75 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         value.Contains("changeme", StringComparison.OrdinalIgnoreCase) ||
         value.Contains("replace-me", StringComparison.OrdinalIgnoreCase);
 
+    private static void CheckPrTargetSecretsExposure(string content, string relativePath, List<Finding> findings)
+    {
+        if (!PullRequestTargetPattern().IsMatch(content)) return;
+
+        // Flag if PR target also checks out code or uses secrets
+        var hasCheckout = UsesCheckoutPattern().IsMatch(content);
+        var hasSecrets = content.Contains("secrets.", StringComparison.Ordinal);
+        var hasRunStep = RunBlockPattern().IsMatch(content);
+
+        if (hasCheckout || (hasSecrets && hasRunStep))
+        {
+            AddFinding(findings, "TRUST-GHA015", "pull_request_target exposes secrets",
+                Severity.High, "Avoid checking out untrusted PR code or using secrets in pull_request_target workflows.",
+                relativePath, "pull_request_target workflow checks out code or uses secrets.");
+        }
+    }
+
+    private static void CheckWorkflowWritePermissions(string content, string relativePath, List<Finding> findings)
+    {
+        // Only check top-level permissions (before first job)
+        var jobIdx = content.IndexOf("\njobs:", StringComparison.OrdinalIgnoreCase);
+        var permSection = jobIdx > 0 ? content[..jobIdx] : content;
+
+        if (WorkflowWritePermPattern().IsMatch(permSection))
+        {
+            AddFinding(findings, "TRUST-GHA016", "Broad workflow write permissions",
+                Severity.Medium, "Reduce permissions to least privilege per job.",
+                relativePath, "Top-level permissions grant contents:write, packages:write, or actions:write.",
+                confidence: Confidence.Medium);
+        }
+    }
+
+    private static void CheckBroadCachePaths(string content, string relativePath, List<Finding> findings)
+    {
+        foreach (Match match in CacheBroadPathPattern().Matches(content))
+        {
+            var path = match.Groups["path"].Value.Trim();
+            var normalized = path.Trim('"', '\'', '/', '.').Trim();
+            if (string.IsNullOrEmpty(normalized) || normalized is "~" || normalized.Contains("github.workspace"))
+            {
+                AddFinding(findings, "TRUST-GHA017", "Broad cache path",
+                    Severity.Low, "Narrow cache paths to specific package directories.",
+                    relativePath, $"Cache path '{path}' is overly broad.",
+                    confidence: Confidence.Medium);
+                break;
+            }
+        }
+    }
+
+    private static void CheckJobContainerLatest(string content, string relativePath, List<Finding> findings)
+    {
+        foreach (Match match in JobContainerImagePattern().Matches(content))
+        {
+            var image = match.Groups["image"].Value.Trim();
+            if (image.Contains("@sha256:", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Only flag :latest or no tag (no colon)
+            var colonIdx = image.LastIndexOf(':');
+            if (colonIdx < 0 || image[(colonIdx + 1)..].Equals("latest", StringComparison.OrdinalIgnoreCase))
+            {
+                AddFinding(findings, "TRUST-GHA018", "Unpinned container image",
+                    Severity.Medium, "Pin container images to specific versions or digests.",
+                    relativePath, $"Container image '{image}' uses :latest or no tag.",
+                    GetLineNumber(content, match.Index));
+            }
+        }
+    }
+
     private static void CheckMatrixInjection(string content, string relativePath, List<Finding> findings)
     {
         var lines = SplitLines(content);
@@ -472,4 +549,13 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?mi)^\s*[a-z0-9_-]+\s*:\s*write\s*$")]
     private static partial Regex PermissionWriteValuePattern();
+
+    [GeneratedRegex(@"(?mi)^\s*(?:contents|packages|actions|id-token)\s*:\s*write\s*$")]
+    private static partial Regex WorkflowWritePermPattern();
+
+    [GeneratedRegex(@"\buses\s*:\s*actions/cache@[\s\S]{0,200}path\s*:\s*(?<path>\S+)", RegexOptions.IgnoreCase)]
+    private static partial Regex CacheBroadPathPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*image\s*:\s*(?<image>[^\s\n]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex JobContainerImagePattern();
 }
