@@ -33,3 +33,5 @@ See also [Analyzer Coverage](../analyzers.md) for a short description of each an
 - [Codebase](codebase.md)
 - [GitLab CI](gitlab-ci.md)
 - [Kubernetes](kubernetes.md)
+- [Azure Pipelines](azure-pipelines.md)
+- [CircleCI](circleci.md)

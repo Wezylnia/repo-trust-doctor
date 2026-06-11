@@ -169,6 +169,14 @@ export function explainFinding(finding: Finding): string {
     return 'This finding affects GitLab CI/CD pipeline safety. Remote includes, unpinned images, CI variable interpolation, privileged Docker-in-Docker, and broad cache paths can introduce supply-chain, injection, or isolation risks.';
   }
 
+  if (finding.ruleId.startsWith('TRUST-AZP')) {
+    return 'This finding affects Azure Pipelines security. PR-controlled variables, persisted credentials, unpinned images, self-hosted pools, and broad artifact paths can weaken pipeline isolation.';
+  }
+
+  if (finding.ruleId.startsWith('TRUST-CIRCLE')) {
+    return 'This finding affects CircleCI configuration security. Unpinned orbs, unpinned Docker images, broad workspace persistence, inline secrets, and unversioned remote Docker can introduce supply-chain or isolation risks.';
+  }
+
   if (finding.ruleId.startsWith('TRUST-COMP')) {
     if (finding.ruleId === 'TRUST-COMP006') {
       return 'The Docker socket is mounted into a service container. This grants high privilege over the host Docker daemon — a compromised container could control all containers on the host. Remove the socket mount or use an isolated builder.';

@@ -277,6 +277,8 @@ public sealed class SarifReportWriter
         if (ruleId.StartsWith("TRUST-COMP", StringComparison.OrdinalIgnoreCase)) return "docker";
         if (ruleId.StartsWith("TRUST-K8S", StringComparison.OrdinalIgnoreCase)) return "kubernetes";
         if (ruleId.StartsWith("TRUST-EVI", StringComparison.OrdinalIgnoreCase)) return "releases";
+        if (ruleId.StartsWith("TRUST-AZP", StringComparison.OrdinalIgnoreCase)) return "azure-pipelines";
+        if (ruleId.StartsWith("TRUST-CIRCLE", StringComparison.OrdinalIgnoreCase)) return "circleci";
         return null;
     }
 
