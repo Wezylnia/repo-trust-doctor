@@ -13,7 +13,7 @@ export function ReportSidebar({ report, summary, dependencyInventory }: ReportSi
   return (
     <aside className="sidebar">
       <section className="summary-panel" aria-label="Report summary">
-        <div className="summary-heading">
+        <div className={`summary-heading ${report.score.decision.kind.toLowerCase()}`}>
           <ShieldCheck size={18} aria-hidden="true" />
           <span>{report.score.decision.kind}</span>
         </div>
@@ -37,6 +37,10 @@ export function ReportSidebar({ report, summary, dependencyInventory }: ReportSi
           <div>
             <dt>Version</dt>
             <dd>{report.toolVersion}</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd>{report.status}</dd>
           </div>
         </dl>
       </section>

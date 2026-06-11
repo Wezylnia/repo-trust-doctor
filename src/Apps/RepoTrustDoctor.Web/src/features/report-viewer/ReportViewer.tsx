@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import type { RepositoryScan } from '../../domain/report';
 import { getDependencyInventory, summarizeFindings } from '../../domain/reportSelectors';
 import { FilterToolbar } from './components/FilterToolbar';
+import { CategoryScoreTable } from './components/CategoryScoreTable';
+import { DecisionPanel } from './components/DecisionPanel';
 import { FindingDetail } from './components/FindingDetail';
 import { FindingList } from './components/FindingList';
 import { ReportSidebar } from './components/ReportSidebar';
@@ -25,6 +27,10 @@ export function ReportViewer({ report }: { report: RepositoryScan }) {
     <section className="workspace" aria-label="Loaded report">
       <ReportSidebar report={report} summary={summary} dependencyInventory={dependencyInventory} />
       <section className="content">
+        <div className="report-overview">
+          <DecisionPanel report={report} />
+          <CategoryScoreTable report={report} />
+        </div>
         <FilterToolbar
           categories={filters.categories}
           category={filters.category}
