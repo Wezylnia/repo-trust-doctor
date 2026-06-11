@@ -204,7 +204,8 @@ public sealed class SarifReportWriter
                     {
                         ["category"] = finding.Category.ToString(),
                         ["defaultSeverity"] = finding.Severity.ToString()
-                    });
+                    },
+                    BuildHelpUri(finding.RuleId));
             })
             .ToArray();
 
@@ -251,6 +252,34 @@ public sealed class SarifReportWriter
         return JsonSerializer.Serialize(sarif, Options);
     }
 
+    private static Uri? BuildHelpUri(string ruleId)
+    {
+        var categoryFile = GetCategoryDocFile(ruleId);
+        if (categoryFile is null) return null;
+        var anchor = $"#{ruleId.ToLowerInvariant().Replace("trust-", "trust-")}";
+        return new Uri($"https://github.com/Wezylnia/repo-trust-doctor/blob/main/docs/rules/{categoryFile}.md{anchor}");
+    }
+
+    private static string? GetCategoryDocFile(string ruleId)
+    {
+        if (ruleId.StartsWith("TRUST-SECRET", StringComparison.OrdinalIgnoreCase)) return "secrets";
+        if (ruleId.StartsWith("TRUST-GHA", StringComparison.OrdinalIgnoreCase)) return "github-actions";
+        if (ruleId.StartsWith("TRUST-DOCKER", StringComparison.OrdinalIgnoreCase)) return "docker";
+        if (ruleId.StartsWith("TRUST-DEP", StringComparison.OrdinalIgnoreCase)) return "dependencies";
+        if (ruleId.StartsWith("TRUST-REPO", StringComparison.OrdinalIgnoreCase)) return "repository";
+        if (ruleId.StartsWith("TRUST-CODE", StringComparison.OrdinalIgnoreCase)) return "codebase";
+        if (ruleId.StartsWith("TRUST-REL", StringComparison.OrdinalIgnoreCase)) return "releases";
+        if (ruleId.StartsWith("TRUST-VULN", StringComparison.OrdinalIgnoreCase)) return "vulnerabilities";
+        if (ruleId.StartsWith("TRUST-LIC", StringComparison.OrdinalIgnoreCase)) return "licenses";
+        if (ruleId.StartsWith("TRUST-ORIGIN", StringComparison.OrdinalIgnoreCase)) return "dependencies";
+        if (ruleId.StartsWith("TRUST-WS", StringComparison.OrdinalIgnoreCase)) return "repository";
+        if (ruleId.StartsWith("TRUST-GLCI", StringComparison.OrdinalIgnoreCase)) return "gitlab-ci";
+        if (ruleId.StartsWith("TRUST-COMP", StringComparison.OrdinalIgnoreCase)) return "docker";
+        if (ruleId.StartsWith("TRUST-K8S", StringComparison.OrdinalIgnoreCase)) return "kubernetes";
+        if (ruleId.StartsWith("TRUST-EVI", StringComparison.OrdinalIgnoreCase)) return "releases";
+        return null;
+    }
+
     private static string MapLevel(Severity severity) => severity switch
     {
         Severity.Critical or Severity.High => "error",
@@ -266,7 +295,7 @@ public sealed class SarifReportWriter
     private sealed record SarifRun(SarifTool Tool, IReadOnlyList<SarifResult> Results);
     private sealed record SarifTool(SarifDriver Driver);
     private sealed record SarifDriver(string Name, string SemanticVersion, IReadOnlyList<SarifRule> Rules);
-    private sealed record SarifRule(string Id, SarifText ShortDescription, SarifText Help, IReadOnlyDictionary<string, object?> Properties);
+    private sealed record SarifRule(string Id, SarifText ShortDescription, SarifText Help, IReadOnlyDictionary<string, object?> Properties, Uri? HelpUri = null);
     private sealed record SarifResult(
         string RuleId,
         string Level,

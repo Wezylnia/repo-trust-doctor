@@ -42,10 +42,19 @@ public sealed class TrustScorer
 
     private static int ScoreCategory(IEnumerable<Finding> findings, TrustProfile trustProfile)
     {
-        var penalty = findings.Sum(finding => BasePenalty(finding.Severity) * ProfileMultiplier(finding, trustProfile));
+        var penalty = findings.Sum(finding =>
+            BasePenalty(finding.Severity) * ProfileMultiplier(finding, trustProfile) * ConfidenceMultiplier(finding.Confidence));
 
         return Math.Clamp(100 - (int)Math.Round(penalty), 0, 100);
     }
+
+    private static double ConfidenceMultiplier(Confidence confidence) => confidence switch
+    {
+        Confidence.Low => 0.5,
+        Confidence.Medium => 1.0,
+        Confidence.High => 1.2,
+        _ => 1.0
+    };
 
     private static int BasePenalty(Severity severity) => severity switch
         {
