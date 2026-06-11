@@ -8,7 +8,8 @@ public enum DependencyEcosystem
     Maven,
     Go,
     Cargo,
-    Composer
+    Composer,
+    Ruby
 }
 
 public enum DependencyScope
