@@ -12,7 +12,8 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new PythonDependencyCollector(),
         new JavaDependencyCollector(),
         new GoDependencyCollector(),
-        new CargoDependencyCollector()
+        new CargoDependencyCollector(),
+        new ComposerDependencyCollector()
     ];
 
     public string Id => "dependency-inventory";
@@ -58,7 +59,10 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new("TRUST-DEP027", "Cargo dependency uses a Git source", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Cargo dependency references a Git source instead of a registry version.", "Review Git-sourced dependencies and prefer crates.io packages with pinned versions when possible."),
         new("TRUST-DEP028", "Cargo dependency uses a path source", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Cargo dependency references a local path instead of a registry version.", "Review path-sourced dependencies because they depend on repository layout and may bypass registry provenance."),
         new("TRUST-DEP029", "Cargo dependency uses a non-exact version", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Cargo dependency does not use an exact pinned version.", "Use exact versions with a committed Cargo.lock for reproducible Cargo builds."),
-        new("TRUST-DEP030", "Cargo dependency uses a prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Cargo dependency uses a prerelease version.", "Review whether the prerelease dependency is intentional before production use.")
+        new("TRUST-DEP030", "Cargo dependency uses a prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Cargo dependency uses a prerelease version.", "Review whether the prerelease dependency is intentional before production use."),
+        new("TRUST-DEP031", "Composer project does not have a composer.lock file", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A composer.json file exists but no composer.lock was found.", "Run 'composer install' and commit composer.lock to the repository for reproducible builds."),
+        new("TRUST-DEP032", "Composer dependency uses a non-exact version constraint", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Composer dependency uses a version constraint instead of an exact version.", "Use exact version constraints or commit composer.lock for reproducible installs."),
+        new("TRUST-DEP033", "Composer dependency uses a prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Composer dependency uses a prerelease version.", "Review whether the prerelease dependency is intentional before production use.")
     ];
 
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
