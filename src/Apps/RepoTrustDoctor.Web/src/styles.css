@@ -88,6 +88,7 @@ h3 {
 .scan-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
 }
 
@@ -104,6 +105,18 @@ h3 {
   color: #ffffff;
   font-weight: 650;
   padding: 8px 12px;
+}
+
+.scan-actions .button {
+  min-height: 40px;
+}
+
+.scan-actions .button:not(.secondary) {
+  min-width: 140px;
+}
+
+.scan-actions .button.secondary {
+  min-width: 112px;
 }
 
 .button.secondary,
@@ -157,6 +170,62 @@ h3 {
   margin: 0 auto;
 }
 
+.scan-workspace {
+  display: grid;
+  grid-template-columns: minmax(520px, 1fr) minmax(280px, 360px);
+  align-items: start;
+  gap: 12px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.scan-intro {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.72fr);
+  gap: 18px;
+  align-items: center;
+  border: 1px solid #d6dbe3;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.scan-intro h2 {
+  margin-top: 3px;
+  font-size: 22px;
+}
+
+.scan-intro p {
+  max-width: 82ch;
+  margin-top: 8px;
+  color: #475467;
+  line-height: 1.55;
+}
+
+.intro-points {
+  display: grid;
+  gap: 8px;
+}
+
+.intro-points div {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #e1e5eb;
+  border-radius: 4px;
+  background: #f8fafc;
+  padding: 8px;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.intro-points svg {
+  color: #175cd3;
+}
+
 .sidebar,
 .content {
   min-width: 0;
@@ -175,7 +244,8 @@ h3 {
 .detail-panel,
 .finding-list,
 .decision-panel,
-.api-scan-panel {
+.api-scan-panel,
+.scan-guide {
   border: 1px solid #d6dbe3;
   border-radius: 6px;
   background: #ffffff;
@@ -333,7 +403,7 @@ h3 {
 
 .report-overview {
   display: grid;
-  grid-template-columns: minmax(300px, 0.9fr) minmax(320px, 1.1fr);
+  grid-template-columns: minmax(260px, 0.72fr) minmax(520px, 1.28fr);
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -427,23 +497,75 @@ h3 {
   line-height: 1.45;
 }
 
-.score-table {
+meter {
+  width: 100%;
+  height: 8px;
+}
+
+.area-score-panel {
+  align-content: start;
+}
+
+.area-score-grid {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 12px;
 }
 
-.score-table-row {
+.area-score-card {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1.4fr) 36px;
-  gap: 10px;
-  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid #e1e5eb;
+  border-left: 4px solid #98a2b3;
+  border-radius: 4px;
+  padding: 10px;
+}
+
+.area-score-card.excellent {
+  border-left-color: #14532d;
+}
+
+.area-score-card.good {
+  border-left-color: #16a34a;
+}
+
+.area-score-card.warning {
+  border-left-color: #eab308;
+}
+
+.area-score-card.danger {
+  border-left-color: #dc2626;
+}
+
+.area-score-card strong,
+.area-score-card span,
+.area-score-card small {
+  display: block;
+}
+
+.area-score-card strong {
   font-size: 13px;
 }
 
-meter {
-  width: 100%;
-  height: 8px;
+.area-score-card span,
+.area-score-card small {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.area-score-value {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.area-score-value b {
+  color: #172033;
+  font-size: 26px;
+  line-height: 1;
 }
 
 .state-token {
@@ -732,11 +854,52 @@ textarea {
 
 .api-scan-panel {
   display: grid;
+  align-content: start;
+  align-self: start;
   gap: 14px;
+}
+
+.scan-guide {
+  display: grid;
+  align-content: start;
+  align-self: start;
+  gap: 16px;
+  padding: 14px;
+}
+
+.guide-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.guide-row {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid #edf0f4;
+  padding-top: 9px;
+}
+
+.guide-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.guide-row strong {
+  color: #172033;
+  font-size: 13px;
+}
+
+.guide-row span {
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.4;
+  max-width: 34ch;
 }
 
 .scan-form {
   display: grid;
+  max-width: 760px;
   gap: 12px;
 }
 
@@ -757,7 +920,7 @@ textarea {
 .github-input {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  min-height: 38px;
+  min-height: 42px;
   align-items: center;
   overflow: hidden;
   border: 1px solid #cfd6e0;
@@ -779,6 +942,7 @@ textarea {
 .github-input input {
   border: 0;
   border-radius: 0;
+  min-height: 40px;
 }
 
 .field-grid {
@@ -791,7 +955,7 @@ textarea {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-  margin: 0;
+  margin: 2px 0 0;
 }
 
 .scan-status-grid div {
@@ -809,6 +973,8 @@ textarea {
 
 @media (max-width: 1060px) {
   .workspace,
+  .scan-workspace,
+  .scan-intro,
   .finding-layout,
   .import-layout,
   .report-overview {
@@ -844,7 +1010,8 @@ textarea {
 
   .field-grid,
   .scan-status-grid,
-  .overall-score-row {
+  .overall-score-row,
+  .area-score-grid {
     grid-template-columns: 1fr;
   }
 }

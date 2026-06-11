@@ -2,6 +2,19 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v1.0.9 - 2026-06-11
+
+This release improves the React scan and report experience.
+
+### Changed
+
+- Product version is now `1.0.9`.
+- Web app version is now `1.0.9`.
+- Scan depth choices now use plain labels such as `Fast scan`, `Standard scan`, and `Deep scan`.
+- Trust profile choices are reduced to three clear options: personal, production, and enterprise/security-sensitive.
+- Legacy CI/CD and container profile inputs now map to production while the underlying workflow and container analyzers remain part of normal scans.
+- Added a main scan introduction, a clearer right-side profile guide, area score cards, report display labels, and richer finding explanations.
+
 ## v1.0.6 - 2026-06-11
 
 This release corrects the React product flow so users scan a GitHub repository directly instead of importing or pasting raw JSON.

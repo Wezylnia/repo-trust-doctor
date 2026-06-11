@@ -111,6 +111,22 @@ public sealed class AnalyzerInfrastructureTests
         }
     }
 
+    [Fact]
+    public void DefaultScanAnalyzers_IncludeAutomationAnalyzersForEveryActiveProfile()
+    {
+        var analyzerIds = RepoTrustDoctor.Infrastructure.Scanning.DefaultRepositoryScanRunner
+            .CreateAnalyzers()
+            .Select(analyzer => analyzer.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var profile in TrustProfileCatalog.ActiveProfiles)
+        {
+            Assert.Contains("github-actions-basic", analyzerIds);
+            Assert.Contains("docker-basic", analyzerIds);
+            Assert.True(TrustProfileCatalog.IsActive(profile));
+        }
+    }
+
     private sealed class FakeAnalyzerWithRule : IRepositoryAnalyzer
     {
         private readonly string id;

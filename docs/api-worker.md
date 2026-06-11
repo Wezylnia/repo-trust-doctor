@@ -39,7 +39,7 @@ The response is `202 Accepted` with a scan ID and status URL:
 }
 ```
 
-API lifecycle and domain enum values are serialized as strings, for example `Completed`, `Fast`, and `ProductionDependency`.
+API lifecycle and domain enum values are serialized as strings, for example `Completed`, `Fast`, and `ProductionDependency`. Active trust profile values are `Personal`, `ProductionDependency`, and `SecuritySensitiveDependency`; legacy CI/CD and container profile inputs are normalized to production.
 
 ## API Endpoints
 

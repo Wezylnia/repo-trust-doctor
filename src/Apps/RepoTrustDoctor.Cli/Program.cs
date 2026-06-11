@@ -33,17 +33,21 @@ internal static class CliProgram
     private static readonly string[] SupportedFormats = ["console", "json", "markdown", "md", "sarif"];
     private static readonly string[] SupportedDiffFormats = ["console", "json", "markdown", "md"];
     private static readonly string[] SupportedDepths = ["fast", "standard", "deep"];
-    private static readonly string[] SupportedProfileNames = Enum.GetNames<TrustProfile>();
+    private static readonly string[] SupportedProfileNames = ["Personal", "ProductionDependency", "SecuritySensitiveDependency"];
     private static readonly Dictionary<string, TrustProfile> SupportedProfileAliases = new(StringComparer.OrdinalIgnoreCase)
     {
+        ["personal"] = TrustProfile.Personal,
         ["production"] = TrustProfile.ProductionDependency,
         ["prod"] = TrustProfile.ProductionDependency,
-        ["enterprise"] = TrustProfile.EnterpriseDependency,
-        ["cicd"] = TrustProfile.CiCdTool,
-        ["ci-cd"] = TrustProfile.CiCdTool,
+        ["enterprise"] = TrustProfile.SecuritySensitiveDependency,
+        ["enterprise-dependency"] = TrustProfile.SecuritySensitiveDependency,
+        ["cicd"] = TrustProfile.ProductionDependency,
+        ["ci-cd"] = TrustProfile.ProductionDependency,
+        ["ci"] = TrustProfile.ProductionDependency,
         ["security"] = TrustProfile.SecuritySensitiveDependency,
         ["security-sensitive"] = TrustProfile.SecuritySensitiveDependency,
-        ["container"] = TrustProfile.ContainerDependency
+        ["container"] = TrustProfile.ProductionDependency,
+        ["docker"] = TrustProfile.ProductionDependency
     };
 
     public static async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
@@ -324,6 +328,7 @@ internal static class CliProgram
     {
         if (Enum.TryParse(profileValue, ignoreCase: true, out profile))
         {
+            profile = TrustProfileCatalog.Normalize(profile);
             return true;
         }
 
@@ -532,9 +537,9 @@ internal static class CliProgram
           --force                             Overwrite existing diff report file
 
         Supported profiles:
-          Personal, ProductionDependency, EnterpriseDependency,
-          CiCdTool, SecuritySensitiveDependency, ContainerDependency
-          Common aliases: production, enterprise, ci-cd, security, container
+          Personal, ProductionDependency, SecuritySensitiveDependency
+          Common aliases: production, enterprise, security
+          Legacy ci-cd/container aliases are accepted and mapped to production.
 
         Exit codes:
           0   Scan completed, no blocking decision

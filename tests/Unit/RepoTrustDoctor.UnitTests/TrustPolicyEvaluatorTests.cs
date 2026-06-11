@@ -29,9 +29,9 @@ public sealed class TrustPolicyEvaluatorTests
     }
 
     [Fact]
-    public void Evaluate_UnpinnedActionBlocksForCicdTool()
+    public void Evaluate_UnpinnedActionBlocksForStrictProfile()
     {
-        var policy = TrustPolicyPresets.ForProfile(TrustProfile.CiCdTool);
+        var policy = TrustPolicyPresets.ForProfile(TrustProfile.SecuritySensitiveDependency);
         var finding = CreateFinding("TRUST-GHA005", AnalysisCategory.CiCd, Severity.Medium);
 
         var evaluation = new TrustPolicyEvaluator().Evaluate([finding], policy);

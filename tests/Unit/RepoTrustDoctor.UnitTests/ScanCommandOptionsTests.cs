@@ -198,10 +198,7 @@ public sealed class ScanCommandOptionsTests
     [Theory]
     [InlineData("Personal", TrustProfile.Personal)]
     [InlineData("ProductionDependency", TrustProfile.ProductionDependency)]
-    [InlineData("EnterpriseDependency", TrustProfile.EnterpriseDependency)]
-    [InlineData("CiCdTool", TrustProfile.CiCdTool)]
     [InlineData("SecuritySensitiveDependency", TrustProfile.SecuritySensitiveDependency)]
-    [InlineData("ContainerDependency", TrustProfile.ContainerDependency)]
     public void TryParseScanOptions_CanonicalProfiles_AreAccepted(string profile, TrustProfile expected)
     {
         var args = new[] { "scan", ".", "--profile", profile };
@@ -213,11 +210,24 @@ public sealed class ScanCommandOptionsTests
 
     [Theory]
     [InlineData("production", TrustProfile.ProductionDependency)]
-    [InlineData("enterprise", TrustProfile.EnterpriseDependency)]
-    [InlineData("ci-cd", TrustProfile.CiCdTool)]
+    [InlineData("enterprise", TrustProfile.SecuritySensitiveDependency)]
+    [InlineData("ci-cd", TrustProfile.ProductionDependency)]
     [InlineData("security", TrustProfile.SecuritySensitiveDependency)]
-    [InlineData("container", TrustProfile.ContainerDependency)]
+    [InlineData("container", TrustProfile.ProductionDependency)]
     public void TryParseScanOptions_ProfileAliases_AreNormalized(string profile, TrustProfile expected)
+    {
+        var args = new[] { "scan", ".", "--profile", profile };
+        var ok = CliProgram.TryParseScanOptions(args, out var options, out _);
+
+        Assert.True(ok);
+        Assert.Equal(expected, options.TrustProfile);
+    }
+
+    [Theory]
+    [InlineData("EnterpriseDependency", TrustProfile.SecuritySensitiveDependency)]
+    [InlineData("CiCdTool", TrustProfile.ProductionDependency)]
+    [InlineData("ContainerDependency", TrustProfile.ProductionDependency)]
+    public void TryParseScanOptions_LegacyCanonicalProfiles_AreMerged(string profile, TrustProfile expected)
     {
         var args = new[] { "scan", ".", "--profile", profile };
         var ok = CliProgram.TryParseScanOptions(args, out var options, out _);

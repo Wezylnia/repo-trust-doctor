@@ -12,11 +12,12 @@ public sealed class TrustScorer
 
     public TrustScore Score(IReadOnlyList<Finding> findings, TrustProfile trustProfile)
     {
-        var policy = TrustPolicyPresets.ForProfile(trustProfile);
+        var normalizedProfile = TrustProfileCatalog.Normalize(trustProfile);
+        var policy = TrustPolicyPresets.ForProfile(normalizedProfile);
         var policyEvaluation = new TrustPolicyEvaluator().Evaluate(findings, policy);
         var categories = findings
             .GroupBy(finding => finding.Category)
-            .Select(group => new CategoryScore(group.Key, ScoreCategory(group, trustProfile)))
+            .Select(group => new CategoryScore(group.Key, ScoreCategory(group, normalizedProfile)))
             .OrderBy(score => score.Category)
             .ToArray();
 
@@ -61,14 +62,10 @@ public sealed class TrustScorer
         return trustProfile switch
         {
             TrustProfile.Personal => 0.75,
-            TrustProfile.EnterpriseDependency when finding.Category is AnalysisCategory.Licenses or AnalysisCategory.Dependencies or AnalysisCategory.Releases => 1.35,
-            TrustProfile.EnterpriseDependency => 1.15,
-            TrustProfile.CiCdTool when finding.Category is AnalysisCategory.CiCd or AnalysisCategory.Security => 1.45,
-            TrustProfile.CiCdTool => 1.0,
+            TrustProfile.ProductionDependency when finding.Category is AnalysisCategory.CiCd or AnalysisCategory.Containers => 1.15,
             TrustProfile.SecuritySensitiveDependency when finding.Category is AnalysisCategory.Security or AnalysisCategory.Dependencies => 1.6,
+            TrustProfile.SecuritySensitiveDependency when finding.Category is AnalysisCategory.CiCd or AnalysisCategory.Containers or AnalysisCategory.Releases => 1.45,
             TrustProfile.SecuritySensitiveDependency => 1.25,
-            TrustProfile.ContainerDependency when finding.Category is AnalysisCategory.Containers or AnalysisCategory.Releases => 1.45,
-            TrustProfile.ContainerDependency => 1.0,
             _ => 1.0
         };
     }

@@ -23,6 +23,173 @@ export function recommendationText(finding: Finding): string {
     : finding.recommendation?.message ?? '';
 }
 
+const categoryLabels: Record<string, string> = {
+  RepositoryHealth: 'Repository health',
+  CiCd: 'CI/CD workflows',
+  Security: 'Security exposure',
+  Containers: 'Container hygiene',
+  Dependencies: 'Dependencies',
+  Releases: 'Release provenance',
+  Licenses: 'License risk',
+  Codebase: 'Codebase maintainability',
+  Documentation: 'Documentation'
+};
+
+const decisionLabels: Record<string, string> = {
+  SafeToTry: 'Safe to try',
+  UseWithCaution: 'Use with caution',
+  AvoidAsProductionDependency: 'Avoid as production dependency',
+  NeedsManualReview: 'Needs manual review'
+};
+
+const profileLabels: Record<string, string> = {
+  Personal: 'Personal project',
+  ProductionDependency: 'Production dependency',
+  EnterpriseDependency: 'Enterprise or security-sensitive',
+  CiCdTool: 'Production dependency',
+  SecuritySensitiveDependency: 'Enterprise or security-sensitive',
+  ContainerDependency: 'Production dependency'
+};
+
+export interface AreaScore {
+  id: string;
+  label: string;
+  score: number;
+  description: string;
+  categories: string[];
+}
+
+const areaDefinitions = [
+  {
+    id: 'security',
+    label: 'Security exposure',
+    categories: ['Security'],
+    description: 'Secrets, known vulnerability signals, and security policy expectations.'
+  },
+  {
+    id: 'repository-health',
+    label: 'Repository health',
+    categories: ['RepositoryHealth', 'Documentation'],
+    description: 'License, ownership, contribution process, README quality, and project hygiene.'
+  },
+  {
+    id: 'dependencies',
+    label: 'Dependency and license risk',
+    categories: ['Dependencies', 'Licenses'],
+    description: 'Dependency inventory, version pinning, package metadata, provenance, and licenses.'
+  },
+  {
+    id: 'automation',
+    label: 'CI/CD workflow safety',
+    categories: ['CiCd'],
+    description: 'Workflow permissions, pinned actions, artifact handling, and build runner risk.'
+  },
+  {
+    id: 'containers',
+    label: 'Container hygiene',
+    categories: ['Containers'],
+    description: 'Dockerfile hardening, runtime user, health checks, and build image practices.'
+  },
+  {
+    id: 'releases',
+    label: 'Release readiness',
+    categories: ['Releases'],
+    description: 'Release notes, artifacts, checksums, provenance, and reproducible delivery signals.'
+  },
+  {
+    id: 'codebase',
+    label: 'Codebase maintainability',
+    categories: ['Codebase'],
+    description: 'Public API surface, critical paths, coverage evidence, and risky implementation patterns.'
+  }
+];
+
+export function formatCategory(value: string): string {
+  return categoryLabels[value] ?? splitIdentifier(value);
+}
+
+export function formatDecision(value: string): string {
+  return decisionLabels[value] ?? splitIdentifier(value);
+}
+
+export function formatTrustProfile(value: string): string {
+  return profileLabels[value] ?? splitIdentifier(value);
+}
+
+export function formatStatus(value: string): string {
+  return splitIdentifier(value);
+}
+
+export function formatEvidenceKind(value: string): string {
+  return capitalizeFirst(splitIdentifier(value.replaceAll('-', ' ')));
+}
+
+export function explainFinding(finding: Finding): string {
+  if (finding.ruleId.startsWith('TRUST-VULN')) {
+    return 'A dependency or package source appears to have vulnerability risk. Treat this as a signal to inspect the affected package, version, advisory status, and whether the vulnerable code path is reachable in your use case.';
+  }
+
+  if (finding.ruleId.startsWith('TRUST-SECRET')) {
+    return 'The scanner found content that resembles a secret or credential. Even when this is a false positive, verify it manually because exposed credentials can require rotation and repository history cleanup.';
+  }
+
+  if (finding.ruleId.startsWith('TRUST-GHA')) {
+    return 'This finding affects workflow safety. CI/CD files can run with repository tokens, publish artifacts, and access build secrets, so weak workflow configuration can become a supply-chain risk.';
+  }
+
+  if (finding.ruleId.startsWith('TRUST-DOCKER')) {
+    return 'This finding affects container build or runtime hygiene. Container issues can increase image size, weaken runtime isolation, or make production behavior harder to monitor.';
+  }
+
+  if (finding.ruleId.startsWith('TRUST-DEP') || finding.ruleId.startsWith('TRUST-LIC') || finding.ruleId.startsWith('TRUST-ORIGIN')) {
+    return 'This finding affects dependency trust. Review package source, pinning, freshness, license, and maintainer signals before relying on this repository in another project.';
+  }
+
+  if (finding.ruleId.startsWith('TRUST-REPO')) {
+    return 'This finding affects repository readiness. Missing project metadata does not always mean the code is unsafe, but it makes adoption, maintenance, support, and incident response harder to judge.';
+  }
+
+  if (finding.ruleId.startsWith('TRUST-REL')) {
+    return 'This finding affects release trust. Strong release evidence helps users verify what changed, where artifacts came from, and whether downloaded files match the published source.';
+  }
+
+  return 'Review this finding together with its evidence and recommendation. The severity reflects expected impact, while confidence reflects how directly the scanner could prove the signal.';
+}
+
+export function buildAreaScores(report: RepositoryScan): AreaScore[] {
+  const scoreByCategory = new Map(report.score.categories.map((item) => [item.category, item.score]));
+  const moduleCategories = new Set(report.modules.map((module) => module.category));
+
+  return areaDefinitions
+    .map((area) => {
+      const categoryScores = scoresForArea(area.categories, scoreByCategory, moduleCategories);
+      if (!categoryScores.length) {
+        return null;
+      }
+
+      return {
+        ...area,
+        score: Math.round(categoryScores.reduce((sum, score) => sum + score, 0) / categoryScores.length)
+      };
+    })
+    .filter((area): area is AreaScore => area !== null);
+}
+
+function scoresForArea(
+  categories: string[],
+  scoreByCategory: Map<string, number>,
+  moduleCategories: Set<string>
+): number[] {
+  return categories.flatMap((category) => {
+    const explicitScore = scoreByCategory.get(category);
+    if (explicitScore !== undefined) {
+      return [explicitScore];
+    }
+
+    return moduleCategories.has(category) ? [100] : [];
+  });
+}
+
 export function summarizeFindings(findings: Finding[]): FindingSummary {
   return findings.reduce(
     (summary, finding) => {
@@ -47,4 +214,18 @@ export function getDependencyInventory(report: RepositoryScan): DependencyInvent
   }
 
   return raw as DependencyInventoryArtifact;
+}
+
+function splitIdentifier(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/\bCi Cd\b/g, 'CI/CD')
+    .replace(/\bApi\b/g, 'API')
+    .replace(/\bUrl\b/g, 'URL')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function capitalizeFirst(value: string): string {
+  return value ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
 }

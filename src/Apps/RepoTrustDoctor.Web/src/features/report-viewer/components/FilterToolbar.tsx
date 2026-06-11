@@ -1,5 +1,5 @@
 import { Search, X } from 'lucide-react';
-import { severities } from '../../../domain/reportSelectors';
+import { formatCategory, severities } from '../../../domain/reportSelectors';
 
 interface FilterToolbarProps {
   categories: string[];
@@ -42,7 +42,7 @@ export function FilterToolbar({
       <select value={category} onChange={(event) => onCategoryChange(event.target.value)} aria-label="Category">
         {categories.map((item) => (
           <option value={item} key={item}>
-            {item}
+            {item === 'All' ? 'All' : formatCategory(item)}
           </option>
         ))}
       </select>

@@ -133,16 +133,18 @@ public sealed class ScanRequestValidator
     {
         if (Enum.TryParse(profileValue, ignoreCase: true, out profile))
         {
+            profile = TrustProfileCatalog.Normalize(profile);
             return true;
         }
 
         return profileValue.ToLowerInvariant() switch
         {
+            "personal" => Assign(TrustProfile.Personal, out profile),
             "production" or "prod" => Assign(TrustProfile.ProductionDependency, out profile),
-            "enterprise" => Assign(TrustProfile.EnterpriseDependency, out profile),
-            "cicd" or "ci-cd" => Assign(TrustProfile.CiCdTool, out profile),
+            "enterprise" or "enterprise-dependency" => Assign(TrustProfile.SecuritySensitiveDependency, out profile),
+            "cicd" or "ci-cd" or "ci" => Assign(TrustProfile.ProductionDependency, out profile),
             "security" or "security-sensitive" => Assign(TrustProfile.SecuritySensitiveDependency, out profile),
-            "container" => Assign(TrustProfile.ContainerDependency, out profile),
+            "container" or "docker" => Assign(TrustProfile.ProductionDependency, out profile),
             _ => false
         };
     }

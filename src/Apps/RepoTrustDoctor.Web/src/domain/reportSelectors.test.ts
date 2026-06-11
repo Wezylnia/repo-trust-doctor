@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { Finding, RepositoryScan } from './report';
-import { getDependencyInventory, recommendationText, scoreTone, summarizeFindings } from './reportSelectors';
+import {
+  buildAreaScores,
+  explainFinding,
+  formatCategory,
+  formatDecision,
+  formatEvidenceKind,
+  formatTrustProfile,
+  getDependencyInventory,
+  recommendationText,
+  scoreTone,
+  summarizeFindings
+} from './reportSelectors';
 
 describe('report selectors', () => {
   it('summarizes findings by severity and blocking state', () => {
@@ -61,6 +72,51 @@ describe('report selectors', () => {
     expect(scoreTone(84)).toBe('good');
     expect(scoreTone(72)).toBe('warning');
     expect(scoreTone(40)).toBe('danger');
+  });
+
+  it('formats report enum values for display', () => {
+    expect(formatDecision('NeedsManualReview')).toBe('Needs manual review');
+    expect(formatTrustProfile('SecuritySensitiveDependency')).toBe('Enterprise or security-sensitive');
+    expect(formatCategory('RepositoryHealth')).toBe('Repository health');
+    expect(formatEvidenceKind('file-missing')).toBe('File missing');
+  });
+
+  it('builds area scores from explicit scores and completed module categories', () => {
+    const report: RepositoryScan = {
+      target: '.',
+      depth: 'Fast',
+      trustProfile: 'ProductionDependency',
+      toolVersion: '1.0.7',
+      status: 'Completed',
+      modules: [
+        { moduleId: 'repo', displayName: 'Repository Health', category: 'RepositoryHealth', status: 'Completed', findingsCount: 2 },
+        { moduleId: 'secrets', displayName: 'Secret Quick Scan', category: 'Security', status: 'Completed', findingsCount: 0 },
+        { moduleId: 'docker', displayName: 'Docker Basic Checks', category: 'Containers', status: 'Completed', findingsCount: 1 }
+      ],
+      findings: [],
+      score: {
+        overall: 72,
+        categories: [
+          { category: 'RepositoryHealth', score: 56 },
+          { category: 'Containers', score: 70 }
+        ],
+        decision: {
+          kind: 'UseWithCaution',
+          reasons: []
+        }
+      }
+    };
+
+    const areas = buildAreaScores(report);
+
+    expect(areas.find((area) => area.id === 'repository-health')?.score).toBe(56);
+    expect(areas.find((area) => area.id === 'security')?.score).toBe(100);
+    expect(areas.find((area) => area.id === 'containers')?.score).toBe(70);
+  });
+
+  it('adds richer finding explanations by rule family', () => {
+    expect(explainFinding(finding('TRUST-VULN001', 'High', false))).toContain('vulnerability risk');
+    expect(explainFinding(finding('TRUST-GHA005', 'Medium', false))).toContain('workflow safety');
   });
 });
 

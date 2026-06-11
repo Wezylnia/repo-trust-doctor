@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Header } from '../components/Header';
 import { ApiScanPanel } from '../features/api-scan/ApiScanPanel';
+import { ScanIntro } from '../features/api-scan/ScanIntro';
+import { ScanGuide } from '../features/api-scan/ScanGuide';
 import { ReportViewer } from '../features/report-viewer/ReportViewer';
 import type { RepositoryScan } from '../domain/report';
 
@@ -25,14 +27,18 @@ function App() {
       />
 
       {mode === 'scan' ? (
-        <section className="single-workspace" aria-label="Scan workspace">
+        <section className="scan-workspace" aria-label="Scan workspace">
+          <ScanIntro />
           <ApiScanPanel onReportLoaded={loadReport} />
+          <ScanGuide />
         </section>
       ) : report && mode === 'report' ? (
         <ReportViewer report={report} />
       ) : (
-        <section className="single-workspace" aria-label="No report">
+        <section className="scan-workspace" aria-label="Scan workspace">
+          <ScanIntro />
           <ApiScanPanel onReportLoaded={loadReport} />
+          <ScanGuide />
         </section>
       )}
     </main>

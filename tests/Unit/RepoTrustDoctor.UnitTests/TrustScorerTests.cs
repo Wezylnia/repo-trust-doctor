@@ -56,10 +56,24 @@ public sealed class TrustScorerTests
     {
         var finding = CreateFinding("TRUST-GHA005", AnalysisCategory.CiCd, Severity.Medium);
 
-        var score = new TrustScorer().Score([finding], TrustProfile.CiCdTool);
+        var score = new TrustScorer().Score([finding], TrustProfile.SecuritySensitiveDependency);
 
         Assert.Equal(FinalDecisionKind.AvoidAsProductionDependency, score.Decision.Kind);
         Assert.Contains(score.Decision.Reasons, reason => reason.Contains("POLICY-GHA-PINNING", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Score_LegacyAutomationProfilesUseProductionPolicy()
+    {
+        var finding = CreateFinding("TRUST-GHA001", AnalysisCategory.CiCd, Severity.Medium);
+        var scorer = new TrustScorer();
+
+        var production = scorer.Score([finding], TrustProfile.ProductionDependency);
+        var legacyCiCd = scorer.Score([finding], TrustProfile.CiCdTool);
+        var legacyContainer = scorer.Score([finding], TrustProfile.ContainerDependency);
+
+        Assert.Equal(production.Overall, legacyCiCd.Overall);
+        Assert.Equal(production.Overall, legacyContainer.Overall);
     }
 
     [Fact]

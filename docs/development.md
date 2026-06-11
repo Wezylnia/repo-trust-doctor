@@ -40,7 +40,7 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --
 
 Existing report files are not overwritten unless `--force` is supplied.
 
-Trust profile values are normalized by the CLI. Canonical values are `Personal`, `ProductionDependency`, `EnterpriseDependency`, `CiCdTool`, `SecuritySensitiveDependency`, and `ContainerDependency`; common aliases such as `production`, `enterprise`, `ci-cd`, `security`, and `container` are also accepted.
+Trust profile values are normalized by the CLI. Active values are `Personal`, `ProductionDependency`, and `SecuritySensitiveDependency`; common aliases such as `production`, `enterprise`, and `security` are also accepted. Legacy `ci-cd` and `container` aliases remain accepted for compatibility and map to `ProductionDependency`.
 
 ## Local API Smoke Test
 

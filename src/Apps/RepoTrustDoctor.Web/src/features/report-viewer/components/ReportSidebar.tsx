@@ -2,6 +2,7 @@ import { ShieldCheck } from 'lucide-react';
 import { Metric } from '../../../components/Metric';
 import { StatusPill } from '../../../components/StatusPill';
 import type { DependencyInventoryArtifact, FindingSummary, RepositoryScan } from '../../../domain/report';
+import { formatCategory, formatDecision, formatStatus, formatTrustProfile } from '../../../domain/reportSelectors';
 
 interface ReportSidebarProps {
   report: RepositoryScan;
@@ -15,7 +16,7 @@ export function ReportSidebar({ report, summary, dependencyInventory }: ReportSi
       <section className="summary-panel" aria-label="Report summary">
         <div className={`summary-heading ${report.score.decision.kind.toLowerCase()}`}>
           <ShieldCheck size={18} aria-hidden="true" />
-          <span>{report.score.decision.kind}</span>
+          <span>{formatDecision(report.score.decision.kind)}</span>
         </div>
         <div className="score-row">
           <span className="score">{report.score.overall}</span>
@@ -28,11 +29,11 @@ export function ReportSidebar({ report, summary, dependencyInventory }: ReportSi
           </div>
           <div>
             <dt>Profile</dt>
-            <dd>{report.trustProfile}</dd>
+            <dd>{formatTrustProfile(report.trustProfile)}</dd>
           </div>
           <div>
             <dt>Depth</dt>
-            <dd>{report.depth}</dd>
+            <dd>{formatStatus(report.depth)}</dd>
           </div>
           <div>
             <dt>Version</dt>
@@ -40,7 +41,7 @@ export function ReportSidebar({ report, summary, dependencyInventory }: ReportSi
           </div>
           <div>
             <dt>Status</dt>
-            <dd>{report.status}</dd>
+            <dd>{formatStatus(report.status)}</dd>
           </div>
         </dl>
       </section>
@@ -63,7 +64,7 @@ export function ReportSidebar({ report, summary, dependencyInventory }: ReportSi
             <div className="module-row" key={module.moduleId}>
               <div>
                 <strong>{module.displayName}</strong>
-                <span>{module.category}</span>
+                <span>{formatCategory(module.category)}</span>
               </div>
               <StatusPill status={module.status} count={module.findingsCount} />
             </div>

@@ -15,11 +15,11 @@ export function FindingList({ findings, selectedFinding, onSelectFinding }: Find
         <span>{findings.length} shown</span>
       </div>
       {findings.length > 0 ? (
-        findings.map((finding) => (
+        findings.map((finding, index) => (
           <button
             type="button"
             className={`finding-row ${selectedFinding === finding ? 'selected' : ''}`}
-            key={finding.fingerprint ?? `${finding.ruleId}-${finding.title}`}
+            key={finding.fingerprint ?? `${finding.ruleId}-${finding.title}-${index}`}
             onClick={() => onSelectFinding(finding)}
           >
             <span className={`severity-dot ${finding.severity.toLowerCase()}`} />
