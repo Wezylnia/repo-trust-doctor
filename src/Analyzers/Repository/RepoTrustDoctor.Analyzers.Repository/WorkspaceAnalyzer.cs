@@ -21,11 +21,11 @@ public sealed class WorkspaceAnalyzer : IRepositoryAnalyzer
 
     public IReadOnlyCollection<RuleMetadata> Rules =>
     [
-        new("TRUST-WS001", "Repository uses npm workspaces", AnalysisCategory.RepositoryHealth, Severity.Low, Confidence.High,
+        new("TRUST-WS001", "Repository uses npm workspaces", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High,
             "The repository uses npm workspace configuration.", "Workspaces are a valid monorepo pattern. Ensure workspace boundaries are documented."),
-        new("TRUST-WS002", "Repository uses Cargo workspace", AnalysisCategory.RepositoryHealth, Severity.Low, Confidence.High,
+        new("TRUST-WS002", "Repository uses Cargo workspace", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High,
             "The repository uses Cargo workspace configuration.", "Workspaces are a valid monorepo pattern. Ensure workspace members are documented."),
-        new("TRUST-WS003", "Repository uses Go workspace", AnalysisCategory.RepositoryHealth, Severity.Low, Confidence.High,
+        new("TRUST-WS003", "Repository uses Go workspace", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High,
             "The repository uses Go workspace configuration (go.work).", "Go workspaces are a valid multi-module pattern."),
     ];
 
@@ -139,7 +139,7 @@ public sealed class WorkspaceAnalyzer : IRepositoryAnalyzer
     {
         return new Finding(
             ruleId, title, AnalysisCategory.RepositoryHealth,
-            Severity.Low, Confidence.High, title,
+            Severity.Info, Confidence.High, title,
             [new Evidence("workspace", evidence, filePath)],
             new Recommendation("Workspaces are a valid monorepo pattern. Ensure workspace boundaries are documented."));
     }

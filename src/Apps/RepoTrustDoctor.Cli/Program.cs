@@ -93,7 +93,7 @@ internal static class CliProgram
             "json" => new JsonReportWriter().Write(scan),
             "markdown" or "md" => new MarkdownReportWriter().Write(scan),
             "sarif" => new SarifReportWriter().Write(scan),
-            "console" => BuildConsoleSummary(scan),
+            "console" => ConsoleSummaryWriter.Build(scan),
             _ => throw new ArgumentException($"Unsupported format: {options.Format}")
         };
 
@@ -390,86 +390,6 @@ internal static class CliProgram
         Console.WriteLine($"Report written to {fullOutputPath}");
         return 0;
     }
-
-    private static string BuildConsoleSummary(RepositoryScan scan)
-    {
-        var summary = scan.Summary;
-        var lines = new List<string>
-        {
-            ProductInfo.Name,
-            $"Version: {scan.ToolVersion}",
-            $"Target: {scan.Target}",
-            $"Depth: {scan.Depth}",
-            $"Trust profile: {scan.TrustProfile}",
-            $"Score: {scan.Score.Overall}/100",
-            $"Decision: {scan.Score.Decision.Kind}",
-            $"Findings: {scan.Findings.Count}",
-            $"Severity summary: Critical={summary.Critical}, High={summary.High}, Medium={summary.Medium}, Low={summary.Low}, Info={summary.Info}",
-            string.Empty,
-            "Category scores:"
-        };
-
-        foreach (var category in scan.Score.Categories.OrderByDescending(c => c.Score))
-        {
-            var bar = ScoreBar(category.Score);
-            lines.Add($"  {category.Category,-22} {category.Score,3}/100 {bar}");
-        }
-
-        lines.Add(string.Empty);
-        lines.Add("Top findings:");
-
-        lines.AddRange(scan.Findings
-            .OrderByDescending(finding => finding.Severity)
-            .Take(10)
-            .Select(finding => $"- [{finding.Severity}] {finding.RuleId}: {finding.Title}"));
-
-        if (scan.Findings.Count == 0)
-        {
-            lines.Add("- none");
-        }
-
-        // Dependency summary
-        if (scan.Artifacts?.TryGetValue("dependency.inventory", out var inv) == true &&
-            inv is DependencyInventoryArtifact inventory)
-        {
-            lines.Add(string.Empty);
-            lines.Add($"Dependencies: {inventory.Packages.Count} packages across {inventory.Manifests.Count} manifests");
-            lines.Add($"  Unpinned: {inventory.Packages.Count(p => !p.IsVersionPinned)}, Prerelease: {inventory.Packages.Count(p => p.IsPrerelease)}");
-        }
-
-        // Top recommended actions
-        var actions = scan.Findings
-            .Select(f => f.Recommendation.Message)
-            .Where(m => !string.IsNullOrWhiteSpace(m))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(3)
-            .ToArray();
-
-        if (actions.Length > 0)
-        {
-            lines.Add(string.Empty);
-            lines.Add("Top actions:");
-            foreach (var action in actions)
-            {
-                lines.Add($"  - {action}");
-            }
-        }
-
-        return string.Join(Environment.NewLine, lines);
-    }
-
-    private static string ScoreBar(int score) => score switch
-    {
-        >= 90 => "++++++++++",
-        >= 80 => "++++++++  ",
-        >= 70 => "+++++++   ",
-        >= 60 => "++++++    ",
-        >= 50 => "+++++     ",
-        >= 40 => "++++      ",
-        >= 30 => "+++       ",
-        >= 20 => "++        ",
-        _ => "+         "
-    };
 
     private static string BuildDiffConsoleSummary(TrustDiffResult diff)
     {

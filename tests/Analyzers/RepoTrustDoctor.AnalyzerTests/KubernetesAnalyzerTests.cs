@@ -10,7 +10,7 @@ public sealed class KubernetesAnalyzerTests
     public async Task AnalyzeAsync_DetectsPrivilegedContainer()
     {
         using var fixture = TemporaryRepository.Create();
-        File.WriteAllText(Path.Combine(fixture.Path, "deployment.yaml"), """
+        File.WriteAllText(Path.Combine(fixture.Path, "app.yaml"), """
         apiVersion: apps/v1
         kind: Deployment
         spec:
@@ -166,5 +166,7 @@ public sealed class KubernetesAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S005");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S003");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S004");
     }
 }

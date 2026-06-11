@@ -255,27 +255,78 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
     private static void CheckTokenScope(string content, string relativePath, List<Finding> findings)
     {
-        // If permissions are declared but set to read-all or left at defaults per job
         var permsMatch = PermissionsPattern().Match(content);
         if (!permsMatch.Success)
         {
             return;
         }
 
-        // Check if any job overrides permissions to be more restrictive than write-all
-        var jobPermsPattern = JobPermissionsPattern();
-        if (!jobPermsPattern.IsMatch(content))
+        if (!PermissionsGrantWriteScope(content, permsMatch.Index))
         {
-            AddFinding(
-                findings,
-                "TRUST-GHA011",
-                "Workflow does not restrict GITHUB_TOKEN scope",
-                Severity.Medium,
-                "Set per-job permissions to restrict GITHUB_TOKEN to the minimum required scope.",
-                relativePath,
-                "GITHUB_TOKEN permissions are not explicitly restricted at the job level.",
-                confidence: Confidence.High);
+            return;
         }
+
+        AddFinding(
+            findings,
+            "TRUST-GHA011",
+            "Workflow does not restrict GITHUB_TOKEN scope",
+            Severity.Medium,
+            "Prefer read-only workflow permissions and grant write scopes only on the specific job that needs them.",
+            relativePath,
+            "Workflow-level permissions grant write access to GITHUB_TOKEN.",
+            GetLineNumber(content, permsMatch.Index),
+            Confidence.Medium);
+    }
+
+    private static bool PermissionsGrantWriteScope(string content, int permissionsIndex)
+    {
+        var lines = SplitLines(content);
+        var currentOffset = 0;
+        for (var index = 0; index < lines.Length; index++)
+        {
+            var line = lines[index];
+            var nextOffset = currentOffset + line.Length + 1;
+            if (permissionsIndex >= currentOffset && permissionsIndex < nextOffset)
+            {
+                var trimmed = line.Trim();
+                if (trimmed.Equals("permissions: write-all", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (trimmed.Equals("permissions: read-all", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.Equals("permissions: {}", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                var baseIndent = GetIndentation(line);
+                for (var cursor = index + 1; cursor < lines.Length; cursor++)
+                {
+                    var child = lines[cursor];
+                    if (string.IsNullOrWhiteSpace(child))
+                    {
+                        continue;
+                    }
+
+                    if (GetIndentation(child) <= baseIndent)
+                    {
+                        break;
+                    }
+
+                    if (PermissionWriteValuePattern().IsMatch(child))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            currentOffset = nextOffset;
+        }
+
+        return false;
     }
 
     private static void CheckHardcodedSecretsInEnv(string content, string relativePath, List<Finding> findings)
@@ -283,8 +334,14 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         var match = HardcodedSecretEnvPattern().Match(content);
         if (match.Success)
         {
-            var redactedValue = match.Groups["value"].Value.Length > 4
-                ? match.Groups["value"].Value[..4] + "[redacted]"
+            var value = match.Groups["value"].Value.Trim('"', '\'');
+            if (IsSafeEnvReference(value))
+            {
+                return;
+            }
+
+            var redactedValue = value.Length > 4
+                ? value[..4] + "[redacted]"
                 : "[redacted]";
             AddFinding(
                 findings,
@@ -297,6 +354,14 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
                 confidence: Confidence.Medium);
         }
     }
+
+    private static bool IsSafeEnvReference(string value) =>
+        value.Contains("${{", StringComparison.Ordinal) ||
+        value.StartsWith("$", StringComparison.Ordinal) ||
+        value.Contains("example", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("placeholder", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("changeme", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("replace-me", StringComparison.OrdinalIgnoreCase);
 
     private static void CheckMatrixInjection(string content, string relativePath, List<Finding> findings)
     {
@@ -399,12 +464,12 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"(?mi)^\s*path\s*:\s*(?<path>['""]?(?:\.|\.\/|\*\*\/\*)['""]?)\s*$")]
     private static partial Regex BroadArtifactPathPattern();
 
-    [GeneratedRegex(@"(?m)^\s*jobs\s*:\s*$\s*(?:\S.*$\s*)*?^\s+permissions\s*:", RegexOptions.Multiline)]
-    private static partial Regex JobPermissionsPattern();
-
     [GeneratedRegex(@"(?mi)^\s*(?<key>TOKEN|PASSWORD|SECRET|API_KEY|AUTH_TOKEN)\s*:\s*(?<value>[^\s#]+)", RegexOptions.IgnoreCase)]
     private static partial Regex HardcodedSecretEnvPattern();
 
     [GeneratedRegex(@"\$\{\{\s*matrix\.", RegexOptions.IgnoreCase)]
     private static partial Regex MatrixInjectionPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*[a-z0-9_-]+\s*:\s*write\s*$")]
+    private static partial Regex PermissionWriteValuePattern();
 }

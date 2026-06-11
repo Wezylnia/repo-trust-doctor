@@ -41,18 +41,6 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
         foreach (var file in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.yaml")
                      .Concat(RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.yml")))
         {
-            var fileName = Path.GetFileName(file);
-            // Only scan files that look like Kubernetes manifests
-            if (!fileName.Contains("deployment", StringComparison.OrdinalIgnoreCase) &&
-                !fileName.Contains("daemonset", StringComparison.OrdinalIgnoreCase) &&
-                !fileName.Contains("statefulset", StringComparison.OrdinalIgnoreCase) &&
-                !fileName.Contains("pod", StringComparison.OrdinalIgnoreCase) &&
-                !fileName.Contains("secret", StringComparison.OrdinalIgnoreCase) &&
-                !fileName.Contains("configmap", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
             cancellationToken.ThrowIfCancellationRequested();
             if (!RepositoryFileSystem.CanReadAsText(file))
             {
@@ -61,11 +49,18 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
 
             var content = await File.ReadAllTextAsync(file, cancellationToken);
             var relativePath = Path.GetRelativePath(context.RepositoryPath, file);
+            if (!LooksLikeKubernetesManifest(content))
+            {
+                continue;
+            }
 
-            CheckPrivileged(content, relativePath, findings);
-            CheckHostNamespace(content, relativePath, findings);
-            CheckRunAsNonRoot(content, relativePath, findings);
-            CheckReadOnlyRootFs(content, relativePath, findings);
+            if (HasPodTemplateOrContainerSpec(content))
+            {
+                CheckPrivileged(content, relativePath, findings);
+                CheckHostNamespace(content, relativePath, findings);
+                CheckRunAsNonRoot(content, relativePath, findings);
+                CheckReadOnlyRootFs(content, relativePath, findings);
+            }
             CheckSecretManifest(content, relativePath, findings);
         }
 
@@ -135,6 +130,14 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
         return line;
     }
 
+    private static bool LooksLikeKubernetesManifest(string content) =>
+        ApiVersionPattern().IsMatch(content) &&
+        KubernetesKindPattern().IsMatch(content);
+
+    private static bool HasPodTemplateOrContainerSpec(string content) =>
+        ContainerSpecPattern().IsMatch(content) &&
+        WorkloadKindPattern().IsMatch(content);
+
     [GeneratedRegex(@"privileged\s*:\s*true", RegexOptions.IgnoreCase)]
     private static partial Regex PrivilegedPattern();
 
@@ -149,4 +152,16 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"kind\s*:\s*Secret", RegexOptions.IgnoreCase)]
     private static partial Regex SecretKindPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*apiVersion\s*:\s*\S+")]
+    private static partial Regex ApiVersionPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*kind\s*:\s*(Deployment|DaemonSet|StatefulSet|Pod|Job|CronJob|ReplicaSet|ReplicationController|Secret)\s*$")]
+    private static partial Regex KubernetesKindPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*kind\s*:\s*(Deployment|DaemonSet|StatefulSet|Pod|Job|CronJob|ReplicaSet|ReplicationController)\s*$")]
+    private static partial Regex WorkloadKindPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*(containers|initContainers)\s*:\s*$")]
+    private static partial Regex ContainerSpecPattern();
 }

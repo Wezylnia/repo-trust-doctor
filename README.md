@@ -13,7 +13,7 @@ The project is intentionally evidence-based: analyzers produce findings with rul
 
 ## What It Checks Today
 
-The stable `v1.2.0` release focuses on local, static repository trust signals across 12 package ecosystems:
+The current `v1.5.0` development line focuses on local, static repository trust signals across 12 package ecosystems:
 
 - repository health files such as README, LICENSE, SECURITY.md, contributing docs, CODEOWNERS, templates, and changelog,
 - GitHub Actions workflow risks such as broad permissions, `pull_request_target`, unpinned actions, shell pipe execution, and checkout credential persistence,
@@ -29,9 +29,9 @@ The stable `v1.2.0` release focuses on local, static repository trust signals ac
 
 ## Current Status
 
-This repository is at the `v1.1.0` milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
+This repository is at the `v1.5.0` development milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
 
-Implemented through `v1.1.0`:
+Implemented through `v1.5.0`:
 
 - a clean .NET solution structure,
 - pure domain models,
@@ -47,14 +47,17 @@ Implemented through `v1.1.0`:
 - repository health, GitHub Actions, secret quick scan, Docker, and dependency lockfile analyzers,
 - expanded repository documentation quality checks,
 - expanded GitHub Actions release and artifact checks,
+- GitLab CI security checks,
 - expanded Docker cache and package-layering checks,
-- structured npm, NuGet, Python, Maven, and Gradle dependency inventory artifacts,
-- npm, NuGet, Python, Maven, and Gradle lockfile coverage checks,
+- Docker Compose and Kubernetes manifest checks,
+- structured npm, NuGet, Python, Maven, Gradle, Go, Cargo, Composer, Ruby, Dart/Pub, Elixir/Hex, SwiftPM, and C/C++ dependency inventory artifacts,
+- lockfile coverage checks across supported package ecosystems,
 - direct NuGet `PackageReference` parsing, including basic Central Package Management version resolution,
 - `package.json` dependency section parsing for production, development, optional, and peer dependencies,
 - conservative Python dependency parsing for `requirements.txt`, `pyproject.toml`, and `Pipfile`,
 - Java dependency parsing for Maven `pom.xml`, Gradle `build.gradle`, and `build.gradle.kts`,
 - Spring Boot Actuator exposure checks from static application configuration,
+- Go, Rust/Cargo, PHP/Composer, Ruby/Bundler, Dart/Flutter, Elixir/Hex, SwiftPM, and C/C++ package manager parsing,
 - static dependency hygiene findings for unpinned/ranged and prerelease versions,
 - npm install-time script findings for manual review,
 - NuGet package source recording from `NuGet.config` without network access,
@@ -68,6 +71,7 @@ Implemented through `v1.1.0`:
 - scan progress DTOs for API/worker/frontend polling,
 - built-in trust policies and profile-aware scoring,
 - release evidence checks for checksums, SBOM/provenance, changelog/package version alignment, and release workflows,
+- SBOM and provenance evidence import as informational release evidence,
 - coverage import for Cobertura XML and lcov in deep scans,
 - critical code heuristics for auth, authorization, payments, data access, file operations, network calls, cryptography, secrets, large files, and broad exception handling,
 - low or missing coverage correlation for critical code,
@@ -232,8 +236,12 @@ The roadmap grows the platform gradually:
 | `v0.7.x` | Release hygiene, artifact integrity, SBOM/provenance, and supply-chain evidence |
 | `v0.8.x` | Coverage import, code criticality, public API analysis, and deep scan signals |
 | `v0.9.x` | Trust history, comparison, trust diff, and monitoring models |
-| `v1.0.x` | Current: stable public platform with documented contracts, CLI/API/worker hosts, React scan workbench, and reliable reports |
+| `v1.0.x` | Stable public platform with documented contracts, CLI/API/worker hosts, React scan workbench, and reliable reports |
 | `v1.1.0` | Java and Spring Boot dependency support, plus continued React/backend scan experience |
+| `v1.2.x` | Go, Cargo, Composer, Ruby, Dart/Pub, Elixir/Hex, SwiftPM, and C/C++ dependency inventory |
+| `v1.3.x` | Workspace detection and clearer console/report drill-downs |
+| `v1.4.x` | GitLab CI, Docker Compose, and Kubernetes static security checks |
+| `v1.5.x` | SBOM/provenance evidence import and review hardening |
 
 See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scope boundaries, and success criteria.
 

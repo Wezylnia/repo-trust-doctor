@@ -30,8 +30,7 @@ internal sealed partial class HexDependencyCollector : IDependencyInventoryColle
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Hex, relativePath, "mix.exs"));
 
-        var hasLockfile = state.Lockfiles.Any(l => l.Ecosystem == DependencyEcosystem.Hex);
-        if (!hasLockfile)
+        if (!HasSiblingLockfile(filePath))
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP040",
@@ -128,4 +127,10 @@ internal sealed partial class HexDependencyCollector : IDependencyInventoryColle
 
     [GeneratedRegex(@"^\d+\.\d+\.\d+$")]
     private static partial Regex ExactHexVersionPattern();
+
+    private static bool HasSiblingLockfile(string mixExsPath)
+    {
+        var directory = Path.GetDirectoryName(mixExsPath);
+        return directory is not null && File.Exists(Path.Combine(directory, "mix.lock"));
+    }
 }

@@ -414,11 +414,11 @@ Recommendation: review path-sourced dependencies and document whether they are w
 - Default severity: Medium
 - Default confidence: High
 
-Detects Cargo dependencies that do not use an exact semver version (e.g. `"1"` or `"1.2"` instead of `"1.2.3"`).
+Detects Cargo dependencies that do not use an exact requirement (e.g. `"1"`, `"1.2"`, or `"1.2.3"` instead of `"=1.2.3"`).
 
 Why it matters: non-exact Cargo dependency versions can resolve to different minor or patch versions over time.
 
-Recommendation: use exact versions with a committed `Cargo.lock` for reproducible Cargo builds.
+Recommendation: use exact `=x.y.z` requirements when strict direct dependency pinning is required, and commit `Cargo.lock` for reproducible Cargo builds.
 
 ## TRUST-DEP030: Cargo Dependency Uses a Prerelease Version
 
@@ -468,62 +468,170 @@ Why it matters: prerelease dependencies may be unstable or intentionally experim
 
 Recommendation: review whether the prerelease dependency is intentional before production use.
 
-## TRUST-DEP026: Cargo Project Does Not Have a Cargo.lock File
+## TRUST-DEP034: Ruby Gemfile Does Not Have a Gemfile.lock
 
 - Category: Dependencies
 - Default severity: Medium
 - Default confidence: High
 
-Detects Rust repositories with `Cargo.toml` but no `Cargo.lock` alongside it.
+Detects Ruby repositories with `Gemfile` but no sibling `Gemfile.lock`.
 
-Why it matters: without `Cargo.lock`, dependency resolution is non-deterministic and builds are not reproducible, exposing the repository to dependency drift.
+Why it matters: without `Gemfile.lock`, Bundler may resolve different gem versions over time.
 
-Recommendation: commit `Cargo.lock` to the repository for reproducible builds (recommended for binaries).
+Recommendation: run `bundle install` and commit `Gemfile.lock` for reproducible builds.
 
-## TRUST-DEP027: Cargo Dependency Uses a Git Source
+## TRUST-DEP035: Ruby Gem Uses a Non-Exact Version Constraint
 
 - Category: Dependencies
 - Default severity: Medium
 - Default confidence: High
 
-Detects Cargo dependencies that reference a Git repository instead of a crates.io version.
+Detects Ruby gems with missing or non-exact version constraints.
 
-Why it matters: Git-sourced dependencies can change behavior when a branch or moving ref is used, and they bypass normal crates.io provenance and review workflows.
+Why it matters: missing or ranged gem constraints can resolve to different versions over time.
 
-Recommendation: review Git-sourced dependencies and prefer crates.io packages with pinned versions when possible.
+Recommendation: use exact gem versions with a committed `Gemfile.lock` for reproducible builds.
 
-## TRUST-DEP028: Cargo Dependency Uses a Path Source
+## TRUST-DEP036: Ruby Gem Uses a Git or Path Source
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Ruby gems sourced from Git repositories or local paths instead of RubyGems.
+
+Why it matters: non-registry gem sources can bypass registry provenance and may change if a moving branch or local path is used.
+
+Recommendation: review non-registry gem sources and prefer RubyGems packages with pinned versions when possible.
+
+## TRUST-DEP037: Dart Project Does Not Have a pubspec.lock File
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Dart or Flutter repositories with `pubspec.yaml` but no sibling `pubspec.lock`.
+
+Why it matters: without a lockfile, package resolution can drift between installs.
+
+Recommendation: run `dart pub get` or `flutter pub get` and commit `pubspec.lock` where appropriate for applications.
+
+## TRUST-DEP038: Dart Dependency Uses a Non-Exact Version Constraint
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Dart dependencies with version ranges or constraints instead of exact versions.
+
+Why it matters: version constraints can resolve to different package versions over time.
+
+Recommendation: use exact version constraints with a committed `pubspec.lock` for reproducible builds.
+
+## TRUST-DEP040: Elixir Project Does Not Have a mix.lock File
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Elixir repositories with `mix.exs` but no sibling `mix.lock`.
+
+Why it matters: without `mix.lock`, dependency resolution can drift between installs.
+
+Recommendation: run `mix deps.get` and commit `mix.lock`.
+
+## TRUST-DEP041: Elixir Dependency Uses a Non-Exact Version Constraint
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Elixir dependencies with version constraints instead of exact versions.
+
+Why it matters: version constraints can resolve to different package versions over time.
+
+Recommendation: use exact version constraints with a committed `mix.lock` for reproducible builds.
+
+## TRUST-DEP042: Elixir Dependency Uses a Non-Hex Source
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Elixir dependencies sourced from Git or local paths instead of Hex.
+
+Why it matters: non-Hex sources can bypass registry provenance and may depend on moving refs or local repository layout.
+
+Recommendation: review non-Hex dependency sources and prefer Hex packages with pinned versions when possible.
+
+## TRUST-DEP043: Swift Package Does Not Have a Package.resolved File
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Swift packages with `Package.swift` but no sibling `Package.resolved`.
+
+Why it matters: without resolved package evidence, dependency versions may drift.
+
+Recommendation: commit `Package.resolved` for reproducible Swift package resolution.
+
+## TRUST-DEP044: Swift Package Uses a Branch-Based Dependency
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Swift package dependencies that reference a branch instead of a version.
+
+Why it matters: branch-based dependencies can change without a manifest change.
+
+Recommendation: prefer version-based dependencies with a committed `Package.resolved`.
+
+## TRUST-DEP046: C/C++ Project Uses Conan Package Manager
 
 - Category: Dependencies
 - Default severity: Low
 - Default confidence: High
 
-Detects Cargo dependencies that reference a local filesystem path instead of a registry version.
+Detects `conanfile.txt` or `conanfile.py`.
 
-Why it matters: path-sourced dependencies depend on repository layout and may bypass registry provenance. They can be legitimate in workspaces but deserve review.
+Why it matters: C/C++ package manager evidence helps reviewers understand dependency sources that may otherwise be hidden in build scripts.
 
-Recommendation: review path-sourced dependencies and document whether they are workspace-internal or development-only.
+Recommendation: review Conan dependencies and commit lockfiles where the project uses them.
 
-## TRUST-DEP029: Cargo Dependency Uses a Non-Exact Version
-
-- Category: Dependencies
-- Default severity: Medium
-- Default confidence: High
-
-Detects Cargo dependencies that do not use an exact semver version (e.g. `"1"` or `"1.2"` instead of `"1.2.3"`).
-
-Why it matters: non-exact Cargo dependency versions can resolve to different minor or patch versions over time.
-
-Recommendation: use exact versions with a committed `Cargo.lock` for reproducible Cargo builds.
-
-## TRUST-DEP030: Cargo Dependency Uses a Prerelease Version
+## TRUST-DEP047: C/C++ Project Uses vcpkg
 
 - Category: Dependencies
 - Default severity: Low
 - Default confidence: High
 
-Detects Cargo dependencies with prerelease version labels (e.g. `"1.0.0-alpha.1"`).
+Detects `vcpkg.json`.
 
-Why it matters: prerelease dependencies may be unstable or intentionally experimental.
+Why it matters: vcpkg manifests define native dependencies that should be reviewed alongside application code.
 
-Recommendation: review whether the prerelease dependency is intentional before production use.
+Recommendation: review vcpkg dependencies and version constraints.
+
+## TRUST-DEP048: C/C++ Project Uses CMake External Dependencies
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: High
+
+Detects `find_package` or `FetchContent_Declare` in `CMakeLists.txt`.
+
+Why it matters: CMake can pull in external dependencies through build configuration.
+
+Recommendation: review CMake external dependencies and document expected package sources.
+
+## TRUST-DEP049: Ruby Gem Uses a Prerelease Version
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: High
+
+Detects Ruby gems with prerelease version labels.
+
+Why it matters: prerelease gems may be unstable or intentionally experimental.
+
+Recommendation: review whether the prerelease gem is intentional before production use.

@@ -90,8 +90,8 @@ internal sealed partial class CppDependencyCollector : IDependencyInventoryColle
             {
                 foreach (var dep in deps.EnumerateArray())
                 {
-                    var name = dep.GetProperty("name").GetString();
-                    var version = dep.TryGetProperty("version>=", out var v) ? v.GetString() : null;
+                    var name = ReadVcpkgDependencyName(dep);
+                    var version = ReadVcpkgDependencyVersion(dep);
 
                     if (!string.IsNullOrWhiteSpace(name))
                     {
@@ -111,6 +111,10 @@ internal sealed partial class CppDependencyCollector : IDependencyInventoryColle
             }
         }
         catch (System.Text.Json.JsonException ex)
+        {
+            state.Warnings.Add($"Could not parse vcpkg.json '{relativePath}': {ex.Message}");
+        }
+        catch (InvalidOperationException ex)
         {
             state.Warnings.Add($"Could not parse vcpkg.json '{relativePath}': {ex.Message}");
         }
@@ -153,4 +157,30 @@ internal sealed partial class CppDependencyCollector : IDependencyInventoryColle
 
     [GeneratedRegex(@"\bFetchContent_Declare\s*\(", RegexOptions.IgnoreCase)]
     private static partial Regex CmakeFetchContentPattern();
+
+    private static string? ReadVcpkgDependencyName(System.Text.Json.JsonElement dependency) =>
+        dependency.ValueKind switch
+        {
+            System.Text.Json.JsonValueKind.String => dependency.GetString(),
+            System.Text.Json.JsonValueKind.Object when dependency.TryGetProperty("name", out var name) && name.ValueKind == System.Text.Json.JsonValueKind.String => name.GetString(),
+            _ => null
+        };
+
+    private static string? ReadVcpkgDependencyVersion(System.Text.Json.JsonElement dependency)
+    {
+        if (dependency.ValueKind != System.Text.Json.JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var propertyName in new[] { "version>=", "version", "version-string", "version-semver", "version-date" })
+        {
+            if (dependency.TryGetProperty(propertyName, out var version) && version.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                return version.GetString();
+            }
+        }
+
+        return null;
+    }
 }

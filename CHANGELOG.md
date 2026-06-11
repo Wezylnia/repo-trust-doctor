@@ -2,6 +2,47 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v1.5.0 - 2026-06-11
+
+This development milestone adds imported evidence signals and hardens the v1.2-v1.5 analyzer set after review.
+
+### Added
+
+- SBOM and provenance/attestation evidence detection as informational release findings.
+- Negative regression tests for Kubernetes non-workload YAML, GitHub Actions secret expressions, read-only workflow permissions, Cargo exact requirements, Ruby missing/prerelease constraints, monorepo lockfile placement, and string-form vcpkg dependencies.
+
+### Changed
+
+- Product version is now `1.5.0`.
+- Web app version is now `1.5.0`.
+- Workspace and imported evidence signals are informational and do not reduce trust scores.
+- Kubernetes hardening checks now require Kubernetes workload content with container specs instead of relying on filename heuristics.
+- GitHub Actions hardcoded-secret checks ignore `${{ secrets.* }}` expressions and read-only permission declarations.
+- Cargo exact-version detection now follows Cargo requirement semantics: `=1.2.3` is exact, while bare `1.2.3` is still a compatible requirement.
+- Lockfile checks for Ruby, Dart/Pub, Elixir/Hex, and SwiftPM now require a sibling lockfile for each manifest.
+- Dependency inventory tests and CLI console rendering were split into smaller, maintainable files.
+
+## v1.4.0 - 2026-06-11
+
+This development milestone expands static CI/CD and infrastructure coverage.
+
+### Added
+
+- GitLab CI analyzer for remote includes, CI variable shell interpolation, `latest` image tags, and deprecated `only`/`except`.
+- Docker Compose analyzer for privileged services, host networking, host mounts, broad port bindings, and secret-like environment values.
+- Kubernetes manifest analyzer for privileged containers, host namespace sharing, missing non-root/read-only filesystem hardening, and committed Secret manifests.
+- React report drill-down support for the new analyzer families.
+
+## v1.3.0 - 2026-06-11
+
+This development milestone adds workspace awareness and console/report ergonomics.
+
+### Added
+
+- Workspace detection for npm, Cargo, and Go workspaces.
+- Console category score bars, dependency summary output, and top recommended actions.
+- SARIF help URI support and richer report rule explanations.
+
 ## v1.2.0 - 2026-06-11
 
 This release adds dependency ecosystem support for Go, Rust/Cargo, PHP/Composer, Ruby/Bundler, Dart/Flutter, Elixir/Hex, Swift Package Manager, and C/C++ package managers.

@@ -24,19 +24,15 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
 
     public IReadOnlyCollection<RuleMetadata> Rules =>
     [
-        new("TRUST-EVI001", "SBOM evidence found in repository", AnalysisCategory.Releases, Severity.Low, Confidence.High,
+        new("TRUST-EVI001", "SBOM evidence found in repository", AnalysisCategory.Releases, Severity.Info, Confidence.High,
             "An SBOM file was found in the repository.", "SBOMs help track dependencies. Ensure the SBOM is up-to-date and covers all components."),
-        new("TRUST-EVI002", "Dependency inventory may differ from SBOM", AnalysisCategory.Releases, Severity.Low, Confidence.Low,
-            "An SBOM was found but cross-referencing with dependency inventory is not yet implemented.", "Manually verify SBOM completeness against known dependencies."),
-        new("TRUST-EVI003", "Provenance evidence found in repository", AnalysisCategory.Releases, Severity.Low, Confidence.High,
+        new("TRUST-EVI003", "Provenance evidence found in repository", AnalysisCategory.Releases, Severity.Info, Confidence.High,
             "A provenance or attestation file was found.", "Provenance evidence helps verify build integrity. Ensure it covers all release artifacts."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var findings = new List<Finding>();
-        var hasSbom = false;
-
         foreach (var pattern in SbomFilePatterns)
         {
             foreach (var file in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, pattern))
@@ -44,21 +40,11 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
                 cancellationToken.ThrowIfCancellationRequested();
                 var relativePath = Path.GetRelativePath(context.RepositoryPath, file).Replace('\\', '/');
                 findings.Add(new Finding("TRUST-EVI001", "SBOM evidence found in repository",
-                    AnalysisCategory.Releases, Severity.Low, Confidence.High,
+                    AnalysisCategory.Releases, Severity.Info, Confidence.High,
                     $"SBOM file '{Path.GetFileName(file)}' found.",
                     [new Evidence("sbom", $"SBOM file '{Path.GetFileName(file)}' detected.", relativePath)],
                     new Recommendation("SBOMs help track dependencies. Ensure the SBOM is up-to-date and covers all components.")));
-                hasSbom = true;
             }
-        }
-
-        if (hasSbom)
-        {
-            findings.Add(new Finding("TRUST-EVI002", "Dependency inventory may differ from SBOM",
-                AnalysisCategory.Releases, Severity.Low, Confidence.Low,
-                "SBOM found. Automated cross-reference with dependency inventory is not yet implemented.",
-                [new Evidence("sbom-cross-ref", "Manual review of SBOM completeness is recommended.", null)],
-                new Recommendation("Manually verify SBOM completeness against known dependencies.")));
         }
 
         foreach (var pattern in ProvenanceFilePatterns)
@@ -68,7 +54,7 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
                 cancellationToken.ThrowIfCancellationRequested();
                 var relativePath = Path.GetRelativePath(context.RepositoryPath, file).Replace('\\', '/');
                 findings.Add(new Finding("TRUST-EVI003", "Provenance evidence found in repository",
-                    AnalysisCategory.Releases, Severity.Low, Confidence.High,
+                    AnalysisCategory.Releases, Severity.Info, Confidence.High,
                     $"Provenance file '{Path.GetFileName(file)}' found.",
                     [new Evidence("provenance", $"Provenance file '{Path.GetFileName(file)}' detected.", relativePath)],
                     new Recommendation("Provenance evidence helps verify build integrity. Ensure it covers all release artifacts.")));

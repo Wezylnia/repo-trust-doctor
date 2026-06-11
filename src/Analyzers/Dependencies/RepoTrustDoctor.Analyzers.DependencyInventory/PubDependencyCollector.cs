@@ -30,8 +30,7 @@ internal sealed partial class PubDependencyCollector : IDependencyInventoryColle
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Pub, relativePath, "pubspec.yaml"));
 
-        var hasLockfile = state.Lockfiles.Any(l => l.Ecosystem == DependencyEcosystem.Pub);
-        if (!hasLockfile)
+        if (!HasSiblingLockfile(filePath))
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP037",
@@ -134,4 +133,10 @@ internal sealed partial class PubDependencyCollector : IDependencyInventoryColle
 
     [GeneratedRegex(@"^\d+\.\d+\.\d+$")]
     private static partial Regex ExactVersionPattern();
+
+    private static bool HasSiblingLockfile(string pubspecPath)
+    {
+        var directory = Path.GetDirectoryName(pubspecPath);
+        return directory is not null && File.Exists(Path.Combine(directory, "pubspec.lock"));
+    }
 }
