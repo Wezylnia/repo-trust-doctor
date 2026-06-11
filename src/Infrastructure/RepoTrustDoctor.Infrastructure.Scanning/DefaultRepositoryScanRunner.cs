@@ -9,6 +9,7 @@ using RepoTrustDoctor.Analyzers.DockerCompose;
 using RepoTrustDoctor.Analyzers.Kubernetes;
 using RepoTrustDoctor.Analyzers.GitHubActions;
 using RepoTrustDoctor.Analyzers.GitLabCi;
+using RepoTrustDoctor.Analyzers.AzurePipelines;
 using RepoTrustDoctor.Analyzers.ReleaseEvidence;
 using RepoTrustDoctor.Analyzers.Repository;
 using RepoTrustDoctor.Analyzers.Secrets;
@@ -40,6 +41,7 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
             new WorkspaceAnalyzer(),
             new GitHubActionsBasicAnalyzer(),
             new GitLabCiAnalyzer(),
+            new AzurePipelinesAnalyzer(),
             new SecretQuickScanAnalyzer(),
             new DockerBasicAnalyzer(),
             new DockerComposeAnalyzer(),
