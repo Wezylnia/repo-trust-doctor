@@ -82,6 +82,8 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new("TRUST-DEP047", "C/C++ project uses vcpkg", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A vcpkg.json manifest was detected.", "Ensure vcpkg dependencies are reviewed and the manifest is committed."),
         new("TRUST-DEP048", "C/C++ project uses CMake external dependencies", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "CMakeLists.txt uses find_package or FetchContent.", "Review CMake external dependencies and ensure they are documented."),
         new("TRUST-DEP049", "Ruby gem uses a prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Ruby gem uses a prerelease version.", "Review whether the prerelease gem is intentional before production use."),
+        new("TRUST-DEP050", "Gradle version catalog uses dynamic dependency version", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Gradle libs.versions.toml declares a dynamic dependency version.", "Pin dependency versions to specific releases for reproducible builds."),
+        new("TRUST-DEP051", "Gradle version catalog uses dynamic plugin version", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Gradle libs.versions.toml declares a dynamic plugin version.", "Pin plugin versions to specific releases for reproducible builds."),
     ];
 
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
