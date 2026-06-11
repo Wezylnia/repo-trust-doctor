@@ -48,6 +48,68 @@ Why it matters: version drift can confuse users and weaken release traceability.
 
 Recommendation: keep package version metadata and release notes aligned.
 
+## Evidence Import Rules
+
+### TRUST-EVI001: SBOM evidence found in repository
+
+- Category: Releases
+- Default severity: Info
+- Default confidence: High
+
+Detects SBOM files (CycloneDX, SPDX, BOM) in the repository.
+
+Why it matters: SBOMs help track dependencies. Positive signal, not a risk.
+
+Recommendation: ensure the SBOM is up-to-date and covers all components.
+
+### TRUST-EVI003: Provenance evidence found in repository
+
+- Category: Releases
+- Default severity: Info
+- Default confidence: High
+
+Detects provenance or attestation files in the repository.
+
+Why it matters: provenance helps verify build integrity. Positive signal, not a risk.
+
+Recommendation: ensure provenance evidence covers all release artifacts.
+
+### TRUST-EVI004: SBOM evidence file is not parseable
+
+- Category: Releases
+- Default severity: Medium
+- Default confidence: High
+
+Detects SBOM JSON files that cannot be parsed as valid JSON.
+
+Why it matters: corrupt evidence cannot be trusted.
+
+Recommendation: ensure SBOM files are valid JSON.
+
+### TRUST-EVI005: SBOM evidence appears empty
+
+- Category: Releases
+- Default severity: Low
+- Default confidence: Medium
+
+Detects SBOM JSON files with empty `components` or `packages` arrays.
+
+Why it matters: an empty SBOM provides no dependency visibility.
+
+Recommendation: regenerate the SBOM to include all components.
+
+### TRUST-EVI006: Provenance evidence file is not parseable
+
+- Category: Releases
+- Default severity: Medium
+- Default confidence: High
+
+Detects provenance JSON or JSONL files that cannot be parsed.
+
+Why it matters: corrupt provenance evidence cannot verify build integrity.
+
+Recommendation: ensure provenance files are valid JSON.
+
 ## TRUST-REL005: Release Workflow Lacks Integrity Evidence Steps
 
 - Category: Releases
