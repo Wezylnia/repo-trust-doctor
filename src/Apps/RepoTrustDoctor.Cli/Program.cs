@@ -405,8 +405,17 @@ internal static class CliProgram
             $"Findings: {scan.Findings.Count}",
             $"Severity summary: Critical={summary.Critical}, High={summary.High}, Medium={summary.Medium}, Low={summary.Low}, Info={summary.Info}",
             string.Empty,
-            "Top findings:"
+            "Category scores:"
         };
+
+        foreach (var category in scan.Score.Categories.OrderByDescending(c => c.Score))
+        {
+            var bar = ScoreBar(category.Score);
+            lines.Add($"  {category.Category,-22} {category.Score,3}/100 {bar}");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("Top findings:");
 
         lines.AddRange(scan.Findings
             .OrderByDescending(finding => finding.Severity)
@@ -420,6 +429,19 @@ internal static class CliProgram
 
         return string.Join(Environment.NewLine, lines);
     }
+
+    private static string ScoreBar(int score) => score switch
+    {
+        >= 90 => "++++++++++",
+        >= 80 => "++++++++  ",
+        >= 70 => "+++++++   ",
+        >= 60 => "++++++    ",
+        >= 50 => "+++++     ",
+        >= 40 => "++++      ",
+        >= 30 => "+++       ",
+        >= 20 => "++        ",
+        _ => "+         "
+    };
 
     private static string BuildDiffConsoleSummary(TrustDiffResult diff)
     {
