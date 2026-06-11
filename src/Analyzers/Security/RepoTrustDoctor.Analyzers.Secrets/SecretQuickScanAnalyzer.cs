@@ -120,7 +120,7 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             if (GenericApiKeyPattern().Match(content) is { Success: true } apiKeyMatch)
             {
                 var matchedValue = apiKeyMatch.Value;
-                if (!IsPlaceholderValue(matchedValue))
+                if (!IsPlaceholderValue(matchedValue) && IsGenericApiKeyStrength(matchedValue))
                 {
                     findings.Add(CreateFinding("TRUST-SECRET012", "Possible generic API key found", Severity.Medium, Confidence.Low, relativePath, "A value matching a generic API key pattern was found and redacted.", GetLineNumber(content, apiKeyMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(matchedValue)));
                 }
@@ -174,17 +174,56 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
     private static bool IsPlaceholderValue(string value)
     {
         var lower = value.ToLowerInvariant();
+
+        // Skip variable references
+        if (lower.Contains("${{", StringComparison.Ordinal) ||
+            lower.Contains("${", StringComparison.Ordinal) ||
+            lower.Contains("%", StringComparison.Ordinal))
+            return true;
+
+        // Skip known placeholder tokens
         return lower.Contains("your-api-key", StringComparison.Ordinal) ||
                lower.Contains("example-token", StringComparison.Ordinal) ||
+               lower.Contains("example", StringComparison.Ordinal) ||
                lower.Contains("test-token", StringComparison.Ordinal) ||
                lower.Contains("dummy-secret", StringComparison.Ordinal) ||
+               lower.Contains("dummy", StringComparison.Ordinal) ||
                lower.Contains("changeme", StringComparison.Ordinal) ||
                lower.Contains("placeholder", StringComparison.Ordinal) ||
+               lower.Contains("replace", StringComparison.Ordinal) ||
+               lower.Contains("sample", StringComparison.Ordinal) ||
                lower.Contains("xxxx", StringComparison.Ordinal) ||
                lower.Contains("abc123", StringComparison.Ordinal) ||
                lower.Contains("sample-key", StringComparison.Ordinal) ||
                lower.Contains("your-secret", StringComparison.Ordinal) ||
-               lower.Contains("replace-me", StringComparison.Ordinal);
+               lower.Contains("replace-me", StringComparison.Ordinal) ||
+               lower.Contains("test", StringComparison.Ordinal);
+    }
+
+    private static bool IsGenericApiKeyStrength(string value)
+    {
+        // Strip surrounding quotes
+        var trimmed = value.Trim('"', '\'', '`').Trim();
+
+        // Must be at least 20 meaningful characters
+        var alphanumeric = trimmed.Count(char.IsLetterOrDigit);
+        if (alphanumeric < 20)
+            return false;
+
+        // Must have at least one uppercase, one lowercase, one digit
+        var hasUpper = false;
+        var hasLower = false;
+        var hasDigit = false;
+        foreach (var c in trimmed)
+        {
+            if (char.IsUpper(c)) hasUpper = true;
+            if (char.IsLower(c)) hasLower = true;
+            if (char.IsDigit(c)) hasDigit = true;
+            if (hasUpper && hasLower && hasDigit)
+                return true;
+        }
+
+        return false;
     }
 
     [GeneratedRegex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----")]
