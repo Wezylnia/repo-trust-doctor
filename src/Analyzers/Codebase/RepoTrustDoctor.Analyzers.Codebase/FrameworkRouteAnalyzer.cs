@@ -1,0 +1,361 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+using RepoTrustDoctor.Analysis.Abstractions;
+using RepoTrustDoctor.Domain;
+
+namespace RepoTrustDoctor.Analyzers.Codebase;
+
+public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
+{
+    private const int UnauthFindingLimit = 15;
+    private const int RouteFindingLimit = 20;
+
+    private static readonly IReadOnlyList<FrameworkDefinition> Frameworks =
+    [
+        new(
+            "ASP.NET",
+            [".cs"],
+            AspNetRouteRegex(),
+            AspNetAuthRegex()),
+        new(
+            "Express.js",
+            [".js", ".ts"],
+            ExpressRouteRegex(),
+            ExpressAuthRegex()),
+        new(
+            "Flask",
+            [".py"],
+            FlaskRouteRegex(),
+            FlaskAuthRegex()),
+        new(
+            "Django",
+            [".py"],
+            DjangoRouteRegex(),
+            DjangoAuthRegex()),
+        new(
+            "Spring Boot",
+            [".java", ".kt"],
+            SpringRouteRegex(),
+            SpringAuthRegex()),
+        new(
+            "Go Gin/Echo",
+            [".go"],
+            GoRouteRegex(),
+            GoAuthRegex()),
+        new(
+            "Rust Actix/Axum",
+            [".rs"],
+            RustRouteRegex(),
+            RustAuthRegex())
+    ];
+
+    public string Id => "codebase-06-framework-routes";
+
+    public string DisplayName => "Framework Route Detection";
+
+    public AnalysisCategory Category => AnalysisCategory.Codebase;
+
+    public AnalysisDepth MinimumDepth => AnalysisDepth.Deep;
+
+    public IReadOnlyCollection<string> DependsOn => [];
+
+    public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
+
+    public TimeSpan Timeout => TimeSpan.FromSeconds(20);
+
+    public IReadOnlyCollection<RuleMetadata> Rules =>
+    [
+        new(
+            "TRUST-CODE012",
+            "HTTP endpoint without authentication annotation",
+            AnalysisCategory.Codebase,
+            Severity.Medium,
+            Confidence.Low,
+            "An HTTP route handler was detected without a visible authentication or authorization annotation.",
+            "Add authentication middleware or [Authorize] annotations to HTTP endpoints, or document why public access is intentional."),
+        new(
+            "TRUST-CODE013",
+            "Framework route detected",
+            AnalysisCategory.Codebase,
+            Severity.Info,
+            Confidence.High,
+            "An HTTP route or controller endpoint was detected using a common web framework.",
+            "Review HTTP endpoints for proper authentication, authorization, input validation, and rate limiting.")
+    ];
+
+    public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
+    {
+        var detectedRoutes = new List<FrameworkRouteInfo>();
+
+        foreach (var file in EnumerateSourceFiles(context.RepositoryPath))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!RepositoryFileSystem.CanReadAsText(file))
+            {
+                continue;
+            }
+
+            var extension = Path.GetExtension(file);
+            var matchingFrameworks = GetMatchingFrameworks(extension);
+            if (matchingFrameworks.Count == 0)
+            {
+                continue;
+            }
+
+            var text = await File.ReadAllTextAsync(file, cancellationToken);
+            var relativePath = Path.GetRelativePath(context.RepositoryPath, file).Replace('\\', '/');
+
+            foreach (var framework in matchingFrameworks)
+            {
+                var routeMatches = framework.RoutePattern.Matches(text);
+                if (routeMatches.Count == 0)
+                {
+                    continue;
+                }
+
+                var hasAuth = framework.AuthPattern.IsMatch(text);
+                var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+
+                foreach (Match routeMatch in routeMatches)
+                {
+                    var lineNumber = CountLineNumber(text, routeMatch.Index);
+                    var snippet = routeMatch.Value.Trim();
+
+                    detectedRoutes.Add(new FrameworkRouteInfo(
+                        relativePath,
+                        framework.Name,
+                        snippet,
+                        lineNumber,
+                        hasAuth));
+                }
+            }
+        }
+
+        var ordered = detectedRoutes
+            .OrderBy(route => route.HasAuthHint)
+            .ThenBy(route => route.FilePath, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(route => route.LineNumber)
+            .ToArray();
+
+        var findings = new List<Finding>();
+
+        // TRUST-CODE012: unauthenticated endpoints
+        findings.AddRange(ordered
+            .Where(route => !route.HasAuthHint)
+            .Take(UnauthFindingLimit)
+            .Select(route => new Finding(
+                "TRUST-CODE012",
+                "HTTP endpoint without authentication annotation",
+                AnalysisCategory.Codebase,
+                Severity.Medium,
+                Confidence.Low,
+                $"{route.FilePath}:{route.LineNumber.ToString(CultureInfo.InvariantCulture)} — {route.Framework} route \"{Truncate(route.Snippet, 80)}\" has no visible auth annotation in the same file.",
+                [new Evidence(
+                    "route.no_auth",
+                    $"No authentication or authorization annotation found near {route.Framework} route.",
+                    route.FilePath,
+                    route.LineNumber,
+                    route.Snippet)],
+                new Recommendation("Add authentication middleware or [Authorize] annotations to HTTP endpoints, or document why public access is intentional."),
+                Tags: ["codebase", "routes", "auth"])));
+
+        // TRUST-CODE013: informational route detection
+        findings.AddRange(ordered
+            .Take(RouteFindingLimit)
+            .Select(route => new Finding(
+                "TRUST-CODE013",
+                "Framework route detected",
+                AnalysisCategory.Codebase,
+                Severity.Info,
+                Confidence.High,
+                $"{route.FilePath}:{route.LineNumber.ToString(CultureInfo.InvariantCulture)} — {route.Framework} route \"{Truncate(route.Snippet, 80)}\" detected.",
+                [new Evidence(
+                    "route.detected",
+                    $"{route.Framework} HTTP route detected.",
+                    route.FilePath,
+                    route.LineNumber,
+                    route.Snippet)],
+                new Recommendation("Review HTTP endpoints for proper authentication, authorization, input validation, and rate limiting."),
+                Tags: ["codebase", "routes"])));
+
+        var unauthCount = ordered.Count(route => !route.HasAuthHint);
+        var frameworkCounts = ordered
+            .GroupBy(route => route.Framework, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+
+        var metrics = new Dictionary<string, string>
+        {
+            ["route.total.count"] = ordered.Length.ToString(CultureInfo.InvariantCulture),
+            ["route.unauthenticated.count"] = unauthCount.ToString(CultureInfo.InvariantCulture),
+            ["route.frameworks"] = string.Join(", ", frameworkCounts.Select(
+                kvp => $"{kvp.Key}={kvp.Value.ToString(CultureInfo.InvariantCulture)}"))
+        };
+
+        var routeEntries = ordered
+            .Select(r => new RouteEntry(
+                DetermineHttpMethod(r.Snippet, r.Framework),
+                DeterminePathPattern(r.Snippet, r.Framework),
+                r.Framework,
+                r.FilePath,
+                r.LineNumber,
+                r.HasAuthHint))
+            .ToArray();
+
+        var artifact = new FrameworkRouteArtifact(routeEntries, metrics);
+
+        return AnalyzerResult.Completed(
+            findings,
+            [new AnalyzerArtifact(FrameworkRouteArtifact.ArtifactKey, artifact)],
+            metrics);
+    }
+
+    private static IEnumerable<string> EnumerateSourceFiles(string root) =>
+        RepositoryFileSystem.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+            .Where(file =>
+            {
+                var ext = Path.GetExtension(file);
+                return Frameworks.Any(fw => fw.Extensions.Contains(ext, StringComparer.OrdinalIgnoreCase));
+            });
+
+    private static List<FrameworkDefinition> GetMatchingFrameworks(string extension) =>
+        Frameworks
+            .Where(fw => fw.Extensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+    private static int CountLineNumber(string text, int charIndex)
+    {
+        var line = 1;
+        for (var i = 0; i < charIndex && i < text.Length; i++)
+        {
+            if (text[i] == '\n')
+            {
+                line++;
+            }
+        }
+
+        return line;
+    }
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length <= maxLength ? value : string.Concat(value.AsSpan(0, maxLength - 3), "...");
+
+    // ── ASP.NET ──────────────────────────────────────────────────────────
+
+    [GeneratedRegex(
+        @"\[\s*(?:HttpGet|HttpPost|HttpPut|HttpDelete|HttpPatch|Route)\s*(?:\(.*?\))?\s*\]|app\.(?:MapGet|MapPost|MapPut|MapDelete|MapPatch)\s*\(",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex AspNetRouteRegex();
+
+    [GeneratedRegex(
+        @"\[\s*(?:Authorize|AllowAnonymous|ApiController)\s*(?:\(.*?\))?\s*\]|:\s*(?:ControllerBase|Controller)\b|RequireAuthorization\s*\(",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex AspNetAuthRegex();
+
+    // ── Express.js ───────────────────────────────────────────────────────
+
+    [GeneratedRegex(
+        @"(?:app|router)\s*\.\s*(?:get|post|put|delete|patch|all|use)\s*\(",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex ExpressRouteRegex();
+
+    [GeneratedRegex(
+        @"passport|authenticate|(?:^|[.\s(])auth(?:[.\s(]|$)|jwt|isAuthenticated|requireAuth",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex ExpressAuthRegex();
+
+    // ── Flask ────────────────────────────────────────────────────────────
+
+    [GeneratedRegex(
+        @"@\s*(?:app|bp|blueprint)\s*\.\s*route\s*\(",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex FlaskRouteRegex();
+
+    [GeneratedRegex(
+        @"@login_required|@auth_required|@requires_auth|flask_login",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex FlaskAuthRegex();
+
+    // ── Django ───────────────────────────────────────────────────────────
+
+    [GeneratedRegex(
+        @"(?:path|re_path|url)\s*\(",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex DjangoRouteRegex();
+
+    [GeneratedRegex(
+        @"@login_required|LoginRequiredMixin|@permission_required",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex DjangoAuthRegex();
+
+    // ── Spring Boot ──────────────────────────────────────────────────────
+
+    [GeneratedRegex(
+        @"@\s*(?:GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)\s*(?:\(.*?\))?",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex SpringRouteRegex();
+
+    [GeneratedRegex(
+        @"@\s*(?:PreAuthorize|Secured|RolesAllowed)\b|hasRole|hasAuthority",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex SpringAuthRegex();
+
+    // ── Go (Gin / Echo) ──────────────────────────────────────────────────
+
+    [GeneratedRegex(
+        @"(?:r|router|e|g|group)\s*\.\s*(?:GET|POST|PUT|DELETE|PATCH|Handle|Any)\s*\(",
+        RegexOptions.None)]
+    private static partial Regex GoRouteRegex();
+
+    [GeneratedRegex(
+        @"AuthMiddleware|JWTMiddleware|authRequired|AuthRequired",
+        RegexOptions.None)]
+    private static partial Regex GoAuthRegex();
+
+    // ── Rust (Actix / Axum) ──────────────────────────────────────────────
+
+    [GeneratedRegex(
+        @"web::(?:get|post|put|delete|patch|resource)\s*\(|\.route\s*\(|Router::new\s*\(|#\[\s*(?:get|post|put|delete|patch)\s*\(",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex RustRouteRegex();
+
+    [GeneratedRegex(
+        @"auth|AuthMiddleware|jwt|Claims",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex RustAuthRegex();
+
+    // ── Supporting types ─────────────────────────────────────────────────
+
+    private sealed record FrameworkDefinition(
+        string Name,
+        IReadOnlyList<string> Extensions,
+        Regex RoutePattern,
+        Regex AuthPattern);
+
+    private sealed record FrameworkRouteInfo(
+        string FilePath,
+        string Framework,
+        string Snippet,
+        int LineNumber,
+        bool HasAuthHint);
+
+    private static string DetermineHttpMethod(string snippet, string framework)
+    {
+        var lower = snippet.ToLowerInvariant();
+        if (lower.Contains("get")) return "GET";
+        if (lower.Contains("post")) return "POST";
+        if (lower.Contains("put")) return "PUT";
+        if (lower.Contains("delete")) return "DELETE";
+        if (lower.Contains("patch")) return "PATCH";
+        return "GET";
+    }
+
+    private static string? DeterminePathPattern(string snippet, string framework)
+    {
+        var match = PathLiteralRegex().Match(snippet);
+        return match.Success ? match.Groups["path"].Value : null;
+    }
+
+    [GeneratedRegex(@"['""](?<path>[^'""]+)['""]")]
+    private static partial Regex PathLiteralRegex();
+}
