@@ -10,7 +10,8 @@ public enum AnalysisCategory
     Releases,
     Licenses,
     Codebase,
-    Documentation
+    Documentation,
+    Infrastructure
 }
 
 public enum AnalysisDepth
