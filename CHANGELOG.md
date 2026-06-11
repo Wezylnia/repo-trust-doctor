@@ -2,6 +2,28 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v1.6.0 - 2026-06-11
+
+This development milestone hardens v1.5 analyzers and adds CI/CD, infrastructure, and evidence coverage.
+
+### Added
+
+- **GitLab CI**: service Docker-in-Docker detection (TRUST-GLCI005) and broad cache path checks (TRUST-GLCI006).
+- **Docker Compose**: Docker socket mount detection with Critical severity (TRUST-COMP006) and .env file loading checks (TRUST-COMP007).
+- **Kubernetes**: hostPath volume detection (TRUST-K8S006), broad capability addition checks (TRUST-K8S007), and privilege escalation detection (TRUST-K8S008).
+- **Evidence Import**: SBOM parseability validation (TRUST-EVI004), empty SBOM detection (TRUST-EVI005), and provenance parseability checks (TRUST-EVI006).
+- **Gradle**: version catalog (`libs.versions.toml`) parsing with dynamic version rules for dependencies (TRUST-DEP050) and plugins (TRUST-DEP051).
+
+### Changed
+
+- **Secrets**: generic API key detection now skips variable references (`${...}`, `${{ ... }}`, `%...%`), example tokens, and values without uppercase/lowercase/digit mix. Requires at least 20 alphanumeric characters for generic key findings.
+
+### Documentation
+
+- New rule docs: `docs/rules/gitlab-ci.md`, `docs/rules/kubernetes.md`.
+- Web report explanations for all new hardening rules.
+- Rule catalog links updated.
+
 ## v1.5.0 - 2026-06-11
 
 This development milestone adds imported evidence signals and hardens the v1.2-v1.5 analyzer set after review.

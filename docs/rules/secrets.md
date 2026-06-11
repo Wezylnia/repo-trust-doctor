@@ -93,4 +93,13 @@ To avoid noise in automated testing and documentation, the secret scanner ignore
 
 Note that files under these paths are still checked for general repository metadata or container settings where appropriate, but pattern-based secret rules will not fire.
 
+## Generic API Key Filtering (TRUST-SECRET012)
+
+TRUST-SECRET012 applies additional filtering in v1.6 to reduce false positives:
+
+- Skips values containing variable references: `${...}`, `${{ ... }}`, `%...%`.
+- Skips values containing placeholder keywords: `example`, `dummy`, `changeme`, `sample`, `test`, `xxxx`, `abc123`, `replace`.
+- Skips values shorter than 20 alphanumeric characters after stripping quotes.
+- Skips values without at least one uppercase letter, one lowercase letter, and one digit.
+
 

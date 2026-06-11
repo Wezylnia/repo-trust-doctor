@@ -635,3 +635,27 @@ Detects Ruby gems with prerelease version labels.
 Why it matters: prerelease gems may be unstable or intentionally experimental.
 
 Recommendation: review whether the prerelease gem is intentional before production use.
+
+## TRUST-DEP050: Gradle Version Catalog Uses Dynamic Dependency Version
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects dynamic version declarations in Gradle `libs.versions.toml` `[versions]` and `[libraries]` sections.
+
+Why it matters: dynamic versions (e.g., `3.+`, `latest.release`) make builds non-reproducible and can silently introduce changes.
+
+Recommendation: pin dependency versions to specific releases.
+
+## TRUST-DEP051: Gradle Version Catalog Uses Dynamic Plugin Version
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects dynamic version declarations in Gradle `libs.versions.toml` `[plugins]` section.
+
+Why it matters: plugin version drift can silently change build behavior.
+
+Recommendation: pin plugin versions to specific releases.
