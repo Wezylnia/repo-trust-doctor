@@ -17,7 +17,9 @@ public enum CodeCriticalityReason
     Cryptography,
     Secrets,
     LargeFile,
-    BroadExceptionHandling
+    BroadExceptionHandling,
+    Deserialization,
+    CommandExecution
 }
 
 public sealed record CoverageArtifact(
@@ -70,3 +72,31 @@ public sealed record CodePublicApiArtifact(
 {
     public const string ArtifactKey = "code.public-api";
 }
+
+public sealed record ImportGraphArtifact(
+    IReadOnlyDictionary<string, IReadOnlyList<string>> Edges,
+    IReadOnlyList<CentralFileEntry> CentralFiles,
+    IReadOnlyDictionary<string, string> Metrics)
+{
+    public const string ArtifactKey = "code.import-graph";
+}
+
+public sealed record CentralFileEntry(
+    string FilePath,
+    int InDegree,
+    IReadOnlyList<string> ImportedBy);
+
+public sealed record FrameworkRouteArtifact(
+    IReadOnlyList<RouteEntry> Routes,
+    IReadOnlyDictionary<string, string> Metrics)
+{
+    public const string ArtifactKey = "code.framework-routes";
+}
+
+public sealed record RouteEntry(
+    string HttpMethod,
+    string? PathPattern,
+    string Framework,
+    string FilePath,
+    int? LineNumber,
+    bool HasAuthHint);
