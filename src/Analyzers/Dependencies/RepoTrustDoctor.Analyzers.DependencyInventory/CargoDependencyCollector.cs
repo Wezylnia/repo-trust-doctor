@@ -189,7 +189,7 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
                 "Review path-sourced dependencies because they depend on repository layout and may bypass registry provenance."));
         }
 
-        var isPinned = version != null && ExactCargoVersionPattern().IsMatch(version);
+        var isPinned = IsExactCargoRequirement(version);
         var isPrerelease = DependencyInventorySupport.IsPrereleaseVersion(version);
 
         state.Packages.Add(new DependencyPackageInfo(
@@ -235,7 +235,7 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
 
     private void ParseCargoSimpleVersion(string manifestPath, string crateName, string version, DependencyScope scope, DependencyInventoryState state)
     {
-        var isPinned = ExactCargoVersionPattern().IsMatch(version);
+        var isPinned = IsExactCargoRequirement(version);
         var isPrerelease = DependencyInventorySupport.IsPrereleaseVersion(version);
 
         state.Packages.Add(new DependencyPackageInfo(
@@ -287,7 +287,12 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         return match.Success ? match.Groups[1].Value : null;
     }
 
-    [GeneratedRegex(@"^\d+\.\d+\.\d+$", RegexOptions.CultureInvariant)]
+    private static bool IsExactCargoRequirement(string? version) =>
+        !string.IsNullOrWhiteSpace(version) &&
+        version.StartsWith('=') &&
+        ExactCargoVersionPattern().IsMatch(version[1..].Trim());
+
+    [GeneratedRegex(@"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$", RegexOptions.CultureInvariant)]
     private static partial Regex ExactCargoVersionPattern();
 }
 

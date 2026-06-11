@@ -41,8 +41,7 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Ruby, relativePath, "Gemfile"));
 
-        var hasLockfile = state.Lockfiles.Any(l => l.Ecosystem == DependencyEcosystem.Ruby);
-        if (!hasLockfile)
+        if (!HasSiblingLockfile(filePath))
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP034",
@@ -190,8 +189,8 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
         DependencyInventoryState state,
         Dictionary<string, string>? metadata = null)
     {
-        var isPinned = constraint != null && ExactGemVersionPattern().IsMatch(constraint);
-        var isPrerelease = constraint != null && DependencyInventorySupport.IsPrereleaseVersion(constraint);
+        var isPinned = IsExactGemConstraint(constraint);
+        var isPrerelease = IsRubyPrerelease(constraint);
 
         state.Packages.Add(new DependencyPackageInfo(
             DependencyEcosystem.Ruby,
@@ -205,16 +204,16 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
             isPrerelease,
             metadata?.Count > 0 ? metadata : null));
 
-        if (!isPinned && constraint != null && constraint.Length > 0)
+        if (!isPinned)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP035",
                 "Ruby gem uses a non-exact version constraint",
                 Severity.Medium,
                 Confidence.High,
-                $"Ruby gem '{gemName}' uses a version constraint '{constraint}' instead of an exact version.",
+                $"Ruby gem '{gemName}' uses a non-exact or missing version constraint.",
                 "gem-constraint",
-                $"Gem '{gemName}' has version constraint '{constraint}'.",
+                $"Gem '{gemName}' has version constraint '{DependencyInventorySupport.DisplayVersion(constraint)}'.",
                 manifestPath,
                 "Use exact gem versions with a committed Gemfile.lock for reproducible builds."));
         }
@@ -222,7 +221,7 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
         if (isPrerelease)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
-                "TRUST-DEP035",
+                "TRUST-DEP049",
                 "Ruby gem uses a prerelease version",
                 Severity.Low,
                 Confidence.High,
@@ -234,12 +233,53 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
         }
     }
 
+    private static bool HasSiblingLockfile(string gemfilePath)
+    {
+        var directory = Path.GetDirectoryName(gemfilePath);
+        return directory is not null && File.Exists(Path.Combine(directory, "Gemfile.lock"));
+    }
+
+    private static bool IsExactGemConstraint(string? constraint)
+    {
+        if (string.IsNullOrWhiteSpace(constraint))
+        {
+            return false;
+        }
+
+        var value = constraint.Trim();
+        if (value.StartsWith('='))
+        {
+            value = value[1..].Trim();
+        }
+
+        return ExactGemVersionPattern().IsMatch(value);
+    }
+
+    private static bool IsRubyPrerelease(string? constraint)
+    {
+        if (string.IsNullOrWhiteSpace(constraint))
+        {
+            return false;
+        }
+
+        var value = constraint.Trim();
+        if (value.StartsWith('='))
+        {
+            value = value[1..].Trim();
+        }
+
+        return RubyPrereleasePattern().IsMatch(value);
+    }
+
     [GeneratedRegex(@"gem\s+['""](?<name>[^'""]+)['""](?:\s*,\s*['""](?<constraint>[^'""]+)['""])?(?:.*git:\s*['""](?<git>[^'""]+)['""])?(?:.*path:\s*['""](?<path>[^'""]+)['""])?")]
     private static partial Regex GemDeclarationPattern();
 
     [GeneratedRegex(@"spec\.add_(?:development_)?dependency\s+['""](?<name>[^'""]+)['""]\s*,\s*['""](?<constraint>[^'""]+)['""]")]
     private static partial Regex GemspecDepPattern();
 
-    [GeneratedRegex(@"^\d+\.\d+\.\d+$")]
+    [GeneratedRegex(@"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")]
     private static partial Regex ExactGemVersionPattern();
+
+    [GeneratedRegex(@"\d+\.\d+\.\d+(?:[-.]|\.)(alpha|beta|pre|preview|rc|dev)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex RubyPrereleasePattern();
 }

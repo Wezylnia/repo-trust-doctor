@@ -81,6 +81,7 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new("TRUST-DEP046", "C/C++ project uses Conan package manager", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A conanfile.txt or conanfile.py was detected.", "Ensure Conan dependencies are reviewed and lockfiles are committed."),
         new("TRUST-DEP047", "C/C++ project uses vcpkg", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A vcpkg.json manifest was detected.", "Ensure vcpkg dependencies are reviewed and the manifest is committed."),
         new("TRUST-DEP048", "C/C++ project uses CMake external dependencies", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "CMakeLists.txt uses find_package or FetchContent.", "Review CMake external dependencies and ensure they are documented."),
+        new("TRUST-DEP049", "Ruby gem uses a prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Ruby gem uses a prerelease version.", "Review whether the prerelease gem is intentional before production use."),
     ];
 
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)

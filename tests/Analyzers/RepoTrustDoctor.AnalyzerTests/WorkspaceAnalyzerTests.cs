@@ -21,7 +21,7 @@ public sealed class WorkspaceAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-WS001");
-        Assert.Equal(Severity.Low, finding.Severity);
+        Assert.Equal(Severity.Info, finding.Severity);
         var artifact = Assert.Single(result.Artifacts!, a => a.Key == WorkspaceArtifact.ArtifactKey);
         var ws = Assert.IsType<WorkspaceArtifact>(artifact.Value);
         Assert.Contains(ws.Members, m => m.Ecosystem == "npm" && m.MemberPath == "packages/*");
@@ -52,7 +52,7 @@ public sealed class WorkspaceAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-WS002");
-        Assert.Equal(Severity.Low, finding.Severity);
+        Assert.Equal(Severity.Info, finding.Severity);
         var artifact = Assert.Single(result.Artifacts!, a => a.Key == WorkspaceArtifact.ArtifactKey);
         var ws = Assert.IsType<WorkspaceArtifact>(artifact.Value);
         Assert.Contains(ws.Members, m => m.Ecosystem == "cargo" && m.MemberPath == "crates/app");
@@ -75,7 +75,7 @@ public sealed class WorkspaceAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-WS003");
-        Assert.Equal(Severity.Low, finding.Severity);
+        Assert.Equal(Severity.Info, finding.Severity);
         var artifact = Assert.Single(result.Artifacts!, a => a.Key == WorkspaceArtifact.ArtifactKey);
         var ws = Assert.IsType<WorkspaceArtifact>(artifact.Value);
         Assert.Contains(ws.Members, m => m.Ecosystem == "go");

@@ -30,8 +30,7 @@ internal sealed partial class SwiftPmCollector : IDependencyInventoryCollector
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Swift, relativePath, "Package.swift"));
 
-        var hasLockfile = state.Lockfiles.Any(l => l.Ecosystem == DependencyEcosystem.Swift);
-        if (!hasLockfile)
+        if (!HasSiblingLockfile(filePath))
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP043",
@@ -111,4 +110,10 @@ internal sealed partial class SwiftPmCollector : IDependencyInventoryCollector
 
     [GeneratedRegex(@"\.package\s*\(\s*(?:url\s*:\s*""(?<url>[^""]+)""|path\s*:\s*""(?<path>[^""]+)"")(?:\s*,\s*(?:from|exact)\s*:\s*""(?<version>[^""]+)"")?(?:\s*,\s*branch\s*:\s*""(?<branch>[^""]+)"")?")]
     private static partial Regex SwiftPackagePattern();
+
+    private static bool HasSiblingLockfile(string packageSwiftPath)
+    {
+        var directory = Path.GetDirectoryName(packageSwiftPath);
+        return directory is not null && File.Exists(Path.Combine(directory, "Package.resolved"));
+    }
 }

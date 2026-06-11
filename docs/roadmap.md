@@ -6,7 +6,7 @@ The roadmap is intentionally conservative. Each milestone should leave the proje
 
 ## Current Release
 
-`v1.1.0` is a stable static scanner and local platform focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory for npm, NuGet, Python, Maven, and Gradle, Spring Boot configuration signals, dependency risk intelligence, policy-aware scoring, SARIF output, release evidence review, deep code intelligence, trust history/diff, deterministic reports, CI gate options, API/worker-hosted scan flows, and a local React scan workbench.
+`v1.5.0` is a stable static scanner and local platform focused on repository documentation quality, GitHub Actions and GitLab CI security, Docker/Compose/Kubernetes hygiene, secret quick scanning, structured dependency inventory across npm, NuGet, Python, Maven, Gradle, Go, Cargo, Composer, Ruby, Dart/Pub, Elixir/Hex, SwiftPM, and C/C++ package manager evidence, Spring Boot configuration signals, dependency risk intelligence, policy-aware scoring, SARIF output, release and imported evidence review, deep code intelligence, trust history/diff, deterministic reports, CI gate options, API/worker-hosted scan flows, and a local React scan workbench.
 
 Current scans are static-only by default. The tool does not execute repository code, install packages, run tests, run builds, or build containers as part of a scan.
 
