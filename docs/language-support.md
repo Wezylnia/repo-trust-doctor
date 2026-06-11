@@ -10,6 +10,14 @@ Repository Trust Doctor is strongest when a repository exposes dependency manife
 | .NET / C# | `.csproj`, `Directory.Packages.props`, NuGet lockfiles, direct package references, NuGet sources, NuGet metadata, OSV advisories |
 | Python | `requirements.txt`, `pyproject.toml`, `Pipfile`, common Python lockfiles, pinned requirement checks, PyPI metadata, OSV advisories |
 | Java / Spring Boot | Maven `pom.xml`, Gradle `build.gradle` and `build.gradle.kts`, Maven Central metadata, OSV advisories, Gradle wrapper checks, dynamic/SNAPSHOT version checks, Spring Boot Actuator exposure checks |
+| Go | `go.mod`, `go.sum` detection, replace directives, pseudo-version detection, version pinning |
+| Rust / Cargo | `Cargo.toml` (all dependency sections), `Cargo.lock` detection, Git/path source detection, version pinning, prerelease checks |
+| PHP / Composer | `composer.json` (require/require-dev), `composer.lock` detection, version constraint analysis |
+| Ruby / Bundler | `Gemfile`, `.gemspec`, `Gemfile.lock` detection, version constraint analysis, Git/path source detection |
+| Dart / Flutter | `pubspec.yaml` (dependencies/dev_dependencies), `pubspec.lock` detection, version constraint analysis |
+| Elixir / Hex | `mix.exs`, `mix.lock` detection, version constraint analysis, non-Hex source detection |
+| Swift / SPM | `Package.swift`, `Package.resolved` detection, branch-based dependency detection |
+| C / C++ | `conanfile.txt`, `conanfile.py`, `vcpkg.json`, `CMakeLists.txt` (find_package/FetchContent) detection |
 
 ## Candidate Ecosystems For v2
 
