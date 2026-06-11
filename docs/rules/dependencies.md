@@ -323,3 +323,51 @@ Detects internal-looking package names that appear to use normal public registry
 Why it matters: internal-looking names on public registries can be dependency-confusion review signals.
 
 Recommendation: verify whether the package should come from a private registry.
+
+## TRUST-DEP022: Go Module Does Not Have a go.sum File
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Go repositories with `go.mod` but no `go.sum` alongside it.
+
+Why it matters: without `go.sum`, Go module builds are not cryptographically verifiable and dependency versions can change without detection.
+
+Recommendation: run `go mod tidy` and commit `go.sum` to the repository for reproducible builds.
+
+## TRUST-DEP023: Go Module Uses Replace Directive
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: High
+
+Detects `replace` directives in `go.mod`.
+
+Why it matters: replace directives override resolved module versions and can point to forks, local paths, or different module paths. They bypass normal module resolution and deserve manual review.
+
+Recommendation: review replace directives because they override resolved module versions.
+
+## TRUST-DEP024: Go Dependency Uses a Non-Exact Version
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Go module dependencies that do not use an exact semver-style version (e.g. `v1.2` instead of `v1.2.3`).
+
+Why it matters: non-exact Go dependency versions can resolve to different minor or patch versions over time, reducing build reproducibility.
+
+Recommendation: use exact versions with a committed `go.sum` for reproducible Go builds.
+
+## TRUST-DEP025: Go Dependency Uses a Pseudo-Version
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: High
+
+Detects Go module dependencies that reference a pseudo-version (e.g. `v0.0.0-20240115120000-abcdef123456`).
+
+Why it matters: pseudo-versions point to unreleased commits and can be less stable or intentionally temporary. They may also bypass normal release review processes.
+
+Recommendation: prefer tagged releases over pseudo-versions and review pseudo-version origins.
