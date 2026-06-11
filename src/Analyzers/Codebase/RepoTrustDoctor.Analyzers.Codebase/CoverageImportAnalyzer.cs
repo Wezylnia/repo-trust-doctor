@@ -111,7 +111,7 @@ public sealed class CoverageImportAnalyzer : IRepositoryAnalyzer
         var artifact = new CoverageArtifact(
             reports,
             files
-                .GroupBy(file => NormalizePath(file.FilePath), StringComparer.OrdinalIgnoreCase)
+                .GroupBy(file => file.FilePath, StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.OrderByDescending(file => file.LineRate ?? -1).First())
                 .OrderBy(file => file.FilePath, StringComparer.OrdinalIgnoreCase)
                 .ToArray(),
@@ -192,7 +192,7 @@ public sealed class CoverageImportAnalyzer : IRepositoryAnalyzer
                 }
 
                 return new CoverageFileInfo(
-                    NormalizePath(filePath),
+                    NormalizePath(repositoryPath, filePath),
                     ParseRate(element.Attribute("line-rate")?.Value),
                     ParseRate(element.Attribute("branch-rate")?.Value),
                     null,
@@ -219,7 +219,7 @@ public sealed class CoverageImportAnalyzer : IRepositoryAnalyzer
             if (line.StartsWith("SF:", StringComparison.Ordinal))
             {
                 AddCurrentFile(files, currentFile, lineHits, branchHits);
-                currentFile = NormalizePath(line[3..].Trim());
+                currentFile = NormalizePath(repositoryPath, line[3..].Trim());
                 lineHits.Clear();
                 branchHits.Clear();
                 continue;
@@ -312,7 +312,34 @@ public sealed class CoverageImportAnalyzer : IRepositoryAnalyzer
     private static double? ParseRate(string? value) =>
         double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
 
-    private static string NormalizePath(string filePath) => filePath.Replace('\\', '/');
+    private static string NormalizePath(string repositoryPath, string filePath)
+    {
+        var normalized = filePath.Replace('\\', '/');
+        var repoNormalized = repositoryPath.Replace('\\', '/').TrimEnd('/') + '/';
+
+        if (normalized.StartsWith(repoNormalized, StringComparison.OrdinalIgnoreCase))
+        {
+            return normalized[repoNormalized.Length..];
+        }
+
+        if (Path.IsPathRooted(filePath))
+        {
+            try
+            {
+                var relative = Path.GetRelativePath(repositoryPath, filePath).Replace('\\', '/');
+                if (!relative.StartsWith("..", StringComparison.Ordinal))
+                {
+                    return relative;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        return normalized.TrimStart('.', '/');
+    }
 
     private static string FormatPercent(double rate) => rate.ToString("P0", CultureInfo.InvariantCulture);
 

@@ -67,7 +67,10 @@ public sealed class CoverageCriticalityAnalyzer : IRepositoryAnalyzer
         var matchingCoverage = coverageByPath.TryGetValue(normalizedPath, out var exactMatch)
             ? exactMatch
             : coverageByPath
-                .Where(pair => normalizedPath.EndsWith(pair.Key, StringComparison.OrdinalIgnoreCase) || pair.Key.EndsWith(normalizedPath, StringComparison.OrdinalIgnoreCase))
+                .Where(pair => 
+                    normalizedPath.EndsWith(pair.Key, StringComparison.OrdinalIgnoreCase) || 
+                    pair.Key.EndsWith(normalizedPath, StringComparison.OrdinalIgnoreCase) ||
+                    Path.GetFileName(normalizedPath).Equals(Path.GetFileName(pair.Key), StringComparison.OrdinalIgnoreCase))
                 .Select(pair => pair.Value)
                 .FirstOrDefault();
 

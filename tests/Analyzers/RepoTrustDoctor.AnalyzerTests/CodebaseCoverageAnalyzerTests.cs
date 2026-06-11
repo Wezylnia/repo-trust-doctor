@@ -95,4 +95,41 @@ public sealed class CodebaseCoverageAnalyzerTests
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-CODE003");
         Assert.NotEmpty(result.Warnings!);
     }
+
+    [Fact]
+    public async Task CoverageImportAnalyzer_MergesAndNormalizesPathsForMonorepo()
+    {
+        using var fixture = TemporaryRepository.Create();
+        
+        // Report 1: Cobertura
+        File.WriteAllText(Path.Combine(fixture.Path, "cobertura.xml"), $"""
+        <?xml version="1.0" encoding="utf-8"?>
+        <coverage line-rate="0.8" lines-covered="8" lines-valid="10">
+          <packages>
+            <package name="Core">
+              <classes>
+                <class name="Common" filename="{fixture.Path.Replace('\\', '/')}/src/core/Common.cs" line-rate="0.8" />
+              </classes>
+            </package>
+          </packages>
+        </coverage>
+        """);
+
+        // Report 2: Lcov
+        File.WriteAllText(Path.Combine(fixture.Path, "lcov.info"), """
+        SF:src/core/Common.cs
+        DA:10,1
+        DA:11,1
+        end_of_record
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new CoverageImportAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        var coverage = Assert.IsType<CoverageArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Equal(2, coverage.Reports.Count);
+        
+        var file = Assert.Single(coverage.Files);
+        Assert.Equal("src/core/Common.cs", file.FilePath);
+    }
 }
