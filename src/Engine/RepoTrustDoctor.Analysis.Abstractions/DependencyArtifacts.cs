@@ -5,7 +5,8 @@ public enum DependencyEcosystem
     NuGet,
     Npm,
     Python,
-    Maven
+    Maven,
+    Go
 }
 
 public enum DependencyScope
