@@ -15,23 +15,49 @@ public sealed class TrustScorer
         var normalizedProfile = TrustProfileCatalog.Normalize(trustProfile);
         var policy = TrustPolicyPresets.ForProfile(normalizedProfile);
         var policyEvaluation = new TrustPolicyEvaluator().Evaluate(findings, policy);
-        var categories = findings
-            .GroupBy(finding => finding.Category)
-            .Select(group => new CategoryScore(group.Key, ScoreCategory(group, normalizedProfile)))
-            .OrderBy(score => score.Category)
+
+        var groups = findings
+            .GroupBy(f => f.Category)
+            .ToDictionary(g => g.Key, g => ScoreCategory(g, normalizedProfile));
+
+        // Use weighted average: each evaluated category contributes equally
+        var overall = groups.Count == 0
+            ? 100
+            : Math.Clamp((int)Math.Round(groups.Values.Average()), 0, 100);
+
+        // Hard-cap: only when blocking risks exist from policy, or critical/high findings under strict profiles
+        var policyHardCap = policyEvaluation.HasBlockingRisks;
+        var policySoftCap = policyEvaluation.Violations.Count > 0 && !policyHardCap;
+
+        // For strict profiles, also cap if critical/high findings exist
+        if (!policyHardCap && normalizedProfile == TrustProfile.SecuritySensitiveDependency)
+        {
+            var hasSerious = findings.Any(f => f.IsBlocking || f.Severity == Severity.Critical || f.Severity == Severity.High);
+            if (hasSerious) policyHardCap = true;
+        }
+
+        // For soft-cap: clamp only if score is unexpectedly high given violations, but don't push below 70
+        if (policySoftCap && overall > 85)
+        {
+            overall = Math.Max(70, overall - 10);
+        }
+        else if (policyHardCap)
+        {
+            overall = Math.Min(overall, 60);
+        }
+
+        var categories = groups
+            .Select(kvp => new CategoryScore(kvp.Key, kvp.Value))
+            .OrderBy(s => s.Category)
             .ToArray();
 
-        var overall = categories.Length == 0
-            ? 100
-            : Math.Clamp((int)Math.Round(categories.Average(category => category.Score)), 0, 100);
+        var blockers = findings.Where(f => f.IsBlocking).ToArray();
+        var critical = findings.Where(f => f.Severity == Severity.Critical).ToArray();
+        var high = findings.Where(f => f.Severity == Severity.High).ToArray();
 
-        var blockers = findings.Where(finding => finding.IsBlocking).ToArray();
-        var critical = findings.Where(finding => finding.Severity == Severity.Critical).ToArray();
-        var high = findings.Where(finding => finding.Severity == Severity.High).ToArray();
-
-        FinalDecision decision = policyEvaluation.HasBlockingRisks || blockers.Length > 0 || critical.Length > 0
+        FinalDecision decision = policyHardCap
             ? new FinalDecision(FinalDecisionKind.AvoidAsProductionDependency, BuildPolicyReasons(policyEvaluation, blockers.Concat(critical)))
-            : policyEvaluation.Violations.Count > 0
+            : policySoftCap
                 ? new FinalDecision(FinalDecisionKind.NeedsManualReview, BuildPolicyReasons(policyEvaluation, high))
             : high.Length > 0 || overall < 80
                 ? new FinalDecision(FinalDecisionKind.UseWithCaution, BuildReasons(high, "The scan found risks that should be reviewed before production use."))
@@ -42,29 +68,68 @@ public sealed class TrustScorer
 
     private static int ScoreCategory(IEnumerable<Finding> findings, TrustProfile trustProfile)
     {
-        var penalty = findings.Sum(finding =>
-            BasePenalty(finding.Severity) * ProfileMultiplier(finding, trustProfile) * ConfidenceMultiplier(finding.Confidence));
+        var list = findings.ToList();
+        if (list.Count == 0) return 100;
+
+        // Deduplicate: group by ruleId, apply diminishing penalty
+        var ruleGroups = list.GroupBy(f => f.RuleId, StringComparer.OrdinalIgnoreCase);
+        double penalty = 0;
+
+        foreach (var ruleGroup in ruleGroups)
+        {
+            var orderedFindings = ruleGroup.OrderByDescending(f => f.Severity).ToList();
+            for (int i = 0; i < orderedFindings.Count; i++)
+            {
+                var finding = orderedFindings[i];
+                var basePen = BasePenalty(finding.Severity);
+                var profileMult = ProfileMultiplier(finding, trustProfile);
+                var confidenceMult = ConfidenceMultiplier(finding.Confidence);
+
+                // Official GitHub actions (actions/*) get reduced unpinned-action penalty
+                if (finding.RuleId == "TRUST-GHA005" && IsOfficialGitHubAction(finding))
+                {
+                    profileMult *= 0.5;
+                }
+
+                // Diminishing penalty for duplicates: first=100%, second=50%, third+=25%
+                var duplicateMult = i switch
+                {
+                    0 => 1.0,
+                    1 => 0.5,
+                    _ => 0.25
+                };
+
+                penalty += basePen * profileMult * confidenceMult * duplicateMult;
+            }
+        }
 
         return Math.Clamp(100 - (int)Math.Round(penalty), 0, 100);
     }
 
+    private static bool IsOfficialGitHubAction(Finding finding)
+    {
+        // Check evidence for action name like "actions/checkout@v4"
+        var evidence = finding.Evidence.FirstOrDefault()?.Message ?? string.Empty;
+        return evidence.Contains("actions/", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static double ConfidenceMultiplier(Confidence confidence) => confidence switch
     {
-        Confidence.Low => 0.5,
-        Confidence.Medium => 1.0,
-        Confidence.High => 1.2,
+        Confidence.Low => 0.35,
+        Confidence.Medium => 0.70,
+        Confidence.High => 1.0,
         _ => 1.0
     };
 
     private static int BasePenalty(Severity severity) => severity switch
-        {
-            Severity.Info => 0,
-            Severity.Low => 5,
-            Severity.Medium => 12,
-            Severity.High => 25,
-            Severity.Critical => 45,
-            _ => 0
-        };
+    {
+        Severity.Info => 0,
+        Severity.Low => 5,
+        Severity.Medium => 12,
+        Severity.High => 25,
+        Severity.Critical => 45,
+        _ => 0
+    };
 
     private static double ProfileMultiplier(Finding finding, TrustProfile trustProfile)
     {
