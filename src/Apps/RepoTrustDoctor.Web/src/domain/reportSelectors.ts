@@ -141,6 +141,14 @@ export function explainFinding(finding: Finding): string {
     return 'This finding affects container build or runtime hygiene. Container issues can increase image size, weaken runtime isolation, or make production behavior harder to monitor.';
   }
 
+  if (finding.ruleId === 'TRUST-DEP050') {
+    return 'A Gradle version catalog (libs.versions.toml) declares a dependency with a dynamic version such as "3.+" or "latest.release". Dynamic versions make builds non-reproducible. Pin to a specific version.';
+  }
+
+  if (finding.ruleId === 'TRUST-DEP051') {
+    return 'A Gradle version catalog declares a plugin with a dynamic version. Plugin version drift can silently change build behavior. Pin to a specific plugin version.';
+  }
+
   if (finding.ruleId.startsWith('TRUST-DEP') || finding.ruleId.startsWith('TRUST-LIC') || finding.ruleId.startsWith('TRUST-ORIGIN')) {
     return 'This finding affects dependency trust. Review package source, pinning, freshness, license, and maintainer signals before relying on this repository in another project.';
   }
@@ -162,14 +170,38 @@ export function explainFinding(finding: Finding): string {
   }
 
   if (finding.ruleId.startsWith('TRUST-COMP')) {
-    return 'This finding affects Docker Compose configuration. Privileged containers, host network access, and broad port exposure can weaken container isolation.';
+    if (finding.ruleId === 'TRUST-COMP006') {
+      return 'The Docker socket is mounted into a service container. This grants high privilege over the host Docker daemon — a compromised container could control all containers on the host. Remove the socket mount or use an isolated builder.';
+    }
+    if (finding.ruleId === 'TRUST-COMP007') {
+      return 'A Compose service loads environment from a .env-like file. These files often contain secrets or sensitive configuration. Review whether the file content is safe to expose inside the container.';
+    }
+    return 'This finding affects Docker Compose configuration. Privileged containers, host network access, Docker socket mounts, and broad port exposure can weaken container isolation.';
   }
 
   if (finding.ruleId.startsWith('TRUST-K8S')) {
-    return 'This finding affects Kubernetes manifest security. Privileged pods, host namespace sharing, and writable root filesystems increase the blast radius of a compromised container.';
+    if (finding.ruleId === 'TRUST-K8S006') {
+      return 'A workload mounts a hostPath volume, which exposes host directories to the container. This breaks container isolation. Prefer persistent volume claims or projected volumes.';
+    }
+    if (finding.ruleId === 'TRUST-K8S007') {
+      return 'A container adds broad Linux capabilities such as SYS_ADMIN or ALL. These capabilities allow powerful system operations that increase the blast radius of a compromise.';
+    }
+    if (finding.ruleId === 'TRUST-K8S008') {
+      return 'A container has allowPrivilegeEscalation set to true, which lets child processes gain more privileges than the parent. Set to false unless the container genuinely needs it.';
+    }
+    return 'This finding affects Kubernetes manifest security. Privileged pods, host namespace sharing, hostPath volumes, and broad capabilities increase the blast radius of a compromised container.';
   }
 
   if (finding.ruleId.startsWith('TRUST-EVI')) {
+    if (finding.ruleId === 'TRUST-EVI004') {
+      return 'An SBOM evidence file could not be parsed as valid JSON. Corrupt evidence cannot be trusted. Regenerate or re-export the SBOM file.';
+    }
+    if (finding.ruleId === 'TRUST-EVI005') {
+      return 'An SBOM file is valid JSON but contains no components or packages. It provides no dependency visibility. Regenerate the SBOM from the build graph.';
+    }
+    if (finding.ruleId === 'TRUST-EVI006') {
+      return 'A provenance or attestation file could not be parsed. Corrupt provenance cannot verify build integrity. Regenerate the provenance file from the build system.';
+    }
     return 'This finding relates to supply-chain evidence. SBOMs and provenance attestations help verify what went into a build and how it was produced.';
   }
 
