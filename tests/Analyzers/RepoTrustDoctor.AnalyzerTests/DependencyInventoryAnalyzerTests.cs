@@ -489,6 +489,159 @@ public sealed class DependencyInventoryAnalyzerTests
         Assert.Equal("src/main/resources/application.properties", Assert.Single(finding.Evidence).FilePath);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_GoModWithoutGoSum_ReportsDep022()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), """
+        module example.com/mymodule
+
+        go 1.22
+
+        require github.com/gin-gonic/gin v1.9.1
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP022");
+        Assert.Equal(Severity.Medium, finding.Severity);
+        Assert.Equal(Confidence.High, finding.Confidence);
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Equal("go.mod", evidence.FilePath);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GoModWithGoSum_DoesNotReportDep022()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), """
+        module example.com/mymodule
+
+        go 1.22
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "go.sum"), "");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP022");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GoModWithReplaceDirective_ReportsDep023()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.sum"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), """
+        module example.com/mymodule
+
+        go 1.22
+
+        require github.com/gin-gonic/gin v1.9.1
+
+        replace github.com/gin-gonic/gin => github.com/fork/gin v1.9.1-patched
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP023");
+        Assert.Equal(Severity.Low, finding.Severity);
+        Assert.Equal(Confidence.High, finding.Confidence);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GoModExactPinnedVersions_AreRecorded()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.sum"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), """
+        module example.com/mymodule
+
+        go 1.22
+
+        require (
+            github.com/gin-gonic/gin v1.9.1
+            github.com/stretchr/testify v1.8.4 // indirect
+        )
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Manifests, m => m.Ecosystem == DependencyEcosystem.Go && m.Kind == "go.mod");
+        Assert.Contains(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Go && p.Name == "github.com/gin-gonic/gin" && p.IsVersionPinned);
+        Assert.Contains(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Go && p.Name == "github.com/stretchr/testify" && !p.IsDirect);
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP024");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GoModPseudoVersion_ReportsDep025()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.sum"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), """
+        module example.com/mymodule
+
+        go 1.22
+
+        require github.com/example/lib v0.0.0-20240115120000-abcdef123456
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP025");
+        Assert.Equal(Severity.Low, finding.Severity);
+        Assert.Contains("github.com/example/lib", finding.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GoModNonExactVersion_ReportsDep024()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.sum"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), """
+        module example.com/mymodule
+
+        go 1.22
+
+        require github.com/example/lib v1.2
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP024");
+        Assert.Contains("github.com/example/lib", finding.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GoMetrics_ReflectPackageCounts()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.sum"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), """
+        module example.com/mymodule
+
+        go 1.22
+
+        require (
+            github.com/gin-gonic/gin v1.9.1
+            github.com/stretchr/testify v1.8.4 // indirect
+        )
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Equal("1", inventory.Metrics["dependency.manifest.go.count"]);
+        Assert.Equal("2", inventory.Metrics["dependency.package.go.count"]);
+    }
+
     private static DependencyInventoryArtifact GetInventory(AnalyzerResult result)
     {
         var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == DependencyInventoryArtifact.ArtifactKey);

@@ -10,7 +10,8 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new NpmDependencyCollector(),
         new NuGetDependencyCollector(),
         new PythonDependencyCollector(),
-        new JavaDependencyCollector()
+        new JavaDependencyCollector(),
+        new GoDependencyCollector()
     ];
 
     public string Id => "dependency-inventory";
@@ -47,7 +48,11 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new("TRUST-DEP018", "Java dependency uses a dynamic or unpinned version", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Maven or Gradle dependency uses a missing, dynamic, property-based, or ranged version.", "Pin Java dependency versions or resolve them through a reviewed platform/BOM."),
         new("TRUST-DEP019", "Java dependency uses a snapshot or prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Maven or Gradle dependency uses a SNAPSHOT or prerelease version.", "Review whether the Java prerelease dependency is intentional before production use."),
         new("TRUST-DEP020", "Gradle project does not include wrapper scripts", AnalysisCategory.Dependencies, Severity.Low, Confidence.Medium, "A Gradle build exists but the repository does not include Gradle wrapper scripts.", "Commit gradlew, gradlew.bat, and the wrapper properties file so reviewers can see the expected Gradle distribution."),
-        new("TRUST-DEP021", "Spring Boot Actuator exposes broad endpoint access", AnalysisCategory.Dependencies, Severity.High, Confidence.Medium, "Spring Boot Actuator appears configured to expose all web endpoints.", "Restrict management.endpoints.web.exposure.include to the minimum required endpoints and protect management interfaces.")
+        new("TRUST-DEP021", "Spring Boot Actuator exposes broad endpoint access", AnalysisCategory.Dependencies, Severity.High, Confidence.Medium, "Spring Boot Actuator appears configured to expose all web endpoints.", "Restrict management.endpoints.web.exposure.include to the minimum required endpoints and protect management interfaces."),
+        new("TRUST-DEP022", "Go module does not have a go.sum file", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A go.mod file exists but no go.sum was found.", "Run 'go mod tidy' and commit go.sum to the repository for reproducible builds."),
+        new("TRUST-DEP023", "Go module uses replace directive", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "The go.mod file contains a replace directive.", "Review replace directives because they override resolved module versions."),
+        new("TRUST-DEP024", "Go dependency uses a non-exact version", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Go module dependency does not use an exact pinned version.", "Use exact versions with a committed go.sum for reproducible Go builds."),
+        new("TRUST-DEP025", "Go dependency uses a pseudo-version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Go module dependency references a pseudo-version.", "Prefer tagged releases over pseudo-versions and review pseudo-version origins.")
     ];
 
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
