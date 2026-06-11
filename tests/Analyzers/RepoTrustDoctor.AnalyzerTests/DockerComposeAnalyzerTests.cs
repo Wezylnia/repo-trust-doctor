@@ -129,4 +129,80 @@ public sealed class DockerComposeAnalyzerTests
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP004");
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP005");
     }
+
+    // ── COMP006: Docker socket mount ──────────────────────────────────
+
+    [Fact]
+    public async Task AnalyzeAsync_DetectsDockerSocketMount()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "docker-compose.yml"), """
+        services:
+          app:
+            image: nginx
+            volumes:
+              - /var/run/docker.sock:/var/run/docker.sock
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-COMP006" && f.IsBlocking);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_OrdinaryNamedVolume_NoCOMP006()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "docker-compose.yml"), """
+        services:
+          app:
+            image: nginx
+            volumes:
+              - app-data:/data
+        volumes:
+          app-data:
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP006");
+    }
+
+    // ── COMP007: .env file loading ────────────────────────────────────
+
+    [Fact]
+    public async Task AnalyzeAsync_DetectsEnvProduction()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "docker-compose.yml"), """
+        services:
+          app:
+            image: nginx
+            env_file: .env.production
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-COMP007");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_EnvFileExample_NoCOMP007()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "docker-compose.yml"), """
+        services:
+          app:
+            image: nginx
+            env_file: .env.example
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP007");
+    }
 }

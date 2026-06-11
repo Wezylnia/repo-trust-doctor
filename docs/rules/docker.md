@@ -131,3 +131,89 @@ Detects `EXPOSE` instructions that specify a port range spanning more than 100 p
 Why it matters: exposing large port ranges may indicate that the image is unnecessarily permissive. It is better to expose only the ports the application actually listens on.
 
 Recommendation: expose only the specific ports your application needs.
+
+## Docker Compose Rules
+
+### TRUST-COMP001: Docker Compose service runs in privileged mode
+
+- Category: Containers
+- Default severity: High
+- Default confidence: High
+
+Detects `privileged: true` on a Compose service.
+
+Why it matters: privileged containers have almost full host capabilities and can escape isolation.
+
+Recommendation: avoid privileged mode unless absolutely necessary. Drop specific capabilities instead.
+
+### TRUST-COMP002: Docker Compose service uses host network mode
+
+- Category: Containers
+- Default severity: Medium
+- Default confidence: High
+
+Detects `network_mode: host` on a Compose service.
+
+Why it matters: host network mode bypasses container network isolation entirely.
+
+Recommendation: use bridge networks instead of host mode.
+
+### TRUST-COMP003: Docker Compose mounts host directory
+
+- Category: Containers
+- Default severity: Medium
+- Default confidence: Medium
+
+Detects host path volume mounts in Compose files.
+
+Why it matters: host directory mounts can expose the host filesystem to the container.
+
+Recommendation: prefer named volumes and review host path mounts.
+
+### TRUST-COMP004: Docker Compose exposes broad port range
+
+- Category: Containers
+- Default severity: Low
+- Default confidence: High
+
+Detects port mappings bound to `0.0.0.0` (all interfaces).
+
+Why it matters: binding to all interfaces exposes the service to potentially untrusted networks.
+
+Recommendation: bind services to specific interfaces where possible.
+
+### TRUST-COMP005: Docker Compose may define secrets in environment
+
+- Category: Containers
+- Default severity: High
+- Default confidence: Medium
+
+Detects secret-like environment variable keys (`PASSWORD`, `TOKEN`, `SECRET`, `API_KEY`) with literal values in Compose files.
+
+Why it matters: plaintext secrets in Compose files may be committed to version control.
+
+Recommendation: use Docker secrets or external secret management.
+
+### TRUST-COMP006: Docker Compose mounts Docker socket
+
+- Category: Containers
+- Default severity: Critical
+- Default confidence: High
+
+Detects volume mounts of `/var/run/docker.sock` or `/run/docker.sock`.
+
+Why it matters: mounting the Docker socket grants high privilege over the host Docker daemon. A compromised container can control all containers on the host.
+
+Recommendation: do not mount the Docker socket into application services. Use a dedicated isolated builder or tightly controlled automation.
+
+### TRUST-COMP007: Docker Compose loads environment from .env-like file
+
+- Category: Containers
+- Default severity: Medium
+- Default confidence: Medium
+
+Detects `env_file:` entries pointing to `.env`, `.env.production`, `.env.prod`, `.env.local`, or files ending in `.secret`/`.secrets`.
+
+Why it matters: environment files may contain secrets or sensitive configuration. Loading them into containers increases exposure risk.
+
+Recommendation: review env_file entries and avoid loading production environment files into containers.

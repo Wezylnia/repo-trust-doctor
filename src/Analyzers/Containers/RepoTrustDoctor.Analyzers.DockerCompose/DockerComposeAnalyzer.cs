@@ -32,6 +32,10 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
             "A port mapping binds to all interfaces (0.0.0.0).", "Bind services to specific interfaces when possible, or use reverse proxy."),
         new("TRUST-COMP005", "Docker Compose may define secrets in environment", AnalysisCategory.Containers, Severity.High, Confidence.Medium,
             "A service defines secret-like environment variables.", "Use Docker secrets or external secret management. Avoid plaintext secrets in Compose files."),
+        new("TRUST-COMP006", "Docker Compose mounts Docker socket", AnalysisCategory.Containers, Severity.Critical, Confidence.High,
+            "A service mounts the Docker socket.", "Do not mount the Docker socket into application services. Use a dedicated isolated builder."),
+        new("TRUST-COMP007", "Docker Compose loads environment from .env-like file", AnalysisCategory.Containers, Severity.Medium, Confidence.Medium,
+            "A service loads environment from a .env-like file.", "Review env_file entries. Avoid loading .env.production or .env.local into containers."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -56,6 +60,8 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
                 CheckHostVolumeMounts(content, relativePath, findings);
                 CheckBroadPorts(content, relativePath, findings);
                 CheckSecretEnvironment(content, relativePath, findings);
+                CheckDockerSocketMount(content, relativePath, findings);
+                CheckEnvFileLoading(content, relativePath, findings);
             }
         }
 
@@ -114,11 +120,47 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
         }
     }
 
-    private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High)
+    private static void CheckDockerSocketMount(string content, string relativePath, List<Finding> findings)
+    {
+        foreach (Match match in DockerSocketPattern().Matches(content))
+        {
+            var socketPath = match.Groups["socket"].Value;
+            findings.Add(CreateFinding("TRUST-COMP006", "Docker Compose mounts Docker socket",
+                Severity.Critical, relativePath, $"Mounts Docker socket '{socketPath}'. This grants high privilege over the host Docker daemon.",
+                GetLineNumber(content, match.Index), isBlocking: true));
+        }
+    }
+
+    private static void CheckEnvFileLoading(string content, string relativePath, List<Finding> findings)
+    {
+        foreach (Match match in EnvFilePattern().Matches(content))
+        {
+            var envFile = match.Groups["file"].Value.Trim();
+            // Skip example env files
+            if (envFile.EndsWith(".example", StringComparison.OrdinalIgnoreCase) ||
+                envFile.Contains("example.env", StringComparison.OrdinalIgnoreCase) ||
+                envFile.Contains("sample", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Only flag .env-like files
+            var fileName = Path.GetFileName(envFile);
+            if (fileName.StartsWith(".env", StringComparison.OrdinalIgnoreCase) ||
+                fileName.EndsWith(".secret", StringComparison.OrdinalIgnoreCase) ||
+                fileName.EndsWith(".secrets", StringComparison.OrdinalIgnoreCase))
+            {
+                findings.Add(CreateFinding("TRUST-COMP007", "Docker Compose loads .env-like file",
+                    Severity.Medium, relativePath, $"Loads environment from '{envFile}'. Review for secrets or sensitive configuration.",
+                    GetLineNumber(content, match.Index), Confidence.Medium));
+            }
+        }
+    }
+
+    private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High, bool isBlocking = false)
     {
         return new Finding(ruleId, title, AnalysisCategory.Containers, severity, confidence, title,
             [new Evidence("compose", evidence, filePath, lineNumber)],
-            new Recommendation("Review the Docker Compose configuration and apply the recommended fix."));
+            new Recommendation("Review the Docker Compose configuration and apply the recommended fix."),
+            IsBlocking: isBlocking);
     }
 
     private static int GetLineNumber(string content, int matchIndex)
@@ -143,4 +185,10 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?mi)^\s*(?:-\s+)?(?<key>PASSWORD|TOKEN|SECRET|API_KEY)\s*[=:]\s*\S+")]
     private static partial Regex SecretEnvPattern();
+
+    [GeneratedRegex(@"(?m)-\s*(?<socket>/var/run/docker\.sock|/run/docker\.sock)\s*:")]
+    private static partial Regex DockerSocketPattern();
+
+    [GeneratedRegex(@"(?m)^\s*env_file\s*:\s*(?<file>[^\n]+)")]
+    private static partial Regex EnvFilePattern();
 }
