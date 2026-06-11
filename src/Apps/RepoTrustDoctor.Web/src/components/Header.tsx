@@ -1,22 +1,15 @@
-import { FileText, FolderOpen, Radar, Upload } from 'lucide-react';
-import type { RefObject } from 'react';
+import { FileText, Radar } from 'lucide-react';
 
 interface HeaderProps {
-  fileInputRef: RefObject<HTMLInputElement | null>;
-  showActions: boolean;
-  mode: 'report' | 'import' | 'scan';
-  onLoadSample: () => void;
-  onOpenImport: () => void;
+  hasReport: boolean;
+  mode: 'report' | 'scan';
   onOpenReport: () => void;
   onOpenScan: () => void;
 }
 
 export function Header({
-  fileInputRef,
-  showActions,
+  hasReport,
   mode,
-  onLoadSample,
-  onOpenImport,
   onOpenReport,
   onOpenScan
 }: HeaderProps) {
@@ -39,31 +32,11 @@ export function Header({
           type="button"
           className={`button quiet ${mode === 'report' ? 'active' : ''}`}
           onClick={onOpenReport}
-          disabled={!showActions}
+          disabled={!hasReport}
         >
           <FileText size={16} aria-hidden="true" />
           Report
         </button>
-        <button
-          type="button"
-          className={`button quiet ${mode === 'import' ? 'active' : ''}`}
-          onClick={onOpenImport}
-        >
-          <FolderOpen size={16} aria-hidden="true" />
-          Saved report
-        </button>
-        {showActions ? (
-          <>
-          <button type="button" className="button" onClick={() => fileInputRef.current?.click()}>
-            <Upload size={16} aria-hidden="true" />
-            Open saved
-          </button>
-          <button type="button" className="button secondary" onClick={onLoadSample}>
-            <FileText size={16} aria-hidden="true" />
-            Sample
-          </button>
-          </>
-        ) : null}
       </div>
     </header>
   );

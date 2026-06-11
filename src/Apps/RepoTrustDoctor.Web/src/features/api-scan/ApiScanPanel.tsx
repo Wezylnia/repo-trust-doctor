@@ -3,9 +3,11 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { RepositoryScan } from '../../domain/report';
 import {
   cancelScan,
+  buildGitHubRepositoryUrl,
   getScanReport,
   getScanStatus,
   isTerminalScanState,
+  normalizeGitHubRepositoryInput,
   startScan,
   type ScanStatusResponse
 } from './apiScanClient';
@@ -25,8 +27,8 @@ const profiles = [
 ];
 
 export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
-  const [apiBaseUrl, setApiBaseUrl] = useState('http://localhost:5000');
-  const [target, setTarget] = useState('.');
+  const apiBaseUrl = 'http://localhost:5000';
+  const [repository, setRepository] = useState('');
   const [depth, setDepth] = useState('Fast');
   const [trustProfile, setTrustProfile] = useState('ProductionDependency');
   const [scanId, setScanId] = useState<string | null>(null);
@@ -72,7 +74,8 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
     setScanId(null);
 
     try {
-      const started = await startScan({ apiBaseUrl, target, depth, trustProfile });
+      const target = buildGitHubRepositoryUrl(repository);
+      const started = await startScan({ apiBaseUrl, repository, depth, trustProfile });
       setScanId(started.scanId);
       setStatus({
         scanId: started.scanId,
@@ -106,19 +109,22 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
       <div className="panel-heading">
         <div>
           <h2>Scan repository</h2>
-          <span>Local backend scan</span>
+          <span>GitHub repository scan</span>
         </div>
         {status ? <span className={`state-token ${status.state.toLowerCase()}`}>{status.state}</span> : null}
       </div>
 
       <form className="scan-form" onSubmit={(event) => void submitScan(event)}>
         <label>
-          <span>Target</span>
-          <input
-            value={target}
-            onChange={(event) => setTarget(event.target.value)}
-            placeholder="C:\\path\\repo or https://github.com/owner/repo"
-          />
+          <span>Repository</span>
+          <div className="github-input">
+            <span>github.com/</span>
+            <input
+              value={repository}
+              onChange={(event) => setRepository(normalizeGitHubRepositoryInput(event.target.value))}
+              placeholder="owner/repo"
+            />
+          </div>
         </label>
         <div className="field-grid">
           <label>
@@ -142,13 +148,9 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
             </select>
           </label>
         </div>
-        <label>
-          <span>Backend</span>
-          <input value={apiBaseUrl} onChange={(event) => setApiBaseUrl(event.target.value)} />
-        </label>
 
         <div className="scan-actions">
-          <button type="submit" className="button" disabled={isSubmitting || !target.trim() || !apiBaseUrl.trim()}>
+          <button type="submit" className="button" disabled={isSubmitting || !repository.trim()}>
             {isSubmitting ? <RefreshCw size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
             Start scan
           </button>

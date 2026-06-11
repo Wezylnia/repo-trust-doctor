@@ -2,7 +2,7 @@ import type { RepositoryScan } from '../../domain/report';
 
 export interface ApiScanRequest {
   apiBaseUrl: string;
-  target: string;
+  repository: string;
   depth: string;
   trustProfile: string;
 }
@@ -30,13 +30,33 @@ export function normalizeApiBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/, '');
 }
 
+export function normalizeGitHubRepositoryInput(value: string): string {
+  return value
+    .trim()
+    .replace(/^https?:\/\/github\.com\//i, '')
+    .replace(/^github\.com\//i, '')
+    .replace(/^\/+/, '')
+    .replace(/\.git$/i, '')
+    .replace(/\/+$/, '');
+}
+
+export function buildGitHubRepositoryUrl(value: string): string {
+  const repository = normalizeGitHubRepositoryInput(value);
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
+    throw new Error('Enter a GitHub repository as owner/repo.');
+  }
+
+  return `https://github.com/${repository}`;
+}
+
 export async function startScan(request: ApiScanRequest): Promise<StartScanResponse> {
   const baseUrl = normalizeApiBaseUrl(request.apiBaseUrl);
+  const target = buildGitHubRepositoryUrl(request.repository);
   const response = await fetch(`${baseUrl}/api/scans`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      target: request.target.trim(),
+      target,
       depth: request.depth,
       trustProfile: request.trustProfile
     })

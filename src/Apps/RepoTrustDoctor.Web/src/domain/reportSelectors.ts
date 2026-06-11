@@ -10,6 +10,13 @@ export const severityOrder: Record<string, number> = {
 
 export const severities = ['All', 'Critical', 'High', 'Medium', 'Low', 'Info'];
 
+export function scoreTone(score: number): 'excellent' | 'good' | 'warning' | 'danger' {
+  if (score >= 90) return 'excellent';
+  if (score >= 80) return 'good';
+  if (score >= 60) return 'warning';
+  return 'danger';
+}
+
 export function recommendationText(finding: Finding): string {
   return typeof finding.recommendation === 'string'
     ? finding.recommendation
