@@ -17,6 +17,13 @@ private-docs/
 .repo-trust/
 reports/
 
+# Local development plan (not for commit).
+plan.md
+plan2.md
+plan3.md
+plan4.md
+review.md
+
 # Web app dependencies and build output.
 node_modules/
 dist/

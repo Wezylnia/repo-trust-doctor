@@ -62,6 +62,13 @@
           "RepoTrustDoctor.Domain": "[1.0.0, )"
         }
       },
+      "repotrustdoctor.analyzers.gitlabci": {
+        "type": "Project",
+        "dependencies": {
+          "RepoTrustDoctor.Analysis.Abstractions": "[1.0.0, )",
+          "RepoTrustDoctor.Domain": "[1.0.0, )"
+        }
+      },
       "repotrustdoctor.analyzers.releaseevidence": {
         "type": "Project",
         "dependencies": {
@@ -124,6 +131,7 @@
           "RepoTrustDoctor.Analyzers.DependencyRisk": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.Docker": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.GitHubActions": "[1.0.0, )",
+          "RepoTrustDoctor.Analyzers.GitLabCi": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.ReleaseEvidence": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.Repository": "[1.0.0, )",
           "RepoTrustDoctor.Analyzers.Secrets": "[1.0.0, )",
