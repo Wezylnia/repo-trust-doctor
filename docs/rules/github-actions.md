@@ -119,3 +119,39 @@ Detects `actions/upload-artifact` steps that upload very broad paths such as `.`
 Why it matters: broad artifact uploads may include source files, generated temporary files, logs, or sensitive files that were not intended to leave the runner.
 
 Recommendation: upload only specific build outputs and avoid broad artifact paths.
+
+## TRUST-GHA011: Workflow Does Not Restrict GITHUB_TOKEN Scope
+
+- Category: CI/CD
+- Default severity: Medium
+- Default confidence: High
+
+Detects workflows that declare permissions but do not set restrictive per-job permissions for `GITHUB_TOKEN`.
+
+Why it matters: without explicit job-level permission restrictions, the token may carry broader access than needed. If a job is compromised through a supply-chain or injection vector, the token may allow wider repository actions.
+
+Recommendation: set per-job permissions to restrict `GITHUB_TOKEN` to the minimum required scope.
+
+## TRUST-GHA013: Workflow May Contain Hardcoded Secret in Step Env
+
+- Category: CI/CD
+- Default severity: High
+- Default confidence: Medium
+
+Detects step-level `env:` blocks that set environment variables with secret-like names (PASSWORD, TOKEN, SECRET, API_KEY, AUTH_TOKEN) with inline values.
+
+Why it matters: hardcoded values in workflow files are visible to anyone with read access to the repository. Secret-like values should be stored in GitHub Secrets.
+
+Recommendation: use `${{ secrets.SECRET_NAME }}` instead of inline values for credentials and tokens.
+
+## TRUST-GHA014: Workflow May Interpolate Matrix Values in Shell
+
+- Category: CI/CD
+- Default severity: High
+- Default confidence: Medium
+
+Detects `run:` steps containing inline shell interpolation of `${{ matrix.* }}` values.
+
+Why it matters: matrix values may be controlled through workflow triggers or pull request data. Direct interpolation within a shell script run block can lead to command injection if the matrix values are not sanitized.
+
+Recommendation: pass matrix values as environment variables instead of interpolating them directly in shell commands.

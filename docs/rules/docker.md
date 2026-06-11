@@ -95,3 +95,39 @@ Detects `apt-get update` and `apt-get install` in separate `RUN` instructions.
 Why it matters: separating package index updates from installs can create stale package index layers and less reproducible builds.
 
 Recommendation: combine `apt-get update` and `apt-get install` in one `RUN` instruction and clean package lists in the same layer.
+
+## TRUST-DOCKER009: Dockerfile Uses ADD Instead of COPY
+
+- Category: Containers
+- Default severity: Low
+- Default confidence: High
+
+Detects `ADD` instructions where the source is a local path rather than a URL or archive.
+
+Why it matters: `ADD` has implicit behaviors such as tar extraction that `COPY` does not have. Using `COPY` for local file operations is more predictable and less likely to introduce unexpected behavior.
+
+Recommendation: prefer `COPY` over `ADD` unless you specifically need tar extraction or URL fetching.
+
+## TRUST-DOCKER010: Dockerfile Uses sudo
+
+- Category: Containers
+- Default severity: High
+- Default confidence: High
+
+Detects `sudo` in `RUN` instructions.
+
+Why it matters: Docker containers typically run as root by default, and `sudo` adds complexity without providing isolation. If a non-root USER is already set, sudo may indicate privilege escalation patterns.
+
+Recommendation: remove sudo usage and run commands directly without privilege escalation.
+
+## TRUST-DOCKER011: Dockerfile EXPOSE Uses Overly Broad Port Range
+
+- Category: Containers
+- Default severity: Low
+- Default confidence: Medium
+
+Detects `EXPOSE` instructions that specify a port range spanning more than 100 ports.
+
+Why it matters: exposing large port ranges may indicate that the image is unnecessarily permissive. It is better to expose only the ports the application actually listens on.
+
+Recommendation: expose only the specific ports your application needs.
