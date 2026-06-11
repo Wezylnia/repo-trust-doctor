@@ -2,6 +2,31 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v1.2.0 - 2026-06-11
+
+This release adds dependency ecosystem support for Go, Rust/Cargo, PHP/Composer, Ruby/Bundler, Dart/Flutter, Elixir/Hex, Swift Package Manager, and C/C++ package managers.
+
+### Added
+
+- **Go**: `go.mod` parsing, `go.sum` detection, replace directive review, pseudo-version detection (TRUST-DEP022-DEP025).
+- **Rust/Cargo**: `Cargo.toml` parsing across dependency sections, `Cargo.lock` detection, Git/path source detection, version pinning and prerelease checks (TRUST-DEP026-DEP030).
+- **PHP/Composer**: `composer.json` parsing for require/require-dev, `composer.lock` detection, version constraint analysis (TRUST-DEP031-DEP033).
+- **Ruby/Bundler**: `Gemfile` and `.gemspec` parsing, `Gemfile.lock` detection, version constraint and Git/path source detection (TRUST-DEP034-DEP036).
+- **Dart/Flutter**: `pubspec.yaml` parsing, `pubspec.lock` detection, version constraint analysis (TRUST-DEP037-DEP038).
+- **Elixir/Hex**: `mix.exs` parsing, `mix.lock` detection, version constraint and non-Hex source detection (TRUST-DEP040-DEP042).
+- **Swift/SPM**: `Package.swift` parsing, `Package.resolved` detection, branch-based dependency detection (TRUST-DEP043-DEP044).
+- **C/C++**: Conan (`conanfile.txt`/`conanfile.py`), vcpkg (`vcpkg.json`), and CMake (`find_package`/`FetchContent`) detection (TRUST-DEP046-DEP048).
+- **Secrets**: Azure connection strings, GCP service account keys, JWT tokens, npm/PyPI registry tokens, and generic API key detection (TRUST-SECRET008-SECRET012). Placeholder value suppression for generic API key rule.
+- **GitHub Actions**: GITHUB_TOKEN scope restriction, hardcoded secrets in step env, and matrix injection detection (TRUST-GHA011, GHA013-GHA014).
+- **Docker**: ADD vs COPY preference, sudo usage, and broad EXPOSE port range detection (TRUST-DOCKER009-DOCKER011).
+- **CLI**: Category scores with visual bars in console output.
+- Expanded sensitive file detection (`.git-credentials`, `.netrc`, `.ppk`, `.p12`, `.pfx`).
+
+### Changed
+
+- Product version is now `1.2.0`.
+- Rule count: 110 → 133 across 12 ecosystems.
+
 ## v1.1.0 - 2026-06-11
 
 This release adds Java and Spring Boot dependency analysis.
