@@ -81,6 +81,16 @@ An imported coverage report exists, and a critical source file has low line cove
 
 Recommendation: add targeted unit or integration tests for the critical code path before relying on this repository in production.
 
+### `TRUST-CODE014` - Deserialization in critical code
+
+- Category: `Codebase`
+- Default severity: `High`
+- Default confidence: `Medium`
+
+A critical source file uses deserialization APIs (like BinaryFormatter, pickle, yaml, xmlserializer) that are known vectors for remote code execution.
+
+Recommendation: use safe deserialization methods, restrict allowed types, and validate deserialized input.
+
 ## Public API
 
 ### `TRUST-CODE008` - Public API baseline is missing
@@ -108,3 +118,47 @@ Recommendation: commit a reviewed public API baseline when the repository expose
 The current public .NET API symbol list differs from the committed baseline. This is a review signal; it is not a claim that every change is breaking.
 
 Recommendation: review added and removed symbols before release and update the baseline only after compatibility impact is understood.
+
+## Central Files
+
+### `TRUST-CODE010` - Highly central file detected
+
+- Category: `Codebase`
+- Default severity: `Info`
+- Default confidence: `Medium`
+
+A source file is imported by many other files, making it a high-impact change target.
+
+Recommendation: ensure highly central files have thorough tests and careful review gates.
+
+### `TRUST-CODE011` - Central file has low or missing coverage
+
+- Category: `Codebase`
+- Default severity: `High`
+- Default confidence: `Medium`
+
+A highly central file has low or missing test coverage, amplifying the blast radius of defects.
+
+Recommendation: add targeted tests for central files to reduce risk of cascading breakage.
+
+## Framework Routes
+
+### `TRUST-CODE012` - HTTP endpoint without authentication annotation
+
+- Category: `Codebase`
+- Default severity: `Medium`
+- Default confidence: `Low`
+
+An HTTP route handler was detected without a visible authentication or authorization annotation.
+
+Recommendation: add authentication middleware or auth annotations to HTTP endpoints, or document why public access is intentional.
+
+### `TRUST-CODE013` - Framework route detected
+
+- Category: `Codebase`
+- Default severity: `Info`
+- Default confidence: `High`
+
+An HTTP route or controller endpoint was detected using a common web framework.
+
+Recommendation: review HTTP endpoints for proper authentication, authorization, input validation, and rate limiting.
