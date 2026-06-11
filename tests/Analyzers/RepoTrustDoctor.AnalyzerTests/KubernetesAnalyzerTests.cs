@@ -169,4 +169,148 @@ public sealed class KubernetesAnalyzerTests
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S003");
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S004");
     }
+
+    // ── K8S006: hostPath volume ───────────────────────────────────────
+
+    [Fact]
+    public async Task AnalyzeAsync_DetectsHostPathVolume()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx
+              volumes:
+              - name: host-data
+                hostPath:
+                  path: /var/run
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-K8S006");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ConfigMapWithHostPathString_NoK8S006()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "config.yaml"), """
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: docs
+        data:
+          readme: "This is about hostPath volumes"
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S006");
+    }
+
+    // ── K8S007: capabilities add ──────────────────────────────────────
+
+    [Fact]
+    public async Task AnalyzeAsync_DetectsCapabilityAdd()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx
+                securityContext:
+                  capabilities:
+                    add: ["SYS_ADMIN"]
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-K8S007");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CapabilityDropOnly_NoK8S007()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx
+                securityContext:
+                  capabilities:
+                    drop: ["ALL"]
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S007");
+    }
+
+    // ── K8S008: privilege escalation ──────────────────────────────────
+
+    [Fact]
+    public async Task AnalyzeAsync_DetectsPrivilegeEscalation()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx
+                securityContext:
+                  allowPrivilegeEscalation: true
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-K8S008");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PrivilegeEscalationFalse_NoK8S008()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx
+                securityContext:
+                  allowPrivilegeEscalation: false
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S008");
+    }
 }
