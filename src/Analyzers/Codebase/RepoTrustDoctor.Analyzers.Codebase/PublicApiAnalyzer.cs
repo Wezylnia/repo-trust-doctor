@@ -51,7 +51,11 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var symbols = new SortedSet<string>(StringComparer.Ordinal);
-        foreach (var file in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.cs", SearchOption.AllDirectories))
+        var extensions = new[] { ".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".go", ".rs" };
+        var files = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*", SearchOption.AllDirectories)
+            .Where(file => extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase));
+
+        foreach (var file in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!RepositoryFileSystem.CanReadAsText(file))
@@ -60,7 +64,20 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
             }
 
             var text = await File.ReadAllTextAsync(file, cancellationToken);
-            foreach (var symbol in ExtractSymbols(text))
+            var ext = Path.GetExtension(file).ToLowerInvariant();
+
+            IReadOnlyList<string> fileSymbols = ext switch
+            {
+                ".cs" => ExtractSymbols(text),
+                ".ts" or ".tsx" or ".js" or ".jsx" => TypeScriptApiExtractor.ExtractSymbols(text),
+                ".py" => PythonApiExtractor.ExtractSymbols(text),
+                ".java" => JavaApiExtractor.ExtractSymbols(text),
+                ".go" => GoApiExtractor.ExtractSymbols(text),
+                ".rs" => RustApiExtractor.ExtractSymbols(text),
+                _ => Array.Empty<string>()
+            };
+
+            foreach (var symbol in fileSymbols)
             {
                 symbols.Add(symbol);
             }
