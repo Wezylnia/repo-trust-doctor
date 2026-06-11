@@ -25,6 +25,15 @@ Current scans are static-only by default. The tool does not execute repository c
 | `v0.9.x` | History and comparison | Trust diff, historical trend, repository comparison, monitoring models |
 | `v1.0.x` | Stable public release | Current: stable contracts, API/worker hosts, React scan workbench, documented reports |
 | `v1.1.0` | Java and Spring Boot support | Maven/Gradle inventory, Maven metadata/advisory lookup, Spring Boot Actuator exposure checks |
+| `v1.2.x` | More dependency ecosystems | Go, Rust, PHP, Ruby, Swift, Dart/Flutter, Elixir, and C/C++ package manager inventory |
+| `v1.3.x` | Monorepo and workspace intelligence | Better workspace grouping, package manager workspace support, per-project summaries |
+| `v1.4.x` | CI/CD and IaC expansion | GitLab CI, Azure Pipelines, CircleCI, Kubernetes, Helm, Terraform, and Compose review |
+| `v1.5.x` | Evidence integrations | SBOM import, provenance import, external SAST/SCA result import, richer advisory correlation |
+| `v1.6.x` | Durable scan product | Persistence, scan history UI, report comparison UI, API-backed exports |
+| `v1.7.x` | Deeper static code intelligence | Language-specific API extractors, static import/dependency graphs, conservative reachability hints |
+| `v1.8.x` | Analyzer SDK and plugins | Stable analyzer packaging, rule metadata validation, external analyzer test harness |
+| `v1.9.x` | Hosted hardening | Tenant-safe queues, storage controls, rate limits, private repository credential isolation |
+| `v2.0.0` | Extensible trust platform | Stable plugin-ready platform with broad ecosystem coverage and durable operational workflows |
 
 ## v0.1.x: Foundation Alpha
 
@@ -593,6 +602,190 @@ Safety boundaries:
 - no public arbitrary upload endpoint without an intake policy,
 - no execution of repository code,
 - saved reports and persisted records must not store raw secrets.
+
+## v1.2.x: Dependency Ecosystem Expansion
+
+Goal: make dependency inventory useful across the most common open-source stacks without weakening the static-only safety model.
+
+Candidate ecosystem work:
+
+- Go: parse `go.mod` and `go.sum`, record module versions, flag missing `go.sum`, review `replace` directives, support OSV Go advisories.
+- Rust: parse `Cargo.toml` and `Cargo.lock`, flag Git/path dependencies, consume crates.io metadata, support yanked/deprecated crate evidence and RustSec or OSV advisories.
+- PHP: parse `composer.json` and `composer.lock`, support Packagist metadata, identify abandoned packages and platform constraints.
+- Ruby: parse `Gemfile`, `Gemfile.lock`, and `.gemspec`, flag Git/path gems, support RubyGems metadata and yanked gem evidence.
+- Swift: parse `Package.swift` and `Package.resolved`, flag branch-based package dependencies and unclear package URL provenance.
+- Dart and Flutter: parse `pubspec.yaml` and `pubspec.lock`, distinguish hosted, path, and Git dependencies, support pub.dev metadata.
+- Elixir and Erlang: parse `mix.exs`, `mix.lock`, and `rebar.config`, support Hex metadata.
+- C and C++: detect Conan, vcpkg, and CMake dependency declarations, record package manager evidence, and flag vendored dependency folders conservatively.
+- Android and Kotlin: parse Gradle version catalogs such as `libs.versions.toml` and improve plugin/dependency version extraction.
+
+Implementation shape:
+
+- add one collector per ecosystem,
+- add safe metadata clients only behind allowlisted network abstractions,
+- add OSV ecosystem mapping where OSV supports it,
+- keep parser failures isolated to the related manifest,
+- update rule docs and language-support docs for every new rule.
+
+Success criteria:
+
+- no collector file grows beyond the maintainability limit,
+- each ecosystem has synthetic fixture tests,
+- scans remain static-only,
+- unsupported constructs are reported as unknown or skipped, not guessed.
+
+## v1.3.x: Monorepo And Workspace Intelligence
+
+Goal: explain large repositories by project/workspace rather than one flat package list.
+
+Planned work:
+
+- npm, pnpm, Yarn, NuGet solution, Gradle multi-project, Maven reactor, Cargo workspace, Go workspace, Composer workspace, and Dart workspace detection,
+- per-project dependency summaries,
+- workspace-local dependency edge recording,
+- duplicated package/version drift detection,
+- generated/vendor directory handling tuned per ecosystem.
+
+Success criteria:
+
+- reports show which project produced which finding,
+- monorepos remain readable in CLI, Markdown, API, and React reports,
+- workspace support does not require executing package managers.
+
+## v1.4.x: CI/CD And Infrastructure Coverage
+
+Goal: widen supply-chain review beyond GitHub Actions and Dockerfiles.
+
+Candidate analyzers:
+
+- GitLab CI: privileged jobs, broad artifacts, unpinned includes, shell injection patterns, protected-branch publish jobs.
+- Azure Pipelines: service connection exposure, script injection patterns, broad artifact publishing, unpinned tasks.
+- CircleCI: orb pinning, broad contexts, workspace/artifact exposure.
+- Kubernetes and Helm: privileged pods, hostPath mounts, broad capabilities, missing resource limits, risky image tags.
+- Terraform: public ingress, wildcard IAM, unencrypted storage, missing state backend guidance.
+- Docker Compose: privileged services, host mounts, broad port exposure, latest images.
+
+Success criteria:
+
+- infrastructure findings use cautious language,
+- every rule has evidence and docs,
+- generated or vendored YAML does not dominate reports.
+
+## v1.5.x: Evidence Import And Correlation
+
+Goal: let teams reuse existing security evidence without making RepoTrustDoctor a replacement for every scanner.
+
+Planned imports:
+
+- SPDX and CycloneDX SBOM files,
+- SLSA/in-toto provenance evidence,
+- GitHub code scanning SARIF,
+- Semgrep SARIF,
+- CodeQL SARIF,
+- Trivy/Grype vulnerability reports,
+- Dependabot and GitHub Advisory evidence where available.
+
+Correlation work:
+
+- map imported evidence to repository files and dependency packages,
+- deduplicate equivalent findings across sources,
+- preserve source tool names,
+- avoid claiming imported results are verified by RepoTrustDoctor.
+
+## v1.6.x: Durable API And React Product
+
+Goal: turn the local workbench into a durable operational workflow.
+
+Planned work:
+
+- persistence adapter for scan summaries, reports, modules, findings, and trend snapshots,
+- scan history and comparison views in React,
+- retry and cancellation UX,
+- backend report export from completed scan IDs,
+- API compatibility checks in the React app,
+- retention controls for reports and evidence.
+
+Safety boundaries:
+
+- persisted reports must not store raw repository source,
+- secrets remain redacted,
+- private repository credentials require separate isolation design.
+
+## v1.7.x: Deeper Static Code Intelligence
+
+Goal: improve source risk understanding while staying conservative.
+
+Candidate work:
+
+- TypeScript, Python, Java, Go, and Rust public API extractors,
+- static import/dependency graphs for central file detection,
+- framework route/controller detection for common stacks,
+- security-sensitive API usage heuristics for auth, crypto, file IO, network IO, and deserialization,
+- coverage matching improvements for monorepos.
+
+Out of scope:
+
+- default execution-based reachability,
+- exploitability claims,
+- full language call graphs for unsupported languages.
+
+## v1.8.x: Analyzer SDK And Plugin Readiness
+
+Goal: make external analyzers easier to build safely.
+
+Planned work:
+
+- analyzer template project,
+- rule metadata validator,
+- fixture test harness,
+- analyzer package manifest,
+- documentation checks for new rules,
+- compatibility tests against report JSON shape.
+
+Success criteria:
+
+- a contributor can add a new analyzer without understanding the whole engine,
+- third-party analyzers cannot bypass scan safety rules by default.
+
+## v1.9.x: Hosted Hardening
+
+Goal: prepare the project for serious hosted or team deployment.
+
+Planned work:
+
+- tenant-aware scan queue and storage boundaries,
+- rate limits and repository size limits,
+- worker isolation policy,
+- private repository credential isolation,
+- audit log model,
+- retention and deletion controls,
+- abuse-resistant URL intake validation.
+
+Out of scope:
+
+- enabling execution-based scans without a separate sandboxed pipeline,
+- treating hosted scan output as certification.
+
+## v2.0.0: Extensible Trust Platform
+
+Goal: graduate from a static scanner with a local workbench into an extensible trust review platform.
+
+Expected shape:
+
+- broad dependency ecosystem inventory,
+- multiple CI/CD and infrastructure analyzers,
+- durable API and React workflows,
+- stable analyzer SDK,
+- plugin-ready analyzer boundaries,
+- evidence import and correlation,
+- clear safety model for local, hosted, and future sandboxed deep scans.
+
+Success criteria:
+
+- the v2 API/report/plugin contracts are stable enough for external integration,
+- scans are explainable and evidence-first,
+- adding a new ecosystem does not require large core rewrites,
+- safety boundaries remain visible in docs and product UX.
 
 Required documentation:
 
