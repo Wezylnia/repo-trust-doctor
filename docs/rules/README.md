@@ -35,3 +35,4 @@ See also [Analyzer Coverage](../analyzers.md) for a short description of each an
 - [Kubernetes](kubernetes.md)
 - [Azure Pipelines](azure-pipelines.md)
 - [CircleCI](circleci.md)
+- [Terraform](terraform.md)
