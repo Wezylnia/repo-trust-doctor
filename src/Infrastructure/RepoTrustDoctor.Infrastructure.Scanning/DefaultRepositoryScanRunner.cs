@@ -46,6 +46,7 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
             new KubernetesAnalyzer(),
             new DependencyInventoryAnalyzer(),
             new ReleaseEvidenceAnalyzer(),
+            new EvidenceImportAnalyzer(),
             new CoverageImportAnalyzer(),
             new CodeCriticalityAnalyzer(),
             new CoverageCriticalityAnalyzer(),
