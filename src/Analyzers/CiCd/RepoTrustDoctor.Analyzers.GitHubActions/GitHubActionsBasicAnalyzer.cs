@@ -32,6 +32,10 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         new("TRUST-GHA008", "Workflow may interpolate GitHub event data in shell", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "The workflow interpolates github.event, github.head_ref, or github.ref_name directly inside a run block.", "Avoid direct inline shell interpolation of event data. Pass event data as environment variables instead."),
         new("TRUST-GHA009", "Release workflow may publish without test dependency", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "The workflow appears to publish or release artifacts without a visible test dependency.", "Make release or publish jobs depend on a test or CI job before publishing artifacts or packages."),
         new("TRUST-GHA010", "Workflow uploads overly broad artifact path", AnalysisCategory.CiCd, Severity.Medium, Confidence.Medium, "The workflow uploads an artifact from an overly broad path such as the repository root.", "Upload only specific build outputs and avoid broad artifact paths that may include source, secrets, or temporary files."),
+        new("TRUST-GHA011", "Workflow does not restrict GITHUB_TOKEN scope", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "The workflow declares permissions but does not restrict GITHUB_TOKEN to read-only or specific scopes.", "Set per-job permissions to restrict GITHUB_TOKEN to the minimum required scope."),
+        new("TRUST-GHA012", "Workflow deploys to an unprotected environment", AnalysisCategory.CiCd, Severity.Medium, Confidence.Medium, "The workflow targets an environment without visible protection rules or required reviewers.", "Add environment protection rules with required reviewers for production deployments."),
+        new("TRUST-GHA013", "Workflow may contain hardcoded secret in step env", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "A step sets an environment variable that contains a secret-like value inline.", "Use GitHub Secrets instead of inline values for credentials and tokens."),
+        new("TRUST-GHA014", "Workflow may interpolate matrix values in shell", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "The workflow interpolates a matrix variable directly inside a run block.", "Avoid direct inline shell interpolation of matrix values. Pass matrix values as environment variables instead."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -120,6 +124,9 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
             CheckShellInjection(content, relativePath, findings);
             CheckReleaseWorkflowDependency(content, relativePath, findings);
             CheckArtifactUploadPaths(content, relativePath, findings);
+            CheckTokenScope(content, relativePath, findings);
+            CheckHardcodedSecretsInEnv(content, relativePath, findings);
+            CheckMatrixInjection(content, relativePath, findings);
         }
 
         return AnalyzerResult.Completed(findings);
@@ -246,6 +253,73 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         }
     }
 
+    private static void CheckTokenScope(string content, string relativePath, List<Finding> findings)
+    {
+        // If permissions are declared but set to read-all or left at defaults per job
+        var permsMatch = PermissionsPattern().Match(content);
+        if (!permsMatch.Success)
+        {
+            return;
+        }
+
+        // Check if any job overrides permissions to be more restrictive than write-all
+        var jobPermsPattern = JobPermissionsPattern();
+        if (!jobPermsPattern.IsMatch(content))
+        {
+            AddFinding(
+                findings,
+                "TRUST-GHA011",
+                "Workflow does not restrict GITHUB_TOKEN scope",
+                Severity.Medium,
+                "Set per-job permissions to restrict GITHUB_TOKEN to the minimum required scope.",
+                relativePath,
+                "GITHUB_TOKEN permissions are not explicitly restricted at the job level.",
+                confidence: Confidence.High);
+        }
+    }
+
+    private static void CheckHardcodedSecretsInEnv(string content, string relativePath, List<Finding> findings)
+    {
+        var match = HardcodedSecretEnvPattern().Match(content);
+        if (match.Success)
+        {
+            var redactedValue = match.Groups["value"].Value.Length > 4
+                ? match.Groups["value"].Value[..4] + "[redacted]"
+                : "[redacted]";
+            AddFinding(
+                findings,
+                "TRUST-GHA013",
+                "Workflow may contain hardcoded secret in step env",
+                Severity.High,
+                "Use GitHub Secrets instead of inline values for credentials and tokens.",
+                relativePath,
+                $"A step sets an environment variable '{match.Groups["key"].Value}' with a secret-like value: {redactedValue}",
+                confidence: Confidence.Medium);
+        }
+    }
+
+    private static void CheckMatrixInjection(string content, string relativePath, List<Finding> findings)
+    {
+        var lines = SplitLines(content);
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (RunBlockPattern().IsMatch(lines[i]) && MatrixInjectionPattern().IsMatch(lines[i]))
+            {
+                AddFinding(
+                    findings,
+                    "TRUST-GHA014",
+                    "Workflow may interpolate matrix values in shell",
+                    Severity.High,
+                    "Avoid direct inline shell interpolation of matrix values. Pass matrix values as environment variables instead.",
+                    relativePath,
+                    "Potential matrix injection found in run block.",
+                    i + 1,
+                    Confidence.Medium);
+                break;
+            }
+        }
+    }
+
     private static string[] SplitLines(string content) => content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
 
     private static bool IsPinnedToSha(string value) => ShaPattern().IsMatch(value);
@@ -324,4 +398,13 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?mi)^\s*path\s*:\s*(?<path>['""]?(?:\.|\.\/|\*\*\/\*)['""]?)\s*$")]
     private static partial Regex BroadArtifactPathPattern();
+
+    [GeneratedRegex(@"(?m)^\s*jobs\s*:\s*$\s*(?:\S.*$\s*)*?^\s+permissions\s*:", RegexOptions.Multiline)]
+    private static partial Regex JobPermissionsPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*(?<key>TOKEN|PASSWORD|SECRET|API_KEY|AUTH_TOKEN)\s*:\s*(?<value>[^\s#]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex HardcodedSecretEnvPattern();
+
+    [GeneratedRegex(@"\$\{\{\s*matrix\.", RegexOptions.IgnoreCase)]
+    private static partial Regex MatrixInjectionPattern();
 }
