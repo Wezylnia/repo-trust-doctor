@@ -168,4 +168,94 @@ public sealed class DockerBasicAnalyzerTests
 
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DOCKER008");
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsAddInsteadOfCopy_ForLocalFiles()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM alpine:3.18
+        ADD myapp /app/
+        USER appuser
+        HEALTHCHECK NONE
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DOCKER009");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportAddForUrlFetching()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM alpine:3.18
+        ADD https://example.com/archive.tar.gz /tmp/
+        USER appuser
+        HEALTHCHECK NONE
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DOCKER009");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsSudoUsage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM alpine:3.18
+        RUN sudo apk add curl
+        USER appuser
+        HEALTHCHECK NONE
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DOCKER010");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsBroadExposePortRange()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM alpine:3.18
+        EXPOSE 8000-9000
+        USER appuser
+        HEALTHCHECK NONE
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DOCKER011");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportNarrowExposePortRange()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM alpine:3.18
+        EXPOSE 8000-8010
+        USER appuser
+        HEALTHCHECK NONE
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DOCKER011");
+    }
 }
