@@ -10,6 +10,7 @@
   </Folder>
   <Folder Name="/src/Analyzers/Containers/">
     <Project Path="src/Analyzers/Containers/RepoTrustDoctor.Analyzers.Docker/RepoTrustDoctor.Analyzers.Docker.csproj" />
+    <Project Path="src/Analyzers/Containers/RepoTrustDoctor.Analyzers.DockerCompose/RepoTrustDoctor.Analyzers.DockerCompose.csproj" />
   </Folder>
   <Folder Name="/src/Analyzers/Dependencies/">
     <Project Path="src/Analyzers/Dependencies/RepoTrustDoctor.Analyzers.DependencyInventory/RepoTrustDoctor.Analyzers.DependencyInventory.csproj" />
