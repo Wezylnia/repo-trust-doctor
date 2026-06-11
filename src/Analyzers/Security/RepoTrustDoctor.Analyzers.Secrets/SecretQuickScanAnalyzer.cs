@@ -6,8 +6,8 @@ namespace RepoTrustDoctor.Analyzers.Secrets;
 
 public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 {
-    private static readonly string[] SensitiveFileNames = [".env", ".env.production", "id_rsa"];
-    private static readonly string[] SensitiveExtensions = [".pem", ".key"];
+    private static readonly string[] SensitiveFileNames = [".env", ".env.production", "id_rsa", ".git-credentials", ".netrc"];
+    private static readonly string[] SensitiveExtensions = [".pem", ".key", ".ppk", ".p12", ".pfx"];
 
     public string Id => "secret-quick-scan";
 
@@ -32,6 +32,11 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
         new("TRUST-SECRET005", "Possible database connection string found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "A connection string-like value was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
         new("TRUST-SECRET006", "Possible Slack webhook found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "A Slack webhook-like URL was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
         new("TRUST-SECRET007", "Possible Discord webhook found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "A Discord webhook-like URL was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
+        new("TRUST-SECRET008", "Possible Azure connection string or storage key found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "An Azure connection string or storage account key was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
+        new("TRUST-SECRET009", "Possible GCP service account key found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "A Google Cloud service account JSON key was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
+        new("TRUST-SECRET010", "Possible JWT token found", AnalysisCategory.Security, Severity.Medium, Confidence.Medium, "A JWT-like token was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed. JWTs may grant access when valid."),
+        new("TRUST-SECRET011", "Possible registry token found", AnalysisCategory.Security, Severity.High, Confidence.Medium, "An npm or PyPI registry token was found.", "Manually verify the finding, rotate any exposed secret, and remove it from repository history if confirmed."),
+        new("TRUST-SECRET012", "Possible generic API key found", AnalysisCategory.Security, Severity.Medium, Confidence.Low, "A value matching a generic API key pattern was found.", "Manually verify whether the finding is a real secret, rotate if confirmed, and remove from repository history."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -90,6 +95,31 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             if (DiscordWebhookPattern().Match(content) is { Success: true } discordWebhookMatch)
             {
                 findings.Add(CreateFinding("TRUST-SECRET007", "Possible Discord webhook found", Severity.High, Confidence.Medium, relativePath, "A Discord webhook-like URL was found.", GetLineNumber(content, discordWebhookMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(discordWebhookMatch.Value)));
+            }
+
+            if (AzureConnectionStringPattern().Match(content) is { Success: true } azureMatch)
+            {
+                findings.Add(CreateFinding("TRUST-SECRET008", "Possible Azure connection string or storage key found", Severity.High, Confidence.Medium, relativePath, "An Azure connection string or storage account key was found and redacted.", GetLineNumber(content, azureMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(azureMatch.Value)));
+            }
+
+            if (GcpServiceAccountPattern().Match(content) is { Success: true } gcpMatch)
+            {
+                findings.Add(CreateFinding("TRUST-SECRET009", "Possible GCP service account key found", Severity.High, Confidence.Medium, relativePath, "A Google Cloud service account JSON key was found.", GetLineNumber(content, gcpMatch.Index), isBlocking: true));
+            }
+
+            if (JwtTokenPattern().Match(content) is { Success: true } jwtMatch)
+            {
+                findings.Add(CreateFinding("TRUST-SECRET010", "Possible JWT token found", Severity.Medium, Confidence.Medium, relativePath, "A JWT-like token was found and redacted.", GetLineNumber(content, jwtMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(jwtMatch.Value)));
+            }
+
+            if (RegistryTokenPattern().Match(content) is { Success: true } registryMatch)
+            {
+                findings.Add(CreateFinding("TRUST-SECRET011", "Possible registry token found", Severity.High, Confidence.Medium, relativePath, "An npm or PyPI registry token was found and redacted.", GetLineNumber(content, registryMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(registryMatch.Value)));
+            }
+
+            if (GenericApiKeyPattern().Match(content) is { Success: true } apiKeyMatch)
+            {
+                findings.Add(CreateFinding("TRUST-SECRET012", "Possible generic API key found", Severity.Medium, Confidence.Low, relativePath, "A value matching a generic API key pattern was found and redacted.", GetLineNumber(content, apiKeyMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(apiKeyMatch.Value)));
             }
         }
 
@@ -154,4 +184,19 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"https://discord(?:app)?\.com/api/webhooks/[A-Za-z0-9_/]+")]
     private static partial Regex DiscordWebhookPattern();
+
+    [GeneratedRegex(@"(?i)DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]+")]
+    private static partial Regex AzureConnectionStringPattern();
+
+    [GeneratedRegex(@"""type""\s*:\s*""service_account""")]
+    private static partial Regex GcpServiceAccountPattern();
+
+    [GeneratedRegex(@"eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}")]
+    private static partial Regex JwtTokenPattern();
+
+    [GeneratedRegex(@"(?i)(npm_[A-Za-z0-9]{36}|pypi-[A-Za-z0-9]+)")]
+    private static partial Regex RegistryTokenPattern();
+
+    [GeneratedRegex(@"(?i)(api[_-]?key|api[_-]?secret|apikey)\s*[:=]\s*['""]?[A-Za-z0-9_\-]{16,}['""]?")]
+    private static partial Regex GenericApiKeyPattern();
 }

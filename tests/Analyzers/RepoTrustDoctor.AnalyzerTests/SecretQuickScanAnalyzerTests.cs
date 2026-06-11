@@ -210,6 +210,130 @@ public sealed class SecretQuickScanAnalyzerTests
 
         Assert.Empty(result.Findings);
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsAzureConnectionString()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var fakeConnectionString = "DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=" + "abc123def456ghi789jkl012mno345pqr678stu901vwx234yz==";
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), $"""
+        azure_cs={fakeConnectionString}
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET008");
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Equal(1, evidence.LineNumber);
+        Assert.Contains("[redacted]", evidence.Value);
+        Assert.DoesNotContain("AccountKey", evidence.Value);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsGcpServiceAccountKey()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "sa.json"), """
+        {
+            "type": "service_account",
+            "project_id": "my-project",
+            "private_key_id": "abc123"
+        }
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET009");
+        Assert.True(finding.IsBlocking);
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Equal("sa.json", evidence.FilePath);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsJwtToken()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var fakeJwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), $"""
+        token={fakeJwt}
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET010");
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Equal(1, evidence.LineNumber);
+        Assert.Contains("[redacted]", evidence.Value);
+        Assert.DoesNotContain("eyJ", evidence.Value);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsNpmToken()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var fakeNpmToken = "npm_" + "abcdefghijklmnopqrstuvwxyz0123456789";
+        File.WriteAllText(Path.Combine(fixture.Path, ".npmrc"), $"""
+        //registry.npmjs.org/:_authToken={fakeNpmToken}
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET011");
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Equal(1, evidence.LineNumber);
+        Assert.Contains("[redacted]", evidence.Value);
+        Assert.DoesNotContain("npm_", evidence.Value);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsPyPIToken()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var fakePypiToken = "pypi-" + "abcdefghijklmnopqrstuvwxyz0123456789ABCDEF";
+        File.WriteAllText(Path.Combine(fixture.Path, ".pypirc"), $"""
+        password={fakePypiToken}
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-SECRET011");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsGenericApiKey()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), """
+        api_key=sk-abcdefghijklmnopqrstuvwxyz123456
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET012");
+        Assert.Equal(Confidence.Low, finding.Confidence);
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Contains("[redacted]", evidence.Value);
+        Assert.DoesNotContain("sk-", evidence.Value);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsGitCredentialsFile()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".git-credentials"), "https://user:pass@example.com");
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET001");
+        Assert.Contains(".git-credentials", finding.Evidence[0].FilePath, StringComparison.Ordinal);
+    }
 }
 
 
