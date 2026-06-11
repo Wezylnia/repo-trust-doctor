@@ -118,6 +118,13 @@ describe('report selectors', () => {
     expect(explainFinding(finding('TRUST-VULN001', 'High', false))).toContain('vulnerability risk');
     expect(explainFinding(finding('TRUST-GHA005', 'Medium', false))).toContain('workflow safety');
   });
+
+  it('explains v1.6 hardening rules specifically', () => {
+    expect(explainFinding(finding('TRUST-COMP006', 'Critical', true))).toContain('Docker socket');
+    expect(explainFinding(finding('TRUST-K8S006', 'High', false))).toContain('hostPath');
+    expect(explainFinding(finding('TRUST-EVI004', 'Medium', false))).toContain('parsed as valid JSON');
+    expect(explainFinding(finding('TRUST-DEP050', 'Medium', false))).toContain('dynamic version');
+  });
 });
 
 function finding(ruleId: string, severity: string, isBlocking: boolean, recommendation = 'Review.'): Finding {
