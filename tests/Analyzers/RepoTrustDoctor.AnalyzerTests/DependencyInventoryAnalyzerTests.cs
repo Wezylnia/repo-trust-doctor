@@ -489,6 +489,76 @@ public sealed class DependencyInventoryAnalyzerTests
         Assert.Equal("src/main/resources/application.properties", Assert.Single(finding.Evidence).FilePath);
     }
 
+    // ── DEP050: Gradle version catalog dynamic versions ───────────────
+
+    [Fact]
+    public async Task AnalyzeAsync_GradleVersionCatalog_DynamicVersion_ReportsDEP050()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "libs.versions.toml"), """
+        [versions]
+        spring = "3.3.+"
+        kotlin = "1.9.24"
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP050");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP051");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GradleVersionCatalog_DynamicLibraryVersion_ReportsDEP050()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "libs.versions.toml"), """
+        [libraries]
+        spring-core = { module = "org.springframework:spring-core", version = "latest.release" }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP050");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GradleVersionCatalog_DynamicPluginVersion_ReportsDEP051()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "libs.versions.toml"), """
+        [plugins]
+        spring-boot = { id = "org.springframework.boot", version = "3.3.+" }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP051");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GradleVersionCatalog_PinnedVersions_NoDEP050()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "libs.versions.toml"), """
+        [versions]
+        spring = "3.3.1"
+        kotlin = "1.9.24"
+        [libraries]
+        spring-core = { module = "org.springframework:spring-core", version = "3.3.1" }
+        [plugins]
+        spring-boot = { id = "org.springframework.boot", version = "3.3.1" }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP050");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP051");
+    }
+
     private static DependencyInventoryArtifact GetInventory(AnalyzerResult result)
     {
         var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == DependencyInventoryArtifact.ArtifactKey);
