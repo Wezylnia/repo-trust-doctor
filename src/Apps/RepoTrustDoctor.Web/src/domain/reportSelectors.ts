@@ -158,7 +158,7 @@ export function explainFinding(finding: Finding): string {
   }
 
   if (finding.ruleId.startsWith('TRUST-GLCI')) {
-    return 'This finding affects GitLab CI/CD pipeline safety. Remote includes, unpinned images, and CI variable interpolation can introduce supply-chain or injection risks.';
+    return 'This finding affects GitLab CI/CD pipeline safety. Remote includes, unpinned images, CI variable interpolation, privileged Docker-in-Docker, and broad cache paths can introduce supply-chain, injection, or isolation risks.';
   }
 
   if (finding.ruleId.startsWith('TRUST-COMP')) {

@@ -30,6 +30,10 @@ public sealed partial class GitLabCiAnalyzer : IRepositoryAnalyzer
             "A job uses an image or service with the latest tag.", "Pin container images to specific versions or digests for reproducible CI runs."),
         new("TRUST-GLCI004", "GitLab CI uses deprecated only/except", AnalysisCategory.CiCd, Severity.Low, Confidence.High,
             "The pipeline uses deprecated only/except keywords instead of rules.", "Migrate to rules: syntax for better control and readability."),
+        new("TRUST-GLCI005", "GitLab CI service uses privileged Docker-in-Docker", AnalysisCategory.CiCd, Severity.High, Confidence.Medium,
+            "A service image uses Docker-in-Docker or privileged mode is enabled.", "Avoid privileged Docker-in-Docker for untrusted pipelines; prefer rootless builders, Kaniko/BuildKit with least privilege, or isolated runners."),
+        new("TRUST-GLCI006", "GitLab CI cache uses broad repository path", AnalysisCategory.CiCd, Severity.Medium, Confidence.Medium,
+            "A cache block specifies an overly broad path.", "Narrow cache paths to build output directories such as target/, node_modules/, or .gradle/."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -51,6 +55,8 @@ public sealed partial class GitLabCiAnalyzer : IRepositoryAnalyzer
             CheckCiVariableInjection(content, relativePath, findings);
             CheckLatestImageTags(content, relativePath, findings);
             CheckDeprecatedOnlyExcept(content, relativePath, findings);
+            CheckDockerInDocker(content, relativePath, findings);
+            CheckBroadCachePaths(content, relativePath, findings);
         }
 
         return AnalyzerResult.Completed(findings);
@@ -148,6 +154,53 @@ public sealed partial class GitLabCiAnalyzer : IRepositoryAnalyzer
         }
     }
 
+    private static void CheckDockerInDocker(string content, string relativePath, List<Finding> findings)
+    {
+        // Detect docker:dind as a service image
+        if (DockerDinDPattern().IsMatch(content))
+        {
+            findings.Add(CreateFinding("TRUST-GLCI005",
+                "GitLab CI uses Docker-in-Docker service",
+                Severity.High,
+                relativePath,
+                "A service image enables Docker-in-Docker. Prefer rootless builders or Kaniko for untrusted pipelines.",
+                GetLineNumber(content, content.IndexOf("dind", StringComparison.Ordinal)),
+                Confidence.Medium));
+        }
+
+        // Check for privileged Docker variables
+        foreach (Match match in PrivilegedVariablePattern().Matches(content))
+        {
+            findings.Add(CreateFinding("TRUST-GLCI005",
+                "GitLab CI uses privileged mode",
+                Severity.High,
+                relativePath,
+                "Privileged mode (empty DOCKER_TLS_CERTDIR or DOCKER_HOST) may allow escape from container isolation.",
+                GetLineNumber(content, match.Index),
+                Confidence.Medium));
+        }
+    }
+
+    private static void CheckBroadCachePaths(string content, string relativePath, List<Finding> findings)
+    {
+        foreach (Match match in BroadCachePattern().Matches(content))
+        {
+            var cachePath = match.Groups["path"].Value.Trim();
+            // Flag paths that are too broad: ., ./*, *, or have no subdirectory specificity
+            var normalized = cachePath.TrimEnd('/', '*', '.');
+            if (string.IsNullOrEmpty(normalized) || normalized is "." or "..")
+            {
+                findings.Add(CreateFinding("TRUST-GLCI006",
+                    "GitLab CI cache path is too broad",
+                    Severity.Medium,
+                    relativePath,
+                    $"Cache path '{cachePath}' is overly broad. Narrow it to build output directories.",
+                    GetLineNumber(content, match.Index),
+                    Confidence.Medium));
+            }
+        }
+    }
+
     private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High)
     {
         return new Finding(ruleId, title, AnalysisCategory.CiCd, severity, confidence, title,
@@ -182,4 +235,13 @@ public sealed partial class GitLabCiAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?m)^\s*(only|except)\s*:", RegexOptions.IgnoreCase)]
     private static partial Regex DeprecatedOnlyExceptPattern();
+
+    [GeneratedRegex(@"(?m)^\s*(?:DOCKER_TLS_CERTDIR|CI_DOCKER_TLS_CERTDIR|DOCKER_HOST)\s*:\s*""?\s*""?\s*$|^\s*privileged\s*:\s*true", RegexOptions.IgnoreCase)]
+    private static partial Regex PrivilegedVariablePattern();
+
+    [GeneratedRegex(@"docker:(?:dind|[\d.]+-dind)", RegexOptions.IgnoreCase)]
+    private static partial Regex DockerDinDPattern();
+
+    [GeneratedRegex(@"(?m)^\s+paths\s*:\s*\n(\s+-\s*(?<path>[^\n]+))", RegexOptions.IgnoreCase)]
+    private static partial Regex BroadCachePattern();
 }
