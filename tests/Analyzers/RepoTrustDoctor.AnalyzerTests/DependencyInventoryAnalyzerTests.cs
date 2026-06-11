@@ -952,6 +952,138 @@ public sealed class DependencyInventoryAnalyzerTests
         Assert.Equal("2", inventory.Metrics["dependency.package.composer.count"]);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_GemfileWithoutLockfile_ReportsDep034()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile"), """
+        source "https://rubygems.org"
+        gem "rails", "~> 7.1"
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP034");
+        Assert.Equal(Severity.Medium, finding.Severity);
+        Assert.Equal("Gemfile", Assert.Single(finding.Evidence).FilePath);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GemfileWithLockfile_DoesNotReportDep034()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile"), """
+        source "https://rubygems.org"
+        gem "rails", "7.1.3"
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile.lock"), "");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP034");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GemfilePinnedVersions_AreRecorded()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile"), """
+        source "https://rubygems.org"
+        gem "rails", "7.1.3"
+        gem "pg", "1.5.3"
+
+        group :development, :test do
+          gem "rspec-rails", "6.1.0"
+        end
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Manifests, m => m.Ecosystem == DependencyEcosystem.Ruby);
+        Assert.Contains(inventory.Packages, p => p.Name == "rails" && p.IsVersionPinned && p.Scope == DependencyScope.Production);
+        Assert.Contains(inventory.Packages, p => p.Name == "rspec-rails" && p.Scope == DependencyScope.Development);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GemfileNonExactVersion_ReportsDep035()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile"), """
+        source "https://rubygems.org"
+        gem "rails", "~> 7.1"
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP035" && f.Message.Contains("rails", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GemfileGitSource_ReportsDep036()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile"), """
+        source "https://rubygems.org"
+        gem "mygem", git: "https://github.com/example/mygem.git"
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP036" && f.Message.Contains("mygem", StringComparison.Ordinal));
+        var inventory = GetInventory(result);
+        var pkg = Assert.Single(inventory.Packages, p => p.Name == "mygem");
+        Assert.Equal("git", pkg.Metadata?["sourceKind"]);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GemspecParsesDependencies()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "mygem.gemspec"), """
+        Gem::Specification.new do |spec|
+          spec.name = "mygem"
+          spec.add_dependency "rails", ">= 6.0"
+          spec.add_development_dependency "rspec", "~> 3.0"
+        end
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, p => p.Name == "rails" && p.Scope == DependencyScope.Production);
+        Assert.Contains(inventory.Packages, p => p.Name == "rspec" && p.Scope == DependencyScope.Development);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_RubyMetrics_ReflectPackageCounts()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile"), """
+        source "https://rubygems.org"
+        gem "rails", "7.1.3"
+        gem "pg", "1.5.3"
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Equal("1", inventory.Metrics["dependency.manifest.ruby.count"]);
+        Assert.Equal("2", inventory.Metrics["dependency.package.ruby.count"]);
+    }
+
     private static DependencyInventoryArtifact GetInventory(AnalyzerResult result)
     {
         var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == DependencyInventoryArtifact.ArtifactKey);

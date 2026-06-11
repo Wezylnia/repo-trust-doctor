@@ -13,7 +13,8 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new JavaDependencyCollector(),
         new GoDependencyCollector(),
         new CargoDependencyCollector(),
-        new ComposerDependencyCollector()
+        new ComposerDependencyCollector(),
+        new BundlerDependencyCollector()
     ];
 
     public string Id => "dependency-inventory";
@@ -62,7 +63,10 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new("TRUST-DEP030", "Cargo dependency uses a prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Cargo dependency uses a prerelease version.", "Review whether the prerelease dependency is intentional before production use."),
         new("TRUST-DEP031", "Composer project does not have a composer.lock file", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A composer.json file exists but no composer.lock was found.", "Run 'composer install' and commit composer.lock to the repository for reproducible builds."),
         new("TRUST-DEP032", "Composer dependency uses a non-exact version constraint", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Composer dependency uses a version constraint instead of an exact version.", "Use exact version constraints or commit composer.lock for reproducible installs."),
-        new("TRUST-DEP033", "Composer dependency uses a prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Composer dependency uses a prerelease version.", "Review whether the prerelease dependency is intentional before production use.")
+        new("TRUST-DEP033", "Composer dependency uses a prerelease version", AnalysisCategory.Dependencies, Severity.Low, Confidence.High, "A Composer dependency uses a prerelease version.", "Review whether the prerelease dependency is intentional before production use."),
+        new("TRUST-DEP034", "Ruby Gemfile does not have a Gemfile.lock", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Gemfile exists but no Gemfile.lock was found.", "Run 'bundle install' and commit Gemfile.lock to the repository for reproducible builds."),
+        new("TRUST-DEP035", "Ruby gem uses a non-exact version constraint", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Ruby gem uses a version constraint instead of an exact version.", "Use exact gem versions with a committed Gemfile.lock for reproducible builds."),
+        new("TRUST-DEP036", "Ruby gem uses a Git or path source", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High, "A Ruby gem references a Git or path source instead of a registry version.", "Review non-registry gem sources and prefer RubyGems packages with pinned versions when possible."),
     ];
 
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
