@@ -431,3 +431,99 @@ Detects Cargo dependencies with prerelease version labels (e.g. `"1.0.0-alpha.1"
 Why it matters: prerelease dependencies may be unstable or intentionally experimental.
 
 Recommendation: review whether the prerelease dependency is intentional before production use.
+
+## TRUST-DEP031: Composer Project Does Not Have a composer.lock File
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects PHP repositories with `composer.json` but no `composer.lock` alongside it.
+
+Why it matters: without `composer.lock`, dependency resolution is non-deterministic and builds are not reproducible.
+
+Recommendation: run `composer install` and commit `composer.lock` to the repository for reproducible builds.
+
+## TRUST-DEP032: Composer Dependency Uses a Non-Exact Version Constraint
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Composer dependencies that use version constraints (`^`, `~`, `>`, `<`, `*`, `||`) instead of exact versions.
+
+Why it matters: version constraints can resolve to different package versions over time, making builds less reproducible.
+
+Recommendation: use exact version constraints or commit `composer.lock` for reproducible installs.
+
+## TRUST-DEP033: Composer Dependency Uses a Prerelease Version
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: High
+
+Detects Composer dependencies with prerelease version labels (e.g. `"1.0.0-beta.1"`).
+
+Why it matters: prerelease dependencies may be unstable or intentionally experimental.
+
+Recommendation: review whether the prerelease dependency is intentional before production use.
+
+## TRUST-DEP026: Cargo Project Does Not Have a Cargo.lock File
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Rust repositories with `Cargo.toml` but no `Cargo.lock` alongside it.
+
+Why it matters: without `Cargo.lock`, dependency resolution is non-deterministic and builds are not reproducible, exposing the repository to dependency drift.
+
+Recommendation: commit `Cargo.lock` to the repository for reproducible builds (recommended for binaries).
+
+## TRUST-DEP027: Cargo Dependency Uses a Git Source
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Cargo dependencies that reference a Git repository instead of a crates.io version.
+
+Why it matters: Git-sourced dependencies can change behavior when a branch or moving ref is used, and they bypass normal crates.io provenance and review workflows.
+
+Recommendation: review Git-sourced dependencies and prefer crates.io packages with pinned versions when possible.
+
+## TRUST-DEP028: Cargo Dependency Uses a Path Source
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: High
+
+Detects Cargo dependencies that reference a local filesystem path instead of a registry version.
+
+Why it matters: path-sourced dependencies depend on repository layout and may bypass registry provenance. They can be legitimate in workspaces but deserve review.
+
+Recommendation: review path-sourced dependencies and document whether they are workspace-internal or development-only.
+
+## TRUST-DEP029: Cargo Dependency Uses a Non-Exact Version
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects Cargo dependencies that do not use an exact semver version (e.g. `"1"` or `"1.2"` instead of `"1.2.3"`).
+
+Why it matters: non-exact Cargo dependency versions can resolve to different minor or patch versions over time.
+
+Recommendation: use exact versions with a committed `Cargo.lock` for reproducible Cargo builds.
+
+## TRUST-DEP030: Cargo Dependency Uses a Prerelease Version
+
+- Category: Dependencies
+- Default severity: Low
+- Default confidence: High
+
+Detects Cargo dependencies with prerelease version labels (e.g. `"1.0.0-alpha.1"`).
+
+Why it matters: prerelease dependencies may be unstable or intentionally experimental.
+
+Recommendation: review whether the prerelease dependency is intentional before production use.
