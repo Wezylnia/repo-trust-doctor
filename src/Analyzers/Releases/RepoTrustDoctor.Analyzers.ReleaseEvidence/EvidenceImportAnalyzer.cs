@@ -35,6 +35,12 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
             "An SBOM file is valid JSON but contains no components or packages.", "Regenerate the SBOM to include all components."),
         new("TRUST-EVI006", "Provenance evidence file is not parseable", AnalysisCategory.Releases, Severity.Medium, Confidence.High,
             "A provenance JSON or JSONL file could not be parsed.", "Ensure provenance files are valid JSON. Corrupt evidence cannot be trusted."),
+        new("TRUST-EVI007", "SBOM appears potentially incomplete", AnalysisCategory.Releases, Severity.Low, Confidence.Medium,
+            "An SBOM contains very few components suggesting it may be incomplete.", "Regenerate the SBOM from the current build graph."),
+        new("TRUST-EVI008", "SBOM package URL is malformed", AnalysisCategory.Releases, Severity.Low, Confidence.High,
+            "A purl identifier in an SBOM does not follow the pkg: scheme.", "Fix malformed package URLs in the SBOM."),
+        new("TRUST-EVI009", "Evidence metadata target differs from scanned repository", AnalysisCategory.Releases, Severity.Medium, Confidence.Medium,
+            "Evidence metadata references a different repository target.", "Ensure evidence was generated for the current repository."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -99,15 +105,53 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
             var root = doc.RootElement;
 
             // Check for empty components/packages
-            if (root.TryGetProperty("components", out var components) && components.GetArrayLength() == 0)
+            if (root.TryGetProperty("components", out var components))
             {
-                findings.Add(CreateEviFinding("TRUST-EVI005", "SBOM evidence appears empty",
-                    Severity.Low, relativePath, "SBOM has an empty 'components' array.", Confidence.Medium));
+                var count = components.GetArrayLength();
+                if (count == 0)
+                {
+                    findings.Add(CreateEviFinding("TRUST-EVI005", "SBOM evidence appears empty",
+                        Severity.Low, relativePath, "SBOM has an empty 'components' array.", Confidence.Medium));
+                }
+                else if (count < 5)
+                {
+                    findings.Add(CreateEviFinding("TRUST-EVI007", "SBOM appears potentially incomplete",
+                        Severity.Low, relativePath, $"SBOM has only {count} components.", Confidence.Medium));
+                }
+
+                // EVI008: check purl format
+                foreach (var c in components.EnumerateArray())
+                {
+                    if (c.TryGetProperty("purl", out var purl))
+                    {
+                        var p = purl.GetString() ?? "";
+                        if (p.StartsWith("pkg:") && !p.Contains('/'))
+                        {
+                            findings.Add(CreateEviFinding("TRUST-EVI008", "Malformed purl",
+                                Severity.Low, relativePath, $"Purl '{p}' is malformed."));
+                            break;
+                        }
+                    }
+                }
             }
             else if (root.TryGetProperty("packages", out var packages) && packages.GetArrayLength() == 0)
             {
                 findings.Add(CreateEviFinding("TRUST-EVI005", "SBOM evidence appears empty",
                     Severity.Low, relativePath, "SBOM has an empty 'packages' array.", Confidence.Medium));
+            }
+
+            // EVI009: check metadata target
+            if (root.TryGetProperty("metadata", out var metadata) &&
+                metadata.TryGetProperty("component", out var component) &&
+                component.TryGetProperty("name", out var name))
+            {
+                var n = name.GetString() ?? "";
+                if (n.Contains('/') && !relativePath.Contains(n.Split('/').Last(), StringComparison.OrdinalIgnoreCase))
+                {
+                    // Target name differs from scanned path - heuristic
+                    findings.Add(CreateEviFinding("TRUST-EVI009", "Evidence target mismatch",
+                        Severity.Medium, relativePath, $"SBOM metadata references '{n}' which may differ from scanned repo.", Confidence.Medium));
+                }
             }
         }
         catch (JsonException)
