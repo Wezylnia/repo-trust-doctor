@@ -78,7 +78,12 @@ public sealed class ScanOrchestrator
         }
 
         var completed = DateTimeOffset.UtcNow;
-        var score = scorer.Score(findings, trustProfile);
+        var evaluatedCategories = modules
+            .Where(m => m.Status is ModuleStatus.Completed or ModuleStatus.CompletedWithWarnings)
+            .Select(m => m.Category)
+            .Distinct()
+            .ToArray();
+        var score = scorer.Score(findings, trustProfile, evaluatedCategories);
         var status = modules.Any(module => module.Status is ModuleStatus.Failed or ModuleStatus.TimedOut)
             ? ModuleStatus.CompletedWithWarnings
             : ModuleStatus.Completed;
