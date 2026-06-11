@@ -30,6 +30,9 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         new("TRUST-DOCKER006", "Dockerfile does not appear to use multi-stage build", AnalysisCategory.Containers, Severity.Low, Confidence.Medium, "Dockerfile has only one FROM instruction.", "Use multi-stage builds to reduce image size and improve security by separating build dependencies from the runtime image."),
         new("TRUST-DOCKER007", "Dockerfile copies entire context before dependency restore", AnalysisCategory.Containers, Severity.Low, Confidence.Medium, "COPY . . appears before a dependency restore or install step.", "Copy dependency manifest files first, restore dependencies, then copy the rest of the source."),
         new("TRUST-DOCKER008", "Dockerfile separates apt-get update from install", AnalysisCategory.Containers, Severity.Low, Confidence.Medium, "apt-get update and apt-get install appear in separate RUN instructions.", "Combine apt-get update and apt-get install in one RUN instruction and clean package lists in the same layer."),
+        new("TRUST-DOCKER009", "Dockerfile uses ADD instead of COPY", AnalysisCategory.Containers, Severity.Low, Confidence.High, "ADD is used where COPY would be sufficient.", "Prefer COPY over ADD unless you specifically need tar extraction or URL fetching."),
+        new("TRUST-DOCKER010", "Dockerfile uses sudo", AnalysisCategory.Containers, Severity.High, Confidence.High, "sudo is used in a RUN instruction.", "Remove sudo usage. Docker containers normally run as root, and sudo adds complexity without real isolation."),
+        new("TRUST-DOCKER011", "Dockerfile EXPOSE uses overly broad port range", AnalysisCategory.Containers, Severity.Low, Confidence.Medium, "EXPOSE specifies a port range.", "Expose only the specific ports your application needs."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -89,6 +92,9 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
             CheckCopyBeforeRestore(content, relativePath, findings);
             CheckAptGetLayering(content, relativePath, findings);
+            CheckAddVsCopy(content, relativePath, findings);
+            CheckSudoUsage(content, relativePath, findings);
+            CheckExposePortRange(content, relativePath, findings);
 
             foreach (Match match in SecretEnvPattern().Matches(content))
             {
@@ -217,4 +223,83 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"\bapt-get\s+install\b", RegexOptions.IgnoreCase)]
     private static partial Regex AptGetInstallPattern();
+
+    private static void CheckAddVsCopy(string content, string relativePath, List<Finding> findings)
+    {
+        var addMatches = AddInstructionPattern().Matches(content);
+        foreach (Match match in addMatches)
+        {
+            var addValue = match.Groups["src"].Value;
+            // ADD with a URL is legitimate for fetching remote archives,
+            // but ADD when copying local files should be flagged.
+            if (addValue.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                addValue.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            findings.Add(new Finding(
+                "TRUST-DOCKER009",
+                "Dockerfile uses ADD instead of COPY",
+                AnalysisCategory.Containers,
+                Severity.Low,
+                Confidence.High,
+                "ADD is used where COPY would be sufficient.",
+                [new Evidence("dockerfile", "ADD is used to copy local files; prefer COPY for clarity and safety.", relativePath, GetLineNumber(content, match.Index), match.Value.Trim())],
+                new Recommendation("Prefer COPY over ADD unless you specifically need tar extraction or URL fetching.")));
+            // Only report once per file
+            break;
+        }
+    }
+
+    private static void CheckSudoUsage(string content, string relativePath, List<Finding> findings)
+    {
+        var sudoMatches = SudoPattern().Matches(content);
+        foreach (Match match in sudoMatches)
+        {
+            findings.Add(new Finding(
+                "TRUST-DOCKER010",
+                "Dockerfile uses sudo",
+                AnalysisCategory.Containers,
+                Severity.High,
+                Confidence.High,
+                "sudo is used in a RUN instruction.",
+                [new Evidence("dockerfile", "sudo usage detected in Dockerfile. Containers should not rely on sudo.", relativePath, GetLineNumber(content, match.Index), match.Value.Trim())],
+                new Recommendation("Remove sudo usage. Docker containers normally run as root, and sudo adds complexity without real isolation.")));
+            break;
+        }
+    }
+
+    private static void CheckExposePortRange(string content, string relativePath, List<Finding> findings)
+    {
+        var exposeMatches = ExposePortRangePattern().Matches(content);
+        foreach (Match match in exposeMatches)
+        {
+            var startPort = int.Parse(match.Groups["start"].Value);
+            var endPort = int.Parse(match.Groups["end"].Value);
+            var range = endPort - startPort;
+            if (range > 100)
+            {
+                findings.Add(new Finding(
+                    "TRUST-DOCKER011",
+                    "Dockerfile EXPOSE uses overly broad port range",
+                    AnalysisCategory.Containers,
+                    Severity.Low,
+                    Confidence.Medium,
+                    $"EXPOSE uses a broad port range ({startPort}-{endPort}, span of {range}).",
+                    [new Evidence("dockerfile", $"EXPOSE {startPort}-{endPort} exposes {range + 1} ports.", relativePath, GetLineNumber(content, match.Index), match.Value.Trim())],
+                    new Recommendation("Expose only the specific ports your application needs.")));
+                break;
+            }
+        }
+    }
+
+    [GeneratedRegex(@"(?mi)^\s*ADD\s+(?<src>\S+)\s+\S+")]
+    private static partial Regex AddInstructionPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*RUN\s+.*\bsudo\b")]
+    private static partial Regex SudoPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*EXPOSE\s+(?<start>\d+)-(?<end>\d+)")]
+    private static partial Regex ExposePortRangePattern();
 }
