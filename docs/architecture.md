@@ -65,6 +65,8 @@ Scoring -> Infrastructure
 
 Analyzers detect evidence and emit structured findings. They do not calculate final scores, make profile-specific decisions, or directly call other analyzers. Reusable data flows through artifacts in the analysis context.
 
+The dependency inventory analyzer follows this rule with an orchestration class and per-ecosystem collectors for npm, NuGet, Python, Java/Maven/Gradle, and Spring Boot configuration. New package ecosystems should be added as new collectors plus focused tests, not as large branches inside the orchestrator.
+
 ## Scan Modes
 
 - `Fast`: quick static snapshot without heavy network or deep code analysis.

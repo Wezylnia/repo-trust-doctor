@@ -13,13 +13,13 @@ The project is intentionally evidence-based: analyzers produce findings with rul
 
 ## What It Checks Today
 
-The stable `v1.0.6` release focuses on local, static repository trust signals:
+The stable `v1.1.0` release focuses on local, static repository trust signals:
 
 - repository health files such as README, LICENSE, SECURITY.md, contributing docs, CODEOWNERS, templates, and changelog,
 - GitHub Actions workflow risks such as broad permissions, `pull_request_target`, unpinned actions, shell pipe execution, and checkout credential persistence,
 - possible committed secrets or sensitive files with redacted evidence,
 - Dockerfile hygiene signals such as `latest` tags, missing `.dockerignore`, root user risk, missing healthcheck, secret-like `ENV`, and missing multi-stage builds,
-- dependency lockfile coverage and static package-origin signals for npm, NuGet, and Python manifests,
+- dependency lockfile coverage and static package-origin signals for npm, NuGet, Python, Maven, Gradle, and Spring Boot manifests/configuration,
 - deterministic JSON, Markdown, and SARIF reports with stable finding fingerprints,
 - release artifact checksum, SBOM/provenance, changelog, package-version, and release workflow evidence,
 - deep scan coverage import, critical code heuristics, and .NET public API baseline review,
@@ -29,9 +29,9 @@ The stable `v1.0.6` release focuses on local, static repository trust signals:
 
 ## Current Status
 
-This repository is at the `v1.0.6` milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
+This repository is at the `v1.1.0` milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
 
-Implemented through `v1.0.6`:
+Implemented through `v1.1.0`:
 
 - a clean .NET solution structure,
 - pure domain models,
@@ -48,11 +48,13 @@ Implemented through `v1.0.6`:
 - expanded repository documentation quality checks,
 - expanded GitHub Actions release and artifact checks,
 - expanded Docker cache and package-layering checks,
-- structured npm, NuGet, and Python dependency inventory artifacts,
-- npm, NuGet, and Python lockfile coverage checks,
+- structured npm, NuGet, Python, Maven, and Gradle dependency inventory artifacts,
+- npm, NuGet, Python, Maven, and Gradle lockfile coverage checks,
 - direct NuGet `PackageReference` parsing, including basic Central Package Management version resolution,
 - `package.json` dependency section parsing for production, development, optional, and peer dependencies,
 - conservative Python dependency parsing for `requirements.txt`, `pyproject.toml`, and `Pipfile`,
+- Java dependency parsing for Maven `pom.xml`, Gradle `build.gradle`, and `build.gradle.kts`,
+- Spring Boot Actuator exposure checks from static application configuration,
 - static dependency hygiene findings for unpinned/ranged and prerelease versions,
 - npm install-time script findings for manual review,
 - NuGet package source recording from `NuGet.config` without network access,
@@ -175,7 +177,7 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --fail-on-severity H
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- --version
 ```
 
-Supported trust profiles are `Personal`, `ProductionDependency`, `EnterpriseDependency`, `CiCdTool`, `SecuritySensitiveDependency`, and `ContainerDependency`. The CLI also accepts common aliases such as `production`, `enterprise`, `ci-cd`, `security`, and `container`.
+Supported trust profiles are `Personal`, `ProductionDependency`, and `SecuritySensitiveDependency`. The CLI still accepts compatibility aliases such as `enterprise`, `ci-cd`, and `container` and normalizes them before policy evaluation.
 
 ### CLI Exit Codes
 
@@ -231,7 +233,7 @@ The roadmap grows the platform gradually:
 | `v0.8.x` | Coverage import, code criticality, public API analysis, and deep scan signals |
 | `v0.9.x` | Trust history, comparison, trust diff, and monitoring models |
 | `v1.0.x` | Current: stable public platform with documented contracts, CLI/API/worker hosts, React scan workbench, and reliable reports |
-| `v1.1.0` | Planned: React/backend scan experience with live progress and persistence-backed history |
+| `v1.1.0` | Java and Spring Boot dependency support, plus continued React/backend scan experience |
 
 See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scope boundaries, and success criteria.
 
@@ -248,6 +250,7 @@ See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scop
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [Analyzer coverage](docs/analyzers.md)
 - [Roadmap](docs/roadmap.md)
 - [Development guide](docs/development.md)
 - [CI usage](docs/ci-usage.md)
