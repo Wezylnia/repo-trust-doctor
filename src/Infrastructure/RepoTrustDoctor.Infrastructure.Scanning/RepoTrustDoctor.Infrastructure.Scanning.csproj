@@ -11,6 +11,7 @@
     <ProjectReference Include="..\..\Analyzers\CiCd\RepoTrustDoctor.Analyzers.GitHubActions\RepoTrustDoctor.Analyzers.GitHubActions.csproj" />
     <ProjectReference Include="..\..\Analyzers\CiCd\RepoTrustDoctor.Analyzers.GitLabCi\RepoTrustDoctor.Analyzers.GitLabCi.csproj" />
     <ProjectReference Include="..\..\Analyzers\CiCd\RepoTrustDoctor.Analyzers.AzurePipelines\RepoTrustDoctor.Analyzers.AzurePipelines.csproj" />
+    <ProjectReference Include="..\..\Analyzers\CiCd\RepoTrustDoctor.Analyzers.CircleCi\RepoTrustDoctor.Analyzers.CircleCi.csproj" />
     <ProjectReference Include="..\..\Analyzers\Security\RepoTrustDoctor.Analyzers.Secrets\RepoTrustDoctor.Analyzers.Secrets.csproj" />
     <ProjectReference Include="..\..\Analyzers\Containers\RepoTrustDoctor.Analyzers.Docker\RepoTrustDoctor.Analyzers.Docker.csproj" />
     <ProjectReference Include="..\..\Analyzers\Containers\RepoTrustDoctor.Analyzers.DockerCompose\RepoTrustDoctor.Analyzers.DockerCompose.csproj" />
