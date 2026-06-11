@@ -42,4 +42,26 @@ public sealed class RepositoryWorkspaceTests
         Assert.DoesNotContain(sensitivePart, exception.Message);
         Assert.DoesNotContain(url, exception.Message);
     }
+
+    [Fact]
+    public void ForLocalPath_NormalizesAndResolvesToAbsolutePath()
+    {
+        using var fixture = TemporaryDirectory.Create();
+
+        using var workspace = RepositoryWorkspace.ForLocalPath(fixture.Path);
+
+        Assert.True(System.IO.Path.IsPathRooted(workspace.Path));
+        Assert.Equal(System.IO.Path.GetFullPath(fixture.Path), workspace.Path);
+    }
+
+    [Fact]
+    public void ForLocalPath_PreservesTargetAsGiven()
+    {
+        using var fixture = TemporaryDirectory.Create();
+
+        using var workspace = RepositoryWorkspace.ForLocalPath(".");
+
+        Assert.Equal(".", workspace.Target);
+        Assert.True(Directory.Exists(workspace.Path));
+    }
 }
