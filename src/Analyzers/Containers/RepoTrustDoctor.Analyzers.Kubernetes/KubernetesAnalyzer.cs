@@ -32,6 +32,12 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
             "readOnlyRootFilesystem is not set to true.", "Set securityContext.readOnlyRootFilesystem: true for immutable infrastructure."),
         new("TRUST-K8S005", "Kubernetes Secret manifest in repository", AnalysisCategory.Containers, Severity.Medium, Confidence.High,
             "A Kubernetes Secret manifest was found. Values are base64-encoded, not encrypted.", "Use external secret management (e.g., Sealed Secrets, Vault) instead of storing Secrets in the repository."),
+        new("TRUST-K8S006", "Kubernetes manifest uses hostPath volume", AnalysisCategory.Containers, Severity.High, Confidence.High,
+            "A workload manifest mounts a hostPath volume.", "Avoid hostPath volumes unless strictly required. Prefer PVCs or projected volumes."),
+        new("TRUST-K8S007", "Kubernetes container adds broad Linux capabilities", AnalysisCategory.Containers, Severity.High, Confidence.High,
+            "A container adds SYS_ADMIN, NET_ADMIN, or ALL capabilities.", "Drop all capabilities and add only those strictly needed by the application."),
+        new("TRUST-K8S008", "Kubernetes container allows privilege escalation", AnalysisCategory.Containers, Severity.Medium, Confidence.High,
+            "A container has allowPrivilegeEscalation set to true.", "Set allowPrivilegeEscalation: false unless the container genuinely needs it."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -60,6 +66,9 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
                 CheckHostNamespace(content, relativePath, findings);
                 CheckRunAsNonRoot(content, relativePath, findings);
                 CheckReadOnlyRootFs(content, relativePath, findings);
+                CheckHostPathVolumes(content, relativePath, findings);
+                CheckCapabilityAdds(content, relativePath, findings);
+                CheckPrivilegeEscalation(content, relativePath, findings);
             }
             CheckSecretManifest(content, relativePath, findings);
         }
@@ -115,9 +124,41 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
         }
     }
 
-    private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null)
+    private static void CheckHostPathVolumes(string content, string relativePath, List<Finding> findings)
     {
-        return new Finding(ruleId, title, AnalysisCategory.Containers, severity, Confidence.High, title,
+        foreach (Match match in HostPathPattern().Matches(content))
+        {
+            findings.Add(CreateFinding("TRUST-K8S006", "Kubernetes manifest uses hostPath volume",
+                Severity.High, relativePath, "A workload mounts a hostPath volume. Prefer PVCs or projected volumes.",
+                GetLineNumber(content, match.Index)));
+        }
+    }
+
+    private static void CheckCapabilityAdds(string content, string relativePath, List<Finding> findings)
+    {
+        foreach (Match match in CapabilityAddPattern().Matches(content))
+        {
+            var cap = match.Groups["cap"].Value;
+            var severity = cap is "SYS_ADMIN" or "ALL" ? Severity.High : Severity.Medium;
+            findings.Add(CreateFinding("TRUST-K8S007", "Kubernetes container adds broad capability",
+                severity, relativePath, $"Container adds capability '{cap}'. Drop all capabilities and add only those needed.",
+                GetLineNumber(content, match.Index), severity == Severity.High ? Confidence.High : Confidence.Medium));
+        }
+    }
+
+    private static void CheckPrivilegeEscalation(string content, string relativePath, List<Finding> findings)
+    {
+        foreach (Match match in AllowPrivilegeEscalationPattern().Matches(content))
+        {
+            findings.Add(CreateFinding("TRUST-K8S008", "Kubernetes container allows privilege escalation",
+                Severity.Medium, relativePath, "allowPrivilegeEscalation is set to true. Set to false unless needed.",
+                GetLineNumber(content, match.Index)));
+        }
+    }
+
+    private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High)
+    {
+        return new Finding(ruleId, title, AnalysisCategory.Containers, severity, confidence, title,
             [new Evidence("kubernetes", evidence, filePath, lineNumber)],
             new Recommendation("Review the Kubernetes manifest and apply the recommended security hardening."));
     }
@@ -164,4 +205,11 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?mi)^\s*(containers|initContainers)\s*:\s*$")]
     private static partial Regex ContainerSpecPattern();
-}
+    [GeneratedRegex(@"(?m)^\s*hostPath\s*:\s*$")]
+    private static partial Regex HostPathPattern();
+
+    [GeneratedRegex(@"(?m)add\s*:\s*\[.*?""(?<cap>SYS_ADMIN|NET_ADMIN|ALL)""")]
+    private static partial Regex CapabilityAddPattern();
+
+    [GeneratedRegex(@"allowPrivilegeEscalation\s*:\s*true", RegexOptions.IgnoreCase)]
+    private static partial Regex AllowPrivilegeEscalationPattern();}
