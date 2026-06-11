@@ -12,18 +12,73 @@ public sealed class TrustScorer
 
     public TrustScore Score(IReadOnlyList<Finding> findings, TrustProfile trustProfile)
     {
+        // Backward-compatible: use only categories that appear in findings
+        if (findings.Count == 0)
+        {
+            return BuildScore(findings, trustProfile, []);
+        }
+
+        var evaluatedCategories = findings
+            .Select(f => f.Category)
+            .Distinct()
+            .ToArray();
+
+        return BuildScore(findings, trustProfile, evaluatedCategories);
+    }
+
+    public TrustScore Score(
+        IReadOnlyList<Finding> findings,
+        TrustProfile trustProfile,
+        IReadOnlyCollection<AnalysisCategory> evaluatedCategories)
+    {
+        return BuildScore(findings, trustProfile, evaluatedCategories);
+    }
+
+    private static TrustScore BuildScore(
+        IReadOnlyList<Finding> findings,
+        TrustProfile trustProfile,
+        IReadOnlyCollection<AnalysisCategory> evaluatedCategories)
+    {
         var normalizedProfile = TrustProfileCatalog.Normalize(trustProfile);
         var policy = TrustPolicyPresets.ForProfile(normalizedProfile);
         var policyEvaluation = new TrustPolicyEvaluator().Evaluate(findings, policy);
 
-        var groups = findings
+        var findingsByCategory = findings
             .GroupBy(f => f.Category)
-            .ToDictionary(g => g.Key, g => ScoreCategory(g, normalizedProfile));
+            .ToDictionary(g => g.Key, g => g.ToList());
 
-        // Use weighted average: each evaluated category contributes equally
-        var overall = groups.Count == 0
-            ? 100
-            : Math.Clamp((int)Math.Round(groups.Values.Average()), 0, 100);
+        // Build category scores from evaluated categories
+        List<CategoryScore> categoryScores;
+        int overall;
+
+        if (evaluatedCategories.Count > 0)
+        {
+            categoryScores = evaluatedCategories
+                .Select(cat =>
+                {
+                    var catFindings = findingsByCategory.TryGetValue(cat, out var list) ? list : [];
+                    return new CategoryScore(cat, ScoreCategory(catFindings, normalizedProfile));
+                })
+                .OrderBy(s => s.Category)
+                .ToList();
+
+            overall = Math.Clamp((int)Math.Round(categoryScores.Average(s => s.Score)), 0, 100);
+        }
+        else if (findings.Count > 0)
+        {
+            // Fallback: score only categories from findings
+            categoryScores = findingsByCategory
+                .Select(kvp => new CategoryScore(kvp.Key, ScoreCategory(kvp.Value, normalizedProfile)))
+                .OrderBy(s => s.Category)
+                .ToList();
+
+            overall = Math.Clamp((int)Math.Round(categoryScores.Average(s => s.Score)), 0, 100);
+        }
+        else
+        {
+            categoryScores = [];
+            overall = 100;
+        }
 
         // Hard-cap: only when blocking risks exist from policy, or critical/high findings under strict profiles
         var policyHardCap = policyEvaluation.HasBlockingRisks;
@@ -46,11 +101,6 @@ public sealed class TrustScorer
             overall = Math.Min(overall, 60);
         }
 
-        var categories = groups
-            .Select(kvp => new CategoryScore(kvp.Key, kvp.Value))
-            .OrderBy(s => s.Category)
-            .ToArray();
-
         var blockers = findings.Where(f => f.IsBlocking).ToArray();
         var critical = findings.Where(f => f.Severity == Severity.Critical).ToArray();
         var high = findings.Where(f => f.Severity == Severity.High).ToArray();
@@ -63,7 +113,7 @@ public sealed class TrustScorer
                 ? new FinalDecision(FinalDecisionKind.UseWithCaution, BuildReasons(high, "The scan found risks that should be reviewed before production use."))
                 : new FinalDecision(FinalDecisionKind.SafeToTry, ["No high or critical findings were detected in the completed modules."]);
 
-        return new TrustScore(overall, categories, decision);
+        return new TrustScore(overall, categoryScores, decision);
     }
 
     private static int ScoreCategory(IEnumerable<Finding> findings, TrustProfile trustProfile)

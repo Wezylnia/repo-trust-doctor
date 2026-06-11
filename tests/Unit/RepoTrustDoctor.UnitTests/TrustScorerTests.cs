@@ -168,6 +168,116 @@ public sealed class TrustScorerTests
             $"Official action score ({officialScore.Overall}) should exceed third-party ({thirdPartyScore.Overall})");
     }
 
+    [Fact]
+    public void Score_WithEvaluatedCategories_CleanCategoryContributes100()
+    {
+        var findings = new[]
+        {
+            CreateFinding("TRUST-GHA005", AnalysisCategory.CiCd, Severity.Medium),
+        };
+        var evaluatedCategories = new[] { AnalysisCategory.CiCd, AnalysisCategory.Security, AnalysisCategory.Containers };
+        var scorer = new TrustScorer();
+
+        var score = scorer.Score(findings, TrustProfile.ProductionDependency, evaluatedCategories);
+
+        Assert.Equal(3, score.Categories.Count);
+        var security = Assert.Single(score.Categories, c => c.Category == AnalysisCategory.Security);
+        Assert.Equal(100, security.Score);
+        var containers = Assert.Single(score.Categories, c => c.Category == AnalysisCategory.Containers);
+        Assert.Equal(100, containers.Score);
+    }
+
+    [Fact]
+    public void Score_WithEvaluatedCategories_UnevaluatedExcluded()
+    {
+        var findings = new[]
+        {
+            CreateFinding("TRUST-GHA005", AnalysisCategory.CiCd, Severity.Medium),
+        };
+        var evaluatedCategories = new[] { AnalysisCategory.CiCd, AnalysisCategory.Security };
+        var scorer = new TrustScorer();
+
+        var score = scorer.Score(findings, TrustProfile.ProductionDependency, evaluatedCategories);
+
+        Assert.Equal(2, score.Categories.Count);
+        Assert.DoesNotContain(score.Categories, c => c.Category == AnalysisCategory.Containers);
+        Assert.DoesNotContain(score.Categories, c => c.Category == AnalysisCategory.RepositoryHealth);
+    }
+
+    [Fact]
+    public void Score_WithEvaluatedCategories_FastScanWithCleanCategories()
+    {
+        var findings = new[]
+        {
+            CreateFinding("TRUST-GHA005", AnalysisCategory.CiCd, Severity.Medium, "Action 'actions/checkout@v4' is not pinned to a full commit SHA."),
+            CreateFinding("TRUST-GHA005", AnalysisCategory.CiCd, Severity.Medium, "Action 'actions/checkout@v4' is not pinned to a full commit SHA."),
+            CreateFinding("TRUST-GHA005", AnalysisCategory.CiCd, Severity.Medium, "Action 'actions/checkout@v4' is not pinned to a full commit SHA."),
+            CreateFinding("TRUST-GHA007", AnalysisCategory.CiCd, Severity.Low),
+        };
+        var evaluatedCategories = new[] { AnalysisCategory.Security, AnalysisCategory.RepositoryHealth, AnalysisCategory.CiCd, AnalysisCategory.Containers };
+        var scorer = new TrustScorer();
+
+        var score = scorer.Score(findings, TrustProfile.ProductionDependency, evaluatedCategories);
+
+        Assert.Equal(4, score.Categories.Count);
+        Assert.Contains(score.Categories, c => c.Category == AnalysisCategory.Security && c.Score == 100);
+        Assert.Contains(score.Categories, c => c.Category == AnalysisCategory.RepositoryHealth && c.Score == 100);
+        Assert.Contains(score.Categories, c => c.Category == AnalysisCategory.Containers && c.Score == 100);
+
+        var ciCd = Assert.Single(score.Categories, c => c.Category == AnalysisCategory.CiCd);
+        Assert.True(ciCd.Score >= 55, $"CI/CD should be >= 55, was {ciCd.Score}");
+        Assert.True(ciCd.Score <= 95, $"CI/CD should be <= 95, was {ciCd.Score}");
+
+        Assert.True(score.Overall >= 75, $"Overall should be >= 75, was {score.Overall}");
+        Assert.True(score.Overall <= 92, $"Overall should be <= 92, was {score.Overall}");
+        Assert.Equal(FinalDecisionKind.NeedsManualReview, score.Decision.Kind);
+        Assert.Equal(0, findings.Count(f => f.IsBlocking));
+    }
+
+    [Fact]
+    public void Score_WithEvaluatedCategories_EmptyFindingsAllClean()
+    {
+        var evaluatedCategories = new[] { AnalysisCategory.Security, AnalysisCategory.CiCd };
+        var scorer = new TrustScorer();
+
+        var score = scorer.Score([], TrustProfile.ProductionDependency, evaluatedCategories);
+
+        Assert.Equal(2, score.Categories.Count);
+        Assert.Equal(100, score.Overall);
+        Assert.Equal(FinalDecisionKind.SafeToTry, score.Decision.Kind);
+    }
+
+    [Fact]
+    public void Score_WithEvaluatedCategories_EmptyAllReturns100()
+    {
+        var scorer = new TrustScorer();
+
+        var scoreWithEvaluated = scorer.Score([], TrustProfile.ProductionDependency, []);
+        var scoreWithoutEvaluated = scorer.Score([], TrustProfile.ProductionDependency);
+
+        Assert.Equal(100, scoreWithEvaluated.Overall);
+        Assert.Equal(100, scoreWithoutEvaluated.Overall);
+    }
+
+    [Fact]
+    public void Score_BackwardCompatible_BehavesLikeOriginal()
+    {
+        var findings = new[]
+        {
+            CreateFinding("TRUST-GHA001", AnalysisCategory.CiCd, Severity.Low),
+            CreateFinding("TRUST-SECRET005", AnalysisCategory.Security, Severity.High),
+        };
+        var scorer = new TrustScorer();
+
+        var withoutCategories = scorer.Score(findings, TrustProfile.ProductionDependency);
+        var withCategories = scorer.Score(findings, TrustProfile.ProductionDependency,
+            [AnalysisCategory.CiCd, AnalysisCategory.Security]);
+
+        // Categories should match (both score only CiCd + Security since those are in findings)
+        Assert.Equal(withoutCategories.Categories.Count, withCategories.Categories.Count);
+        Assert.Equal(withoutCategories.Overall, withCategories.Overall);
+    }
+
     private static Finding CreateFinding(string ruleId, AnalysisCategory category, Severity severity, string? evidenceMessage = null, Confidence confidence = Confidence.High)
     {
         return new Finding(
