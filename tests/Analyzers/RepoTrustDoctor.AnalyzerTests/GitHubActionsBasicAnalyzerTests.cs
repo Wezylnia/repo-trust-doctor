@@ -272,4 +272,59 @@ public sealed class GitHubActionsBasicAnalyzerTests
 
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-GHA010");
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsHardcodedSecretInEnv()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        permissions:
+          contents: read
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - env:
+                  PASSWORD: supersecretvalue123
+                run: echo "deploying"
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-GHA013");
+        Assert.Equal(Confidence.Medium, finding.Confidence);
+        Assert.Contains("PASSWORD", finding.Evidence[0].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsMatrixInjection()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        permissions:
+          contents: read
+        jobs:
+          test:
+            strategy:
+              matrix:
+                version: [1, 2, 3]
+            runs-on: ubuntu-latest
+            steps:
+              - run: echo "version is ${{ matrix.version }}"
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-GHA014");
+    }
 }
