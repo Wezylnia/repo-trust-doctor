@@ -34,6 +34,7 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
         return
         [
             new RepositoryHealthAnalyzer(),
+            new WorkspaceAnalyzer(),
             new GitHubActionsBasicAnalyzer(),
             new SecretQuickScanAnalyzer(),
             new DockerBasicAnalyzer(),
