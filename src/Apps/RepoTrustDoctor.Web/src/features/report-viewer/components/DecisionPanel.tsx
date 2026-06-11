@@ -1,18 +1,25 @@
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import type { RepositoryScan } from '../../../domain/report';
+import { scoreTone } from '../../../domain/reportSelectors';
 
 export function DecisionPanel({ report }: { report: RepositoryScan }) {
   const hasBlockingReason = report.score.decision.reasons.length > 0;
 
   return (
     <section className="decision-panel" aria-label="Decision">
-      <div className="decision-heading">
-        {report.score.decision.kind === 'SafeToTry'
-          ? <CheckCircle2 size={18} aria-hidden="true" />
-          : <AlertTriangle size={18} aria-hidden="true" />}
+      <div className="overall-score-row">
+        <div className={`overall-score ${scoreTone(report.score.overall)}`}>
+          <strong>{report.score.overall}</strong>
+          <span>/100</span>
+        </div>
         <div>
-          <h2>{report.score.decision.kind}</h2>
-          <span>{report.score.overall}/100 overall score</span>
+          <div className="decision-heading">
+            {report.score.decision.kind === 'SafeToTry'
+              ? <CheckCircle2 size={18} aria-hidden="true" />
+              : <AlertTriangle size={18} aria-hidden="true" />}
+            <h2>{report.score.decision.kind}</h2>
+          </div>
+          <span className="score-caption">Overall trust score</span>
         </div>
       </div>
       {hasBlockingReason ? (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Finding, RepositoryScan } from './report';
-import { getDependencyInventory, recommendationText, summarizeFindings } from './reportSelectors';
+import { getDependencyInventory, recommendationText, scoreTone, summarizeFindings } from './reportSelectors';
 
 describe('report selectors', () => {
   it('summarizes findings by severity and blocking state', () => {
@@ -33,7 +33,7 @@ describe('report selectors', () => {
       target: '.',
       depth: 'Fast',
       trustProfile: 'ProductionDependency',
-      toolVersion: '1.0.5',
+      toolVersion: '1.0.6',
       status: 'Completed',
       modules: [],
       findings: [],
@@ -54,6 +54,13 @@ describe('report selectors', () => {
     };
 
     expect(getDependencyInventory(report)?.packages).toHaveLength(1);
+  });
+
+  it('maps overall scores to visual tones', () => {
+    expect(scoreTone(95)).toBe('excellent');
+    expect(scoreTone(84)).toBe('good');
+    expect(scoreTone(72)).toBe('warning');
+    expect(scoreTone(40)).toBe('danger');
   });
 });
 

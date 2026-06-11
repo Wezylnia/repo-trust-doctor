@@ -6,7 +6,7 @@ The roadmap is intentionally conservative. Each milestone should leave the proje
 
 ## Current Release
 
-`v1.0.5` is a stable static scanner and local platform focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, dependency risk intelligence, policy-aware scoring, SARIF output, release evidence review, deep code intelligence, trust history/diff, deterministic reports, CI gate options, API/worker-hosted scan flows, and a local React scan workbench.
+`v1.0.6` is a stable static scanner and local platform focused on repository documentation quality, GitHub Actions security, Docker hygiene, secret quick scanning, structured dependency inventory, dependency risk intelligence, policy-aware scoring, SARIF output, release evidence review, deep code intelligence, trust history/diff, deterministic reports, CI gate options, API/worker-hosted scan flows, and a local React scan workbench.
 
 Current scans are static-only by default. The tool does not execute repository code, install packages, run tests, run builds, or build containers as part of a scan.
 
@@ -531,17 +531,39 @@ Remaining post-1.0 candidates:
 
 ## v1.0.5: React Workbench Update
 
-Goal: make the React app feel like a serious operational scan console instead of a secondary JSON viewer.
+Goal: make the React app feel like a serious operational scan console.
 
 Delivered in `v1.0.5`:
 
 - the web app opens on the backend scan flow by default,
 - completed API scans automatically load into the report workspace,
-- saved JSON import is kept as a fallback for CI artifacts and offline reports,
 - the visual design is flatter, denser, and more work-focused,
 - report review now foregrounds final decision reasons and category scores,
 - web unit tests cover selector behavior and API scan helper behavior,
 - the API allows configured local web origins for local development.
+
+## v1.0.6: GitHub-First React Scan Flow
+
+Goal: remove raw JSON and saved-report handling from the React user flow.
+
+Delivered in `v1.0.6`:
+
+- removed saved report/import UI,
+- removed sample report loading from the UI,
+- locked the scan target to GitHub repositories,
+- normalized pasted GitHub URLs into `owner/repo`,
+- hid the local backend URL from the user-facing form,
+- emphasized the overall 100-point score at the top of the report with score color bands:
+  - `90+`: dark green,
+  - `80-89`: green,
+  - `60-79`: yellow,
+  - `<60`: red.
+
+Out of scope:
+
+- arbitrary local path scanning from React,
+- raw JSON upload/import from React,
+- public hosted scanning.
 
 Out of scope:
 

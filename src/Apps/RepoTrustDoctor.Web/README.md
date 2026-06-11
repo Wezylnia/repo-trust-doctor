@@ -1,6 +1,6 @@
 # repo-trust-doctor Web
 
-Small React viewer for `repo-trust-doctor` JSON reports. It runs entirely in the browser and does not upload reports to a server.
+Local React trust workbench for scanning GitHub repositories through the `repo-trust-doctor` API backend.
 
 ## Run
 
@@ -11,10 +11,10 @@ npm run dev
 
 The app pins npm resolution to the public npm registry through `.npmrc`. Do not add Azure Artifacts, private registries, or private packages to this project.
 
-Generate a report from the repository root:
+Run the API backend in another shell:
 
 ```text
-dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format json --output reports/scan.json
+dotnet run --project ../RepoTrustDoctor.Api --urls http://localhost:5000
 ```
 
-Open or paste the generated JSON in the web app.
+Enter repositories as `owner/repo`; the UI sends `https://github.com/owner/repo` to the backend.

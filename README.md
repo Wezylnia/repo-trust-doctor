@@ -13,7 +13,7 @@ The project is intentionally evidence-based: analyzers produce findings with rul
 
 ## What It Checks Today
 
-The stable `v1.0.5` release focuses on local, static repository trust signals:
+The stable `v1.0.6` release focuses on local, static repository trust signals:
 
 - repository health files such as README, LICENSE, SECURITY.md, contributing docs, CODEOWNERS, templates, and changelog,
 - GitHub Actions workflow risks such as broad permissions, `pull_request_target`, unpinned actions, shell pipe execution, and checkout credential persistence,
@@ -24,14 +24,14 @@ The stable `v1.0.5` release focuses on local, static repository trust signals:
 - release artifact checksum, SBOM/provenance, changelog, package-version, and release workflow evidence,
 - deep scan coverage import, critical code heuristics, and .NET public API baseline review,
 - trust diff between JSON scan reports with new/resolved/worsened/improved finding changes,
-- a local-first React report viewer for JSON report inspection,
+- a local-first React workbench for GitHub repository scans,
 - CI gate behavior through score and severity thresholds.
 
 ## Current Status
 
-This repository is at the `v1.0.5` milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
+This repository is at the `v1.0.6` milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
 
-Implemented through `v1.0.5`:
+Implemented through `v1.0.6`:
 
 - a clean .NET solution structure,
 - pure domain models,
@@ -43,7 +43,7 @@ Implemented through `v1.0.5`:
 - a CLI-first workflow,
 - minimal API scan endpoints for health, start, status, progress, modules, findings, report export, and cancellation,
 - worker-based queued scan execution,
-- a local React trust workbench that starts backend scans and opens completed reports directly,
+- a local React trust workbench that starts GitHub repository scans and opens completed reports directly,
 - repository health, GitHub Actions, secret quick scan, Docker, and dependency lockfile analyzers,
 - expanded repository documentation quality checks,
 - expanded GitHub Actions release and artifact checks,
@@ -107,7 +107,7 @@ dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format markdown --
 
 ## Web Trust Workbench
 
-The React workbench starts scans through the local API backend and opens completed reports directly. It also supports opening saved JSON reports from CI artifacts or offline scans.
+The React workbench starts GitHub repository scans through the local API backend and opens completed reports directly. The user enters a repository as `owner/repo`; the UI sends `https://github.com/owner/repo` to the backend.
 
 ```text
 dotnet run --project src/Apps/RepoTrustDoctor.Api --urls http://localhost:5000
@@ -115,12 +115,6 @@ dotnet run --project src/Apps/RepoTrustDoctor.Api --urls http://localhost:5000
 cd src/Apps/RepoTrustDoctor.Web
 npm install
 npm run dev
-```
-
-Saved report fallback:
-
-```text
-dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format json --output reports/scan.json
 ```
 
 ## API And Worker

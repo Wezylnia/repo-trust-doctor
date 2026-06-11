@@ -2,6 +2,33 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v1.0.6 - 2026-06-11
+
+This release corrects the React product flow so users scan a GitHub repository directly instead of importing or pasting raw JSON.
+
+### Added
+
+- GitHub-locked repository input with a fixed `github.com/` prefix.
+- Paste normalization for full GitHub URLs such as `https://github.com/owner/repo`.
+- Overall 100-point score emphasis at the top of the report.
+- Score color bands: `90+` dark green, `80-89` green, `60-79` yellow, below `60` red.
+- Unit tests for GitHub repository normalization and score tone mapping.
+
+### Changed
+
+- Product version is now `1.0.6`.
+- Web app version is now `1.0.6`.
+- Removed the Saved report/import UI from the React app.
+- Removed sample report loading from the React app.
+- Hid the local backend URL from the user-facing scan form; `localhost:5000` is now treated as the local scan service, not a scan target.
+- README, roadmap, and web UI docs now describe the GitHub-first React scan flow.
+
+### Security
+
+- The React UI no longer accepts raw JSON report input.
+- The React UI no longer exposes arbitrary local path scanning.
+- Default backend scans remain static-only.
+
 ## v1.0.5 - 2026-06-11
 
 This release improves the React experience from a secondary JSON viewer into a local backend-backed trust workbench.

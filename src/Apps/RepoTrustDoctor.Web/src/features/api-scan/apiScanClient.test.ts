@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isTerminalScanState, normalizeApiBaseUrl } from './apiScanClient';
+import {
+  buildGitHubRepositoryUrl,
+  isTerminalScanState,
+  normalizeApiBaseUrl,
+  normalizeGitHubRepositoryInput
+} from './apiScanClient';
 
 describe('api scan client helpers', () => {
   it('normalizes API base URLs for endpoint composition', () => {
@@ -11,5 +16,15 @@ describe('api scan client helpers', () => {
     expect(isTerminalScanState('Failed')).toBe(true);
     expect(isTerminalScanState('Cancelled')).toBe(true);
     expect(isTerminalScanState('RunningFastModules')).toBe(false);
+  });
+
+  it('normalizes pasted GitHub repository URLs into owner/repo form', () => {
+    expect(normalizeGitHubRepositoryInput('https://github.com/owner/repo.git')).toBe('owner/repo');
+    expect(normalizeGitHubRepositoryInput('github.com/owner/repo/')).toBe('owner/repo');
+  });
+
+  it('builds GitHub repository URLs from owner/repo input', () => {
+    expect(buildGitHubRepositoryUrl('owner/repo')).toBe('https://github.com/owner/repo');
+    expect(() => buildGitHubRepositoryUrl('owner')).toThrow('owner/repo');
   });
 });
