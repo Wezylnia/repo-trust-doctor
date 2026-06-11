@@ -1084,6 +1084,196 @@ public sealed class DependencyInventoryAnalyzerTests
         Assert.Equal("2", inventory.Metrics["dependency.package.ruby.count"]);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_PubspecWithoutLockfile_ReportsDep037()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "pubspec.yaml"), """
+        name: myapp
+        dependencies:
+          http: ^1.0.0
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP037");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PubspecWithLockfile_DoesNotReportDep037()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "pubspec.yaml"), "name: myapp");
+        File.WriteAllText(Path.Combine(fixture.Path, "pubspec.lock"), "");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP037");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PubspecDependencies_AreRecorded()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "pubspec.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "pubspec.yaml"), """
+        name: myapp
+        dependencies:
+          http: 1.2.0
+        dev_dependencies:
+          test: 1.24.0
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Manifests, m => m.Ecosystem == DependencyEcosystem.Pub);
+        Assert.NotEmpty(inventory.Packages);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_MixExsWithoutLockfile_ReportsDep040()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "mix.exs"), """
+        defp deps do
+          [{:phoenix, "~> 1.7"}]
+        end
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP040");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_MixExsWithLockfile_DoesNotReportDep040()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "mix.exs"), "defp deps do [] end");
+        File.WriteAllText(Path.Combine(fixture.Path, "mix.lock"), "");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP040");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_MixExsDependencies_AreRecorded()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "mix.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "mix.exs"), """
+        defp deps do
+          [{:phoenix, "1.7.10"},
+           {:ecto_sql, "~> 3.11"}]
+        end
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Hex && p.Name == "phoenix");
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP041" && f.Message.Contains("ecto_sql", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PackageSwiftWithoutResolved_ReportsDep043()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Package.swift"), """
+        let package = Package(
+            dependencies: [
+                .package(url: "https://github.com/example/lib", from: "1.0.0")
+            ]
+        )
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP043");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PackageSwiftBranchDependency_ReportsDep044()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Package.resolved"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "Package.swift"), """
+        let package = Package(
+            dependencies: [
+                .package(url: "https://github.com/example/lib", branch: "main")
+            ]
+        )
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP044");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_Conanfile_IsDetected()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "conanfile.txt"), """
+        [requires]
+        boost/1.83.0
+        openssl/3.2.0
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Manifests, m => m.Ecosystem == DependencyEcosystem.Cpp);
+        Assert.Contains(inventory.Packages, p => p.Name == "boost");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_VcpkgJson_IsParsed()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "vcpkg.json"), """
+        {
+            "dependencies": [
+                {"name": "fmt", "version>=": "10.0.0"}
+            ]
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Cpp && p.Name == "fmt");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CmakeLists_FindPackage_IsDetected()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CMakeLists.txt"), """
+        cmake_minimum_required(VERSION 3.20)
+        project(MyApp)
+        find_package(Boost REQUIRED)
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Manifests, m => m.Ecosystem == DependencyEcosystem.Cpp && m.Kind == "CMakeLists.txt");
+    }
+
     private static DependencyInventoryArtifact GetInventory(AnalyzerResult result)
     {
         var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == DependencyInventoryArtifact.ArtifactKey);
