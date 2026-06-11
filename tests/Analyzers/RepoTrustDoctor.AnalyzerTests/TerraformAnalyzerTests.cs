@@ -31,6 +31,27 @@ public sealed class TerraformAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_DetectsPublicIngressWithoutTypeProperty()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "main.tf"), """
+        resource "aws_security_group" "example" {
+          ingress {
+            from_port   = 443
+            to_port     = 443
+            protocol    = "tcp"
+            cidr_blocks = ["0.0.0.0/0"]
+          }
+        }
+        """);
+
+        var analyzer = new TerraformAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-TF001");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_EgressOnly_NoTF001()
     {
         using var fixture = TemporaryRepository.Create();
@@ -64,6 +85,30 @@ public sealed class TerraformAnalyzerTests
               Resource = "*"
             }]
           })
+        }
+        """);
+
+        var analyzer = new TerraformAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-TF002");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DetectsWildcardIamJsonPolicy()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "main.tf"), """
+        resource "aws_iam_policy" "bad" {
+          policy = <<POLICY
+        {
+          "Statement": [{
+            "Action": "*",
+            "Effect": "Allow",
+            "Resource": "*"
+          }]
+        }
+        POLICY
         }
         """);
 

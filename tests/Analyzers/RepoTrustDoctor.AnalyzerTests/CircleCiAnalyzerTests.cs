@@ -39,6 +39,24 @@ public sealed class CircleCiAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_DockerImageReferenceIsNotTreatedAsOrb()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, ".circleci"));
+        File.WriteAllText(Path.Combine(fixture.Path, ".circleci", "config.yml"), """
+        jobs:
+          build:
+            docker:
+              - image: cimg/node:20.11
+        """);
+
+        var analyzer = new CircleCiAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-CIRCLE001");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_DetectsLatestDockerImage()
     {
         using var fixture = TemporaryRepository.Create();
@@ -122,6 +140,24 @@ public sealed class CircleCiAnalyzerTests
           build:
             environment:
               API_KEY: changeme
+        """);
+
+        var analyzer = new CircleCiAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-CIRCLE004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_SecretLikeParameterOutsideEnvironment_NoCIRCLE004()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, ".circleci"));
+        File.WriteAllText(Path.Combine(fixture.Path, ".circleci", "config.yml"), """
+        parameters:
+          API_KEY:
+            type: string
+            default: sk-realvalue123456
         """);
 
         var analyzer = new CircleCiAnalyzer();

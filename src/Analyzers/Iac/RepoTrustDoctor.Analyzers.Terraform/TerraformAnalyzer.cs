@@ -139,12 +139,12 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
         foreach (Match block in SecurityGroupBlockPattern().Matches(content))
         {
             var blockText = block.Value;
-            // Must be ingress (not egress) and contain a public CIDR
-            bool isIngress = blockText.Contains("type") && blockText.Contains("ingress");
-            bool isEgress = blockText.Contains("type") && blockText.Contains("egress");
-            bool hasPublicCidr = blockText.Contains("0.0.0.0/0") || blockText.Contains("::/0");
+            var isIngress = blockText.Contains("ingress", StringComparison.OrdinalIgnoreCase);
+            var isEgressOnly = blockText.Contains("egress", StringComparison.OrdinalIgnoreCase) && !isIngress;
+            var hasPublicCidr = blockText.Contains("0.0.0.0/0", StringComparison.Ordinal) ||
+                                blockText.Contains("::/0", StringComparison.Ordinal);
 
-            if (isIngress && !isEgress && hasPublicCidr)
+            if (isIngress && !isEgressOnly && hasPublicCidr)
             {
                 findings.Add(CreateFinding("TRUST-TF001", "Public ingress from internet",
                     Severity.High, relativePath,
@@ -283,10 +283,10 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"(?s)(?:ingress|egress)\s*\{[\s\S]*?\}")]
     private static partial Regex SecurityGroupBlockPattern();
 
-    [GeneratedRegex(@"Action\s*=\s*""\*""")]
+    [GeneratedRegex(@"""?\b[Aa]ctions?\b""?\s*(?:=|:)\s*(?:\[\s*)?""\*""")]
     private static partial Regex IamActionStarPattern();
 
-    [GeneratedRegex(@"Resource\s*=\s*""\*""")]
+    [GeneratedRegex(@"""?\b[Rr]esources?\b""?\s*(?:=|:)\s*(?:\[\s*)?""\*""")]
     private static partial Regex IamResourceStarPattern();
 
     [GeneratedRegex(@"acl\s*=\s*""public-read(?:-write)?""", RegexOptions.IgnoreCase)]

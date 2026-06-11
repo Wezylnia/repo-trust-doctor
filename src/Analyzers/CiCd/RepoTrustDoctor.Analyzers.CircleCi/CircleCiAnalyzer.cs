@@ -65,17 +65,19 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
 
     private static void CheckUnpinnedOrbs(string content, string relativePath, List<Finding> findings)
     {
-        foreach (Match match in OrbRefPattern().Matches(content))
+        foreach (var (line, lineNumber) in EnumerateBlockLines(content, "orbs"))
         {
+            var match = OrbRefPattern().Match(line);
+            if (!match.Success)
+                continue;
+
             var orb = match.Groups["orb"].Value.TrimEnd();
-            // Extract version part after @
             var atIdx = orb.LastIndexOf('@');
             if (atIdx < 0)
             {
-                // No @version at all - unpinned
                 findings.Add(CreateFinding("TRUST-CIRCLE001", "Unpinned CircleCI orb",
                     Severity.Medium, relativePath, $"Orb '{orb}' has no pinned version.",
-                    GetLineNumber(content, match.Index)));
+                    lineNumber));
             }
             else
             {
@@ -84,7 +86,7 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
                 {
                     findings.Add(CreateFinding("TRUST-CIRCLE001", "Floating CircleCI orb version",
                         Severity.Medium, relativePath, $"Orb '{orb}' uses floating version '@{version}'.",
-                        GetLineNumber(content, match.Index)));
+                        lineNumber));
                 }
             }
         }
@@ -135,8 +137,12 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
 
     private static void CheckInlineSecrets(string content, string relativePath, List<Finding> findings)
     {
-        foreach (Match match in InlineSecretPattern().Matches(content))
+        foreach (var (line, lineNumber) in EnumerateBlockLines(content, "environment"))
         {
+            var match = InlineSecretPattern().Match(line);
+            if (!match.Success)
+                continue;
+
             var key = match.Groups["key"].Value;
             var value = match.Groups["value"].Value;
 
@@ -145,7 +151,7 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
 
             findings.Add(CreateFinding("TRUST-CIRCLE004", "Inline secret in CircleCI config",
                 Severity.High, relativePath, $"Secret-like variable '{key}' has a literal value.",
-                GetLineNumber(content, match.Index),
+                lineNumber,
                 Confidence.Medium));
         }
     }
@@ -169,11 +175,13 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
 
     private static bool IsPlaceholder(string value)
     {
-        var lower = value.ToLowerInvariant();
+        var lower = value.Trim('"', '\'').ToLowerInvariant();
         return lower.Contains("changeme") || lower.Contains("example") ||
                lower.Contains("dummy") || lower.Contains("placeholder") ||
                lower.Contains("${{") || lower.Contains("${") ||
-               lower.Contains("<< pipeline.parameters");
+               lower.Contains("<< pipeline.parameters") ||
+               lower.StartsWith('$') ||
+               lower.StartsWith('%');
     }
 
     private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High)
@@ -191,7 +199,42 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
         return line;
     }
 
-    [GeneratedRegex(@"(?m)^\s+(?:-\s+)?\w[\w-]*\s*:\s*(?<orb>[\w][\w.-]*/[\w][\w.-]*(?:@\S+)?)", RegexOptions.IgnoreCase)]
+    private static IEnumerable<(string Line, int LineNumber)> EnumerateBlockLines(string content, string blockName)
+    {
+        var lines = content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (!Regex.IsMatch(lines[i], $@"^\s*{Regex.Escape(blockName)}\s*:\s*$", RegexOptions.IgnoreCase))
+                continue;
+
+            var baseIndent = GetIndentation(lines[i]);
+            for (var cursor = i + 1; cursor < lines.Length; cursor++)
+            {
+                if (string.IsNullOrWhiteSpace(lines[cursor]))
+                    continue;
+
+                if (GetIndentation(lines[cursor]) <= baseIndent)
+                    break;
+
+                yield return (lines[cursor], cursor + 1);
+            }
+        }
+    }
+
+    private static int GetIndentation(string line)
+    {
+        var count = 0;
+        foreach (var c in line)
+        {
+            if (c == ' ') count++;
+            else if (c == '\t') count += 4;
+            else break;
+        }
+
+        return count;
+    }
+
+    [GeneratedRegex(@"^\s+(?:-\s+)?\w[\w-]*\s*:\s*(?<orb>[\w][\w.-]*/[\w][\w.-]*(?:@\S+)?)", RegexOptions.IgnoreCase)]
     private static partial Regex OrbRefPattern();
 
     [GeneratedRegex(@"image\s*:\s*(?<image>\S+)", RegexOptions.IgnoreCase)]

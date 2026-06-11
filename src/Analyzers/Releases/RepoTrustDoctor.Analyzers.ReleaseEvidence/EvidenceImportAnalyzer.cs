@@ -17,7 +17,7 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
 
     public AnalysisDepth MinimumDepth => AnalysisDepth.Standard;
 
-    public IReadOnlyCollection<string> DependsOn => [];
+    public IReadOnlyCollection<string> DependsOn => [DependencyInventoryArtifact.ArtifactKey];
 
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 
@@ -63,7 +63,7 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
                 // Validate SBOM parseability
                 if (file.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                 {
-                    ValidateSbomJson(file, relativePath, findings, cancellationToken);
+                    ValidateSbomJson(file, relativePath, context, findings, cancellationToken);
                 }
             }
         }
@@ -89,7 +89,7 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
         return AnalyzerResult.Completed(findings);
     }
 
-    private static void ValidateSbomJson(string file, string relativePath, List<Finding> findings, CancellationToken ct)
+    private static void ValidateSbomJson(string file, string relativePath, AnalysisContext context, List<Finding> findings, CancellationToken ct)
     {
         if (!RepositoryFileSystem.CanReadAsText(file))
             return;
@@ -113,10 +113,11 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
                     findings.Add(CreateEviFinding("TRUST-EVI005", "SBOM evidence appears empty",
                         Severity.Low, relativePath, "SBOM has an empty 'components' array.", Confidence.Medium));
                 }
-                else if (count < 5)
+                var directDependencyCount = GetDirectDependencyCount(context);
+                if (count > 0 && directDependencyCount >= 20 && count < Math.Ceiling(directDependencyCount * 0.25))
                 {
                     findings.Add(CreateEviFinding("TRUST-EVI007", "SBOM appears potentially incomplete",
-                        Severity.Low, relativePath, $"SBOM has only {count} components.", Confidence.Medium));
+                        Severity.Low, relativePath, $"SBOM has {count} components for {directDependencyCount} direct dependencies.", Confidence.Medium));
                 }
 
                 // EVI008: check purl format
@@ -146,9 +147,8 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
                 component.TryGetProperty("name", out var name))
             {
                 var n = name.GetString() ?? "";
-                if (n.Contains('/') && !relativePath.Contains(n.Split('/').Last(), StringComparison.OrdinalIgnoreCase))
+                if (n.Contains('/') && !TargetMatches(context, n))
                 {
-                    // Target name differs from scanned path - heuristic
                     findings.Add(CreateEviFinding("TRUST-EVI009", "Evidence target mismatch",
                         Severity.Medium, relativePath, $"SBOM metadata references '{n}' which may differ from scanned repo.", Confidence.Medium));
                 }
@@ -163,6 +163,51 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
         {
             // Skip unreadable files
         }
+    }
+
+    private static int GetDirectDependencyCount(AnalysisContext context)
+    {
+        if (!context.TryGetArtifact<DependencyInventoryArtifact>(DependencyInventoryArtifact.ArtifactKey, out var inventory) || inventory is null)
+            return 0;
+
+        return inventory.Packages.Count(package => package.IsDirect);
+    }
+
+    private static bool TargetMatches(AnalysisContext context, string evidenceTarget)
+    {
+        var normalizedEvidence = NormalizeRepositoryIdentity(evidenceTarget);
+        if (string.IsNullOrWhiteSpace(normalizedEvidence))
+            return true;
+
+        var normalizedTarget = NormalizeRepositoryIdentity(context.Target);
+        if (string.IsNullOrWhiteSpace(normalizedTarget))
+            normalizedTarget = NormalizeRepositoryIdentity(new DirectoryInfo(context.RepositoryPath).Name);
+
+        if (string.IsNullOrWhiteSpace(normalizedTarget))
+            return true;
+
+        return normalizedTarget.Equals(normalizedEvidence, StringComparison.OrdinalIgnoreCase) ||
+               normalizedTarget.EndsWith('/' + normalizedEvidence, StringComparison.OrdinalIgnoreCase) ||
+               normalizedEvidence.EndsWith('/' + normalizedTarget, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeRepositoryIdentity(string value)
+    {
+        var normalized = value.Trim().TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(normalized))
+            return "";
+
+        if (normalized.StartsWith("git@github.com:", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized["git@github.com:".Length..];
+        else if (Uri.TryCreate(normalized, UriKind.Absolute, out var uri))
+            normalized = uri.Host.Contains("github.com", StringComparison.OrdinalIgnoreCase)
+                ? uri.AbsolutePath.Trim('/')
+                : normalized;
+
+        if (normalized.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized[..^4];
+
+        return normalized.Trim('/').ToLowerInvariant();
     }
 
     private static void ValidateProvenance(string file, string relativePath, List<Finding> findings, CancellationToken ct)
