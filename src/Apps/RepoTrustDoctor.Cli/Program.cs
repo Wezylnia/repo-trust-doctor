@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using RepoTrustDoctor.Application.Scanning;
+using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
 using RepoTrustDoctor.Infrastructure.Scanning;
 using RepoTrustDoctor.Reporting;
@@ -425,6 +426,33 @@ internal static class CliProgram
         if (scan.Findings.Count == 0)
         {
             lines.Add("- none");
+        }
+
+        // Dependency summary
+        if (scan.Artifacts?.TryGetValue("dependency.inventory", out var inv) == true &&
+            inv is DependencyInventoryArtifact inventory)
+        {
+            lines.Add(string.Empty);
+            lines.Add($"Dependencies: {inventory.Packages.Count} packages across {inventory.Manifests.Count} manifests");
+            lines.Add($"  Unpinned: {inventory.Packages.Count(p => !p.IsVersionPinned)}, Prerelease: {inventory.Packages.Count(p => p.IsPrerelease)}");
+        }
+
+        // Top recommended actions
+        var actions = scan.Findings
+            .Select(f => f.Recommendation.Message)
+            .Where(m => !string.IsNullOrWhiteSpace(m))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(3)
+            .ToArray();
+
+        if (actions.Length > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("Top actions:");
+            foreach (var action in actions)
+            {
+                lines.Add($"  - {action}");
+            }
         }
 
         return string.Join(Environment.NewLine, lines);
