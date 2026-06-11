@@ -98,4 +98,45 @@ public sealed class PublicApiAnalyzerTests
         var artifact = Assert.IsType<CodePublicApiArtifact>(Assert.Single(result.Artifacts!).Value);
         Assert.Equal("docs/public-api-baseline.txt", artifact.BaselinePath);
     }
+
+    [Fact]
+    public async Task PublicApiAnalyzer_SupportsMultiLanguageExtraction()
+    {
+        using var fixture = TemporaryRepository.Create();
+        
+        // TypeScript
+        File.WriteAllText(Path.Combine(fixture.Path, "index.ts"), """
+        export class User {
+            id: string;
+        }
+        export function getUser(): User { return null; }
+        """);
+
+        // Python
+        File.WriteAllText(Path.Combine(fixture.Path, "main.py"), """
+        class Account:
+            pass
+        def transfer():
+            pass
+        """);
+
+        // Go
+        File.WriteAllText(Path.Combine(fixture.Path, "main.go"), """
+        package main
+        func RunProcess() {}
+        type DataModel struct {}
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new PublicApiAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        var artifact = Assert.IsType<CodePublicApiArtifact>(Assert.Single(result.Artifacts!).Value);
+        
+        Assert.Contains("export class User", artifact.Symbols);
+        Assert.Contains("export function getUser", artifact.Symbols);
+        Assert.Contains("class Account", artifact.Symbols);
+        Assert.Contains("def transfer", artifact.Symbols);
+        Assert.Contains("func main.RunProcess", artifact.Symbols);
+        Assert.Contains("type main.DataModel", artifact.Symbols);
+    }
 }
