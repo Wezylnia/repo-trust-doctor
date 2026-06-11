@@ -177,6 +177,14 @@ export function explainFinding(finding: Finding): string {
     return 'This finding affects CircleCI configuration security. Unpinned orbs, unpinned Docker images, broad workspace persistence, inline secrets, and unversioned remote Docker can introduce supply-chain or isolation risks.';
   }
 
+  if (finding.ruleId.startsWith('TRUST-TF')) {
+    return 'This finding affects Terraform infrastructure security. Public ingress, wildcard IAM policies, public S3 ACLs, missing encryption, unversioned providers, and unencrypted backends can weaken cloud infrastructure.';
+  }
+
+  if (finding.ruleId.startsWith('TRUST-REG')) {
+    return 'This finding affects package registry configuration. HTTP registries, global auth tokens, inline credentials, and insecure protocols can weaken supply-chain security.';
+  }
+
   if (finding.ruleId.startsWith('TRUST-COMP')) {
     if (finding.ruleId === 'TRUST-COMP006') {
       return 'The Docker socket is mounted into a service container. This grants high privilege over the host Docker daemon — a compromised container could control all containers on the host. Remove the socket mount or use an isolated builder.';

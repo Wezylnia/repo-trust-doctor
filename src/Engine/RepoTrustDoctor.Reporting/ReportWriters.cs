@@ -279,6 +279,8 @@ public sealed class SarifReportWriter
         if (ruleId.StartsWith("TRUST-EVI", StringComparison.OrdinalIgnoreCase)) return "releases";
         if (ruleId.StartsWith("TRUST-AZP", StringComparison.OrdinalIgnoreCase)) return "azure-pipelines";
         if (ruleId.StartsWith("TRUST-CIRCLE", StringComparison.OrdinalIgnoreCase)) return "circleci";
+        if (ruleId.StartsWith("TRUST-TF", StringComparison.OrdinalIgnoreCase)) return "terraform";
+        if (ruleId.StartsWith("TRUST-REG", StringComparison.OrdinalIgnoreCase)) return "dependencies";
         return null;
     }
 
