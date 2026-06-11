@@ -5,6 +5,7 @@
     <Project Path="src/Analyzers/CiCd/RepoTrustDoctor.Analyzers.GitHubActions/RepoTrustDoctor.Analyzers.GitHubActions.csproj" />
     <Project Path="src/Analyzers/CiCd/RepoTrustDoctor.Analyzers.GitLabCi/RepoTrustDoctor.Analyzers.GitLabCi.csproj" />
     <Project Path="src/Analyzers/CiCd/RepoTrustDoctor.Analyzers.AzurePipelines/RepoTrustDoctor.Analyzers.AzurePipelines.csproj" />
+    <Project Path="src/Analyzers/CiCd/RepoTrustDoctor.Analyzers.CircleCi/RepoTrustDoctor.Analyzers.CircleCi.csproj" />
   </Folder>
   <Folder Name="/src/Analyzers/Codebase/">
     <Project Path="src/Analyzers/Codebase/RepoTrustDoctor.Analyzers.Codebase/RepoTrustDoctor.Analyzers.Codebase.csproj" />
