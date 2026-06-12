@@ -194,7 +194,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
     {
         var reasons = new HashSet<CodeCriticalityReason>();
         var firstRelevantLine = default(int?);
-        var searchableText = RemoveQuotedText(text);
+        var searchableText = RemoveAnalyzerVocabulary(RemoveQuotedText(text));
         var lower = searchableText.ToLowerInvariant();
         var lines = searchableText.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
 
@@ -298,6 +298,15 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             return newlineCount == 0 ? string.Empty : new string('\n', newlineCount);
         });
 
+    private static string RemoveAnalyzerVocabulary(string text) =>
+        CodeCriticalityEnumDeclarationRegex().Replace(
+            CodeCriticalityReasonReferenceRegex().Replace(text, string.Empty),
+            match =>
+            {
+                var newlineCount = match.Value.Count(character => character == '\n');
+                return newlineCount == 0 ? string.Empty : new string('\n', newlineCount);
+            });
+
     private static bool HasBoundedProcessInvocation(string searchableText) =>
         searchableText.Contains("processstartinfo", StringComparison.OrdinalIgnoreCase) &&
         searchableText.Contains("useshellexecute = false", StringComparison.OrdinalIgnoreCase) &&
@@ -347,6 +356,12 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex("\"\"\"[\\s\\S]*?\"\"\"|@\"(?:[^\"]|\"\")*\"|\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|`(?:\\\\.|[^`\\\\])*`", RegexOptions.Multiline)]
     private static partial Regex QuotedTextRegex();
+
+    [GeneratedRegex(@"CodeCriticalityReason\.\w+", RegexOptions.IgnoreCase)]
+    private static partial Regex CodeCriticalityReasonReferenceRegex();
+
+    [GeneratedRegex(@"\b(?:public\s+)?enum\s+CodeCriticalityReason\s*\{[\s\S]*?\}", RegexOptions.IgnoreCase)]
+    private static partial Regex CodeCriticalityEnumDeclarationRegex();
 
     private sealed record KeywordGroup(CodeCriticalityReason Reason, IReadOnlyList<string> Keywords);
 }
