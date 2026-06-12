@@ -101,6 +101,26 @@ public sealed class ScanApplicationServiceTests
     }
 
     [Fact]
+    public async Task ScanCoordinator_DoesNotOverwriteCompletedScanOnCancel()
+    {
+        var store = new InMemoryScanStore();
+        var queue = new InMemoryScanJobQueue();
+        var coordinator = new ScanCoordinator(store, queue, new ScanRequestValidator());
+        var result = await coordinator.StartAsync(new StartScanRequest(".", "fast"), CancellationToken.None);
+        var job = await queue.DequeueAsync(CancellationToken.None);
+        var processor = new ScanJobProcessor(store, new FakeScanRunner());
+        await processor.ProcessAsync(job, CancellationToken.None);
+
+        var cancelled = coordinator.TryCancel(result.ScanId);
+
+        Assert.True(cancelled);
+        Assert.True(store.TryGet(result.ScanId, out var state));
+        Assert.Equal(ScanLifecycleState.Completed, state!.State);
+        Assert.Equal("Scan completed.", state.StatusMessage);
+        Assert.NotNull(state.Result);
+    }
+
+    [Fact]
     public void ScanJsonSerializerOptions_WritesApiEnumsAsStrings()
     {
         var dto = new ScanStatusResponse(

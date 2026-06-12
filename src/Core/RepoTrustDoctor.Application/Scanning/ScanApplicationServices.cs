@@ -178,12 +178,15 @@ public sealed class ScanCoordinator(IScanStore store, IScanJobQueue queue, ScanR
             return false;
         }
 
+        if (state.State is ScanLifecycleState.Completed or ScanLifecycleState.Failed or ScanLifecycleState.Cancelled)
+        {
+            return true;
+        }
+
         state.Cancellation?.Cancel();
         return store.TryUpdate(scanId, current => current with
         {
-            State = current.State is ScanLifecycleState.Completed or ScanLifecycleState.Failed
-                ? current.State
-                : ScanLifecycleState.Cancelled,
+            State = ScanLifecycleState.Cancelled,
             CompletedAt = current.CompletedAt ?? DateTimeOffset.UtcNow,
             StatusMessage = "Scan cancellation requested."
         });
