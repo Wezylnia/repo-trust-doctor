@@ -116,12 +116,13 @@ public sealed class CircleCiAnalyzerTests
     public async Task AnalyzeAsync_DetectsInlineSecret()
     {
         using var fixture = TemporaryRepository.Create();
+        var fakeSecret = "sk-" + "realvalue123456";
         Directory.CreateDirectory(Path.Combine(fixture.Path, ".circleci"));
-        File.WriteAllText(Path.Combine(fixture.Path, ".circleci", "config.yml"), """
+        File.WriteAllText(Path.Combine(fixture.Path, ".circleci", "config.yml"), $"""
         jobs:
           build:
             environment:
-              API_KEY: sk-realvalue123456
+              API_KEY: {fakeSecret}
         """);
 
         var analyzer = new CircleCiAnalyzer();
