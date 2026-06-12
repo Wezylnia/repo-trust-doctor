@@ -1,5 +1,5 @@
-using RepoTrustDoctor.Analyzers.ReleaseEvidence;
 using RepoTrustDoctor.Analysis.Abstractions;
+using RepoTrustDoctor.Analyzers.ReleaseEvidence;
 using RepoTrustDoctor.Domain;
 
 namespace RepoTrustDoctor.AnalyzerTests;
@@ -20,8 +20,6 @@ public sealed class EvidenceImportAnalyzerTests
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-EVI003" && finding.Severity == Severity.Info);
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-EVI002");
     }
-
-    // ── EVI004: unparseable SBOM ──────────────────────────────────────
 
     [Fact]
     public async Task AnalyzeAsync_InvalidSbomJson_ReportsEVI004()
@@ -48,8 +46,6 @@ public sealed class EvidenceImportAnalyzerTests
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-EVI004");
     }
-
-    // ── EVI005: empty SBOM ───────────────────────────────────────────
 
     [Fact]
     public async Task AnalyzeAsync_EmptyComponentsArray_ReportsEVI005()
@@ -130,8 +126,6 @@ public sealed class EvidenceImportAnalyzerTests
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-EVI009");
     }
-
-    // ── EVI006: unparseable provenance ────────────────────────────────
 
     [Fact]
     public async Task AnalyzeAsync_InvalidProvenanceJson_ReportsEVI006()
