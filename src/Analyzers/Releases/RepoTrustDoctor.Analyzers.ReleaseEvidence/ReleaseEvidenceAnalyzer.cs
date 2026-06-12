@@ -32,9 +32,7 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
     {
         var findings = new List<Finding>();
         var changelog = FindChangelog(context.RepositoryPath);
-        var changelogText = changelog is not null && RepositoryFileSystem.CanReadAsText(changelog)
-            ? File.ReadAllText(changelog)
-            : null;
+        var changelogText = changelog is not null && TryReadText(changelog, out var text) ? text : null;
         var changelogVersion = changelogText is null ? null : ReadLatestChangelogVersion(changelogText);
 
         foreach (var packageVersion in ReadPackageVersions(context))
@@ -58,12 +56,12 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
             cancellationToken.ThrowIfCancellationRequested();
             var relativePath = Relative(context.RepositoryPath, artifact);
             var directory = Path.GetDirectoryName(artifact) ?? context.RepositoryPath;
-            if (!Directory.EnumerateFiles(directory).Any(IsChecksumFile))
+            if (!EnumerateDirectoryFiles(directory).Any(IsChecksumFile))
             {
                 findings.Add(CreateFinding("TRUST-REL002", "Release artifact lacks checksum evidence", Severity.Medium, Confidence.Medium, "Release artifact exists without nearby checksum evidence.", "release-artifact", $"Artifact `{relativePath}` has no nearby checksum file.", relativePath, "Publish SHA-256 or SHA-512 checksums next to release artifacts."));
             }
 
-            if (!Directory.EnumerateFiles(directory).Any(IsSupplyChainEvidenceFile))
+            if (!EnumerateDirectoryFiles(directory).Any(IsSupplyChainEvidenceFile))
             {
                 findings.Add(CreateFinding("TRUST-REL003", "Release artifact lacks SBOM or provenance evidence", Severity.Low, Confidence.Medium, "Release artifact exists without nearby SBOM or provenance evidence.", "release-artifact", $"Artifact `{relativePath}` has no nearby SBOM/provenance evidence.", relativePath, "Publish SBOM or provenance/attestation evidence for release artifacts."));
             }
@@ -72,12 +70,11 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
         foreach (var workflow in EnumerateWorkflowFiles(context.RepositoryPath))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!RepositoryFileSystem.CanReadAsText(workflow))
+            if (!TryReadText(workflow, out var content))
             {
                 continue;
             }
 
-            var content = File.ReadAllText(workflow);
             if (ReleasePublishPattern().IsMatch(content) && !IntegrityEvidencePattern().IsMatch(content))
             {
                 var relativePath = Relative(context.RepositoryPath, workflow);
@@ -93,11 +90,6 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
         foreach (var packageJson in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "package.json"))
         {
             var relativePath = Relative(context.RepositoryPath, packageJson);
-            if (!RepositoryFileSystem.CanReadAsText(packageJson))
-            {
-                continue;
-            }
-
             var version = TryReadPackageJsonVersion(packageJson);
             if (!string.IsNullOrWhiteSpace(version))
             {
@@ -126,12 +118,12 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
         foreach (var pyproject in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "pyproject.toml"))
         {
             var relativePath = Relative(context.RepositoryPath, pyproject);
-            if (!RepositoryFileSystem.CanReadAsText(pyproject))
+            if (!TryReadText(pyproject, out var content))
             {
                 continue;
             }
 
-            foreach (var line in File.ReadLines(pyproject))
+            foreach (var line in content.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
             {
                 var match = PyprojectVersionPattern().Match(line);
                 if (match.Success)
@@ -155,11 +147,34 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
         }
     }
 
+    private static IEnumerable<string> EnumerateDirectoryFiles(string directory)
+    {
+        IEnumerable<string> files;
+        try
+        {
+            files = Directory.EnumerateFiles(directory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            yield break;
+        }
+
+        foreach (var file in files)
+        {
+            yield return file;
+        }
+    }
+
     private static string? TryReadPackageJsonVersion(string packageJson)
     {
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(packageJson));
+            if (!TryReadText(packageJson, out var content))
+            {
+                return null;
+            }
+
+            using var document = JsonDocument.Parse(content);
             if (document.RootElement.TryGetProperty("version", out var version) &&
                 version.ValueKind == JsonValueKind.String &&
                 !string.IsNullOrWhiteSpace(version.GetString()))
@@ -255,6 +270,25 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
     private static string NormalizeVersion(string version) => version.Trim().TrimStart('v');
 
     private static string Relative(string root, string path) => Path.GetRelativePath(root, path).Replace('\\', '/');
+
+    private static bool TryReadText(string path, out string content)
+    {
+        content = string.Empty;
+        if (!RepositoryFileSystem.CanReadAsText(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            content = File.ReadAllText(path);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.DecoderFallbackException)
+        {
+            return false;
+        }
+    }
 
     private static Finding CreateFinding(string ruleId, string title, Severity severity, Confidence confidence, string message, string evidenceKind, string evidence, string filePath, string recommendation) =>
         new(ruleId, title, AnalysisCategory.Releases, severity, confidence, message, [new Evidence(evidenceKind, evidence, filePath)], new Recommendation(recommendation));
