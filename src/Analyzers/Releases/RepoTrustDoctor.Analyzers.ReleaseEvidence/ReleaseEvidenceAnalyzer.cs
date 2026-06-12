@@ -137,8 +137,15 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
 
     private static IEnumerable<string> EnumerateReleaseArtifacts(string repositoryPath)
     {
-        foreach (var root in ArtifactRoots.Select(root => Path.Combine(repositoryPath, root)).Where(Directory.Exists))
+        var ignoredRootDirectories = ReadRootGitIgnoreDirectories(repositoryPath);
+        foreach (var rootName in ArtifactRoots.Where(root => !ignoredRootDirectories.Contains(root)))
         {
+            var root = Path.Combine(repositoryPath, rootName);
+            if (!Directory.Exists(root))
+            {
+                continue;
+            }
+
             foreach (var file in RepositoryFileSystem.EnumerateFiles(root, "*.*", SearchOption.AllDirectories)
                          .Where(file => ArtifactExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase)))
             {
@@ -199,6 +206,35 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
 
         return RepositoryFileSystem.EnumerateFiles(workflowRoot, "*.*", SearchOption.TopDirectoryOnly)
             .Where(file => file.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static HashSet<string> ReadRootGitIgnoreDirectories(string repositoryPath)
+    {
+        var ignored = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var gitignore = Path.Combine(repositoryPath, ".gitignore");
+        if (!TryReadText(gitignore, out var content))
+        {
+            return ignored;
+        }
+
+        foreach (var rawLine in content.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0 || line.StartsWith('#') || line.StartsWith('!') || line.Contains('*', StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            line = line.TrimStart('/').TrimEnd('/');
+            if (line.Length == 0 || line.Contains('/') || line.Contains('\\'))
+            {
+                continue;
+            }
+
+            ignored.Add(line);
+        }
+
+        return ignored;
     }
 
     private static string? FindChangelog(string repositoryPath)
