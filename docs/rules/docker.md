@@ -8,6 +8,8 @@
 
 Detects repositories with Dockerfiles but no root `.dockerignore`.
 
+Docker generator templates and fixture/test Dockerfiles such as `.tt`, `.tmpl`, `.template`, `.test`, `fixtures`, `templates`, `integration-test`, `smoke-test`, `dockerTest`, and `testFixtures` paths are ignored by runtime Docker hygiene rules.
+
 Why it matters: large or sensitive files may be copied into the Docker build context unintentionally.
 
 Recommendation: add `.dockerignore` to keep unnecessary and sensitive files out of the build context.

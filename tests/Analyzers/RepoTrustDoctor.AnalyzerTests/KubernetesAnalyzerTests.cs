@@ -313,4 +313,38 @@ public sealed class KubernetesAnalyzerTests
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S008");
     }
+
+    [Theory]
+    [InlineData("staging/src/k8s.io/api/testdata/HEAD/apps.v1.Deployment.yaml")]
+    [InlineData("test/manifests/deployment.yaml")]
+    [InlineData("testing/manifests/deployment.yaml")]
+    [InlineData("examples/manifests/deployment.yaml")]
+    [InlineData("samples/manifests/deployment.yaml")]
+    [InlineData("pkg/server/testing/deployment.yaml")]
+    [InlineData("integration-test/k8s/deployment.yaml")]
+    [InlineData("dockerTest/k8s/deployment.yaml")]
+    public async Task AnalyzeAsync_SkipsExampleAndFixtureManifests(string relativePath)
+    {
+        using var fixture = TemporaryRepository.Create();
+        var filePath = Path.Combine(fixture.Path, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              hostNetwork: true
+              containers:
+              - name: app
+                securityContext:
+                  privileged: true
+                  allowPrivilegeEscalation: true
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+    }
 }

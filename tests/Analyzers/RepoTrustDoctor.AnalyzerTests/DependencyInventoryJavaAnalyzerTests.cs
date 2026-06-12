@@ -76,6 +76,61 @@ public sealed class DependencyInventoryJavaAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_GradleBuildWithDependencyManagement_DoesNotReportMissingManagedVersions()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "gradle.lockfile"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "build.gradle"), """
+        plugins {
+          id 'org.springframework.boot' version '3.3.1'
+          id 'io.spring.dependency-management' version '1.1.5'
+        }
+
+        dependencies {
+          implementation 'org.springframework.boot:spring-boot-starter-actuator'
+          implementation 'org.springframework:spring-core'
+          implementation "org.apache.ant:ant:${antVersion}"
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, package => package.Name == "org.springframework.boot:spring-boot-starter-actuator" && package.Metadata?["versionSource"] == "gradle-managed");
+        Assert.Contains(inventory.Packages, package => package.Name == "org.apache.ant:ant" && package.Metadata?["versionSource"] == "gradle-property");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DEP018");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_MavenPomWithParent_DoesNotReportMissingManagedVersions()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "maven-dependency-lock.json"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "pom.xml"), """
+        <project>
+          <parent>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-parent</artifactId>
+            <version>3.3.1</version>
+          </parent>
+          <dependencies>
+            <dependency>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-web</artifactId>
+            </dependency>
+          </dependencies>
+        </project>
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(GetInventory(result).Packages, package => package.Name == "org.springframework.boot:spring-boot-starter-web" && package.Metadata?["versionSource"] == "maven-managed");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DEP018");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_JavaManifestWithoutLockfile_ReportsDep017()
     {
         using var fixture = TemporaryRepository.Create();
@@ -104,6 +159,21 @@ public sealed class DependencyInventoryJavaAnalyzerTests
         var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-DEP021");
         Assert.Equal(Severity.High, finding.Severity);
         Assert.Equal("src/main/resources/application.properties", Assert.Single(finding.Evidence).FilePath);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_SpringBootActuatorExposure_InSmokeTestConfigDoesNotReportDep021()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Directory.CreateDirectory(Path.Combine(fixture.Path, "smoke-test", "spring-boot-smoke-test-actuator", "src", "main", "resources"));
+        File.WriteAllText(Path.Combine(directory.FullName, "application.properties"), """
+        management.endpoints.web.exposure.include=*
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DEP021");
     }
 
     // â”€â”€ DEP050: Gradle version catalog dynamic versions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

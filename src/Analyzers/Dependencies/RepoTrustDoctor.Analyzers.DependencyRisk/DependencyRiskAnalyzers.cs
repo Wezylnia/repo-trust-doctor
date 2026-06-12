@@ -26,22 +26,15 @@ public sealed class PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadata
 
         var metadata = new List<PackageRegistryMetadata>();
         var warnings = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var package in inventory.Packages
+        foreach (var package in DistinctPackagesForLookup(inventory.Packages
                      .Where(package =>
                          package.IsDirect &&
                          package.IsVersionPinned &&
                          !string.IsNullOrWhiteSpace(package.Version) &&
-                         !DependencyRiskPathFilters.IsLikelyExampleOrTestManifest(package.ManifestPath))
+                         !DependencyRiskPathFilters.IsLikelyExampleOrTestManifest(package.ManifestPath)))
                      .Take(50))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var key = $"{package.Ecosystem}:{package.Name}:{package.Version}";
-            if (!seen.Add(key))
-            {
-                continue;
-            }
-
             var client = clients.FirstOrDefault(client => client.Ecosystem == package.Ecosystem);
             if (client is null)
             {
@@ -81,6 +74,19 @@ public sealed class PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadata
         return metadata with { Metadata = enriched };
     }
 
+    internal static IEnumerable<DependencyPackageInfo> DistinctPackagesForLookup(IEnumerable<DependencyPackageInfo> packages)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var package in packages)
+        {
+            var key = $"{package.Ecosystem}:{package.Name}:{package.Version}";
+            if (seen.Add(key))
+            {
+                yield return package;
+            }
+        }
+    }
+
 }
 
 internal static class DependencyRiskPathFilters
@@ -90,12 +96,26 @@ internal static class DependencyRiskPathFilters
         var normalized = manifestPath.Replace('\\', '/');
         return normalized.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("test/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith("__tests__/", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("/__tests__/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("integration-test", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("integrationtesting", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("inttest", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("smoke-test", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("dockertest", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("testfixtures", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/docs/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("documentation/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/documentation/", StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("samples/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/samples/", StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith("playground/", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("/playground/", StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith("testdata/", StringComparison.OrdinalIgnoreCase) ||
@@ -216,10 +236,12 @@ public sealed class DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient
 
         var findings = new List<Finding>();
         var cache = new Dictionary<string, IReadOnlyList<VulnerabilityAdvisory>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var package in inventory.Packages
+        var reported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var package in PackageMetadataAnalyzer.DistinctPackagesForLookup(inventory.Packages
                      .Where(package =>
                          !string.IsNullOrWhiteSpace(package.Version) &&
                          !DependencyRiskPathFilters.IsLikelyExampleOrTestManifest(package.ManifestPath))
+                     .OrderByDescending(package => package.IsDirect))
                      .Take(50))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -232,6 +254,12 @@ public sealed class DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient
 
             foreach (var advisory in advisories)
             {
+                var reportKey = $"{package.Ecosystem}:{package.Name}:{package.Version}:{advisory.Id}";
+                if (!reported.Add(reportKey))
+                {
+                    continue;
+                }
+
                 var ruleId = package.IsDirect ? "TRUST-VULN001" : "TRUST-VULN002";
                 findings.Add(CreateFinding(
                     ruleId,

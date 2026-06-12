@@ -206,10 +206,53 @@ public sealed class SecretQuickScanAnalyzerTests
         API_KEY=example
         """);
 
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "core", "spring-boot", "src", "test", "resources", "ssl"));
+        File.WriteAllText(Path.Combine(fixture.Path, "core", "spring-boot", "src", "test", "resources", "ssl", "rsa-key.pem"), """
+        test key fixture
+        """);
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "src", "Shared", "TestCertificates"));
+        File.WriteAllText(Path.Combine(fixture.Path, "src", "Shared", "TestCertificates", "https.key"), """
+        test certificate fixture
+        """);
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "src", "DefaultBuilder", "samples", "SampleApp"));
+        File.WriteAllText(Path.Combine(fixture.Path, "src", "DefaultBuilder", "samples", "SampleApp", "cert.pfx"), """
+        sample certificate fixture
+        """);
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "cmd", "kube-apiserver", "app", "testing"));
+        File.WriteAllText(Path.Combine(fixture.Path, "cmd", "kube-apiserver", "app", "testing", "testserver.go"), """
+        const key = "-----BEGIN PRIVATE KEY-----"
+        """);
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "module", "spring-boot-amqp", "src", "dockerTest", "resources"));
+        File.WriteAllText(Path.Combine(fixture.Path, "module", "spring-boot-amqp", "src", "dockerTest", "resources", "client.key"), """
+        docker test certificate fixture
+        """);
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "integration-test", "app", "src", "main", "resources"));
+        File.WriteAllText(Path.Combine(fixture.Path, "integration-test", "app", "src", "main", "resources", "server.key"), """
+        integration test certificate fixture
+        """);
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "test", "integration", "auth"));
+        File.WriteAllText(Path.Combine(fixture.Path, "test", "integration", "auth", "svcaccttoken_test.go"), """
+        const key = "-----BEGIN PRIVATE KEY-----"
+        """);
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "documentation", "how-to"));
+        File.WriteAllText(Path.Combine(fixture.Path, "documentation", "how-to", "webserver.adoc"), """
+        -----
+        -----BEGIN PRIVATE KEY-----
+        documentation example
+        -----
+        """);
+
         var analyzer = new SecretQuickScanAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
-        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-SECRET001");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId is "TRUST-SECRET001" or "TRUST-SECRET002");
     }
 
     [Fact]

@@ -55,9 +55,9 @@ Builds a structured dependency inventory artifact from supported package manifes
 Current ecosystem collectors:
 
 - npm: `package.json`, npm/pnpm/Yarn lockfiles including ancestor workspace lockfiles, dependency sections, install-time scripts, direct Git/URL sources, local sources, and workspace references.
-- NuGet: `.csproj`, `Directory.Packages.props`, `packages.lock.json`, `NuGet.config`, direct `PackageReference` versions, Central Package Management versions, package sources.
-- Python: `requirements.txt`, `pyproject.toml`, `Pipfile`, `poetry.lock`, `uv.lock`, `Pipfile.lock`, pinned requirement checks.
-- Maven and Gradle: `pom.xml`, `build.gradle`, `build.gradle.kts`, Java lock evidence, dynamic versions, snapshots/prereleases, Gradle wrapper evidence.
+- NuGet: `.csproj`, `Directory.Packages.props`, `packages.lock.json`, `NuGet.config`, direct `PackageReference` versions, Central Package Management versions, MSBuild property-based versions, package sources.
+- Python: `requirements.txt`, `pyproject.toml`, `Pipfile`, `poetry.lock`, `uv.lock`, `Pipfile.lock`, pinned requirement checks, documentation/test manifest suppression.
+- Maven and Gradle: `pom.xml`, `build.gradle`, `build.gradle.kts`, Java lock evidence, BOM and dependency-management version signals, dynamic versions, snapshots/prereleases, Gradle wrapper evidence.
 - Spring Boot: static configuration checks for broad Actuator endpoint exposure.
 
 The inventory analyzer is split into per-ecosystem collectors so future language support can be added without growing one large analyzer class.
@@ -66,10 +66,10 @@ The inventory analyzer is split into per-ecosystem collectors so future language
 
 Consumes dependency inventory and safe package metadata/advisory clients:
 
-- package metadata collection for npm, NuGet, PyPI, and Maven Central,
+- package metadata collection for npm, NuGet, PyPI, and Maven Central with duplicate package lookup suppression,
 - dependency freshness checks,
 - deprecated or yanked package checks,
-- OSV advisory lookup for known vulnerabilities,
+- OSV advisory lookup for known vulnerabilities with duplicate package/advisory reporting suppression,
 - license metadata review,
 - package origin and repository URL comparison,
 - dependency confusion review signals for npm and NuGet source configuration.
@@ -102,7 +102,7 @@ Deep scan analyzers import or infer code quality and change-risk signals:
 - static import graph centrality analysis,
 - framework route detection for common web stacks.
 
-Deep code intelligence remains conservative. It does not run tests or build projects to generate coverage.
+Deep code intelligence remains conservative. It does not run tests or build projects to generate coverage, and it skips common sample, fixture, analyzer implementation, test, and vendored static-library paths for route and criticality heuristics.
 
 ## Policy, Scoring, And Reports
 

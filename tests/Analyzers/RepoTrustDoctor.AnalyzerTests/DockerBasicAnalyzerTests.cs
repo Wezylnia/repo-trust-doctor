@@ -258,4 +258,25 @@ public sealed class DockerBasicAnalyzerTests
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DOCKER011");
     }
+
+    [Theory]
+    [InlineData("railties/lib/rails/generators/rails/app/templates/Dockerfile.tt")]
+    [InlineData("railties/test/fixtures/Dockerfile.test")]
+    [InlineData("integration-test/app/Dockerfile")]
+    [InlineData("smoke-test/app/Dockerfile")]
+    public async Task AnalyzeAsync_SkipsTemplateAndFixtureDockerfiles(string relativePath)
+    {
+        using var fixture = TemporaryRepository.Create();
+        var filePath = Path.Combine(fixture.Path, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, """
+        FROM alpine:latest
+        RUN sudo apk add curl
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+    }
 }

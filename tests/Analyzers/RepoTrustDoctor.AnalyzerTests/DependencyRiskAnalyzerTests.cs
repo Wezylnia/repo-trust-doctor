@@ -44,6 +44,23 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
+    public async Task PackageMetadataAnalyzer_DeduplicatesPackagesBeforeApplyingLookupLimit()
+    {
+        var packages = Enumerable.Range(0, 60)
+            .Select(index => CreatePackage(DependencyEcosystem.Npm, "shared-lib", "1.0.0", manifestPath: $"module-{index}/package.json"))
+            .Append(CreatePackage(DependencyEcosystem.Npm, "target-lib", "1.0.0", manifestPath: "target/package.json"))
+            .ToArray();
+        var context = CreateContextWithInventory(packages);
+        var analyzer = new PackageMetadataAnalyzer([new FakeMetadataClient(DependencyEcosystem.Npm)]);
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == PackageMetadataArtifact.ArtifactKey);
+        var metadata = Assert.IsType<PackageMetadataArtifact>(artifact.Value);
+        Assert.Contains(metadata.Packages, package => package.Name == "target-lib");
+    }
+
+    [Fact]
     public async Task PackageFreshnessAnalyzer_ReportsOutdatedAndDeprecatedPackages()
     {
         var context = CreateContextWithMetadata([
@@ -123,6 +140,58 @@ public sealed class DependencyRiskAnalyzerTests
         var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
 
         Assert.Empty(result.Findings);
+    }
+
+    [Fact]
+    public async Task DependencyVulnerabilityAnalyzer_DeduplicatesSamePackageAdvisoryAcrossManifests()
+    {
+        var context = CreateContextWithInventory([
+            CreatePackage(DependencyEcosystem.Maven, "org.springframework.boot:spring-boot", "3.3.1", manifestPath: "module-a/pom.xml"),
+            CreatePackage(DependencyEcosystem.Maven, "org.springframework.boot:spring-boot", "3.3.1", manifestPath: "module-b/pom.xml")
+        ]);
+        var analyzer = new DependencyVulnerabilityAnalyzer(new FakeOsvClient([
+            new VulnerabilityAdvisory("GHSA-duplicate", [], "duplicate advisory", Severity.High, ["3.3.2"], null, null)
+        ]));
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-VULN001");
+        Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-VULN003");
+    }
+
+    [Fact]
+    public async Task DependencyVulnerabilityAnalyzer_ReportsDirectBeforeDuplicateTransitive()
+    {
+        var context = CreateContextWithInventory([
+            CreatePackage(DependencyEcosystem.Npm, "shared-lib", "1.0.0", DependencyScope.Production, "transitive/package.json") with { IsDirect = false },
+            CreatePackage(DependencyEcosystem.Npm, "shared-lib", "1.0.0", DependencyScope.Production, "direct/package.json")
+        ]);
+        var analyzer = new DependencyVulnerabilityAnalyzer(new FakeOsvClient([
+            new VulnerabilityAdvisory("GHSA-direct", [], "duplicate advisory", Severity.High, [], null, null)
+        ]));
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings);
+        Assert.Equal("TRUST-VULN001", finding.RuleId);
+        Assert.Equal(Severity.High, finding.Severity);
+    }
+
+    [Fact]
+    public async Task DependencyVulnerabilityAnalyzer_DeduplicatesPackagesBeforeApplyingLookupLimit()
+    {
+        var packages = Enumerable.Range(0, 60)
+            .Select(index => CreatePackage(DependencyEcosystem.Npm, "shared-lib", "1.0.0", manifestPath: $"module-{index}/package.json"))
+            .Append(CreatePackage(DependencyEcosystem.Npm, "target-lib", "1.0.0", manifestPath: "target/package.json"))
+            .ToArray();
+        var context = CreateContextWithInventory(packages);
+        var analyzer = new DependencyVulnerabilityAnalyzer(new FakeOsvClient([
+            new VulnerabilityAdvisory("GHSA-limit", [], "limit advisory", Severity.High, [], null, null)
+        ]));
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.Message.Contains("target-lib", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

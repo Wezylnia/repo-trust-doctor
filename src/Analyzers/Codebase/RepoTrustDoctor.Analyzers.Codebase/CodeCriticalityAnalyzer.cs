@@ -286,11 +286,37 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         var fileName = Path.GetFileNameWithoutExtension(relativePath);
         return relativePath.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("test/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("testing/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/testing/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("integrationtesting", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("integration-test", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("inttest", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("smoke-test", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("dockertest", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("testfixtures", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/testassets/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/testdata/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/generated/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/gen/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/perf/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("benchmark", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("projecttemplates", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("itemtemplates", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/templates/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/vendor/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/wwwroot/lib/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/node_modules/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/lib/jquery/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("/docs/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("samples/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/samples/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("sample/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/sample/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.StartsWith("playground/", StringComparison.OrdinalIgnoreCase) ||

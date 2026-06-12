@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using System.Text.RegularExpressions;
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
 
@@ -9,7 +10,8 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
     public void Collect(AnalysisContext context, DependencyInventoryState state, CancellationToken cancellationToken)
     {
         var projects = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.csproj").ToArray();
-        var centralVersions = ReadCentralPackageVersions(context, state.Warnings);
+        var msBuildProperties = ReadMsBuildProperties(context, state.Warnings);
+        var centralVersions = ReadCentralPackageVersions(context, state.Warnings, msBuildProperties);
 
         foreach (var lockfile in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "packages.lock.json"))
         {
@@ -28,7 +30,7 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
         foreach (var project in projects)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            AnalyzeProject(context, project, centralVersions, state);
+            AnalyzeProject(context, project, centralVersions, msBuildProperties, state);
         }
 
         if (centralVersions.Count > 0)
@@ -65,6 +67,7 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
         AnalysisContext context,
         string project,
         IReadOnlyDictionary<string, string> centralVersions,
+        IReadOnlyDictionary<string, string> msBuildProperties,
         DependencyInventoryState state)
     {
         var relativePath = DependencyInventorySupport.Relative(context, project);
@@ -75,18 +78,22 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
             return;
         }
 
+        var projectProperties = new Dictionary<string, string>(msBuildProperties, StringComparer.OrdinalIgnoreCase);
+        AddMsBuildProperties(document, projectProperties);
+
         var projectScope = InferProjectScope(relativePath, document);
         foreach (var reference in document.Descendants().Where(element => element.Name.LocalName == "PackageReference"))
         {
             var name = DependencyInventorySupport.ReadXmlAttribute(reference, "Include") ??
                        DependencyInventorySupport.ReadXmlAttribute(reference, "Update");
-            if (string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(name) || ContainsMsBuildExpression(name))
             {
                 continue;
             }
 
             var version = DependencyInventorySupport.ReadXmlAttribute(reference, "Version") ??
                           reference.Elements().FirstOrDefault(element => element.Name.LocalName == "Version")?.Value;
+            version = ResolveMsBuildValue(version, projectProperties);
 
             if (string.IsNullOrWhiteSpace(version) && centralVersions.TryGetValue(name.Trim(), out var centralVersion))
             {
@@ -114,7 +121,7 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
             pinned,
             prerelease));
 
-        if (!pinned)
+        if (!pinned && !ContainsMsBuildExpression(normalizedVersion))
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP004",
@@ -187,7 +194,26 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
             name.StartsWith("MSTest.", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static Dictionary<string, string> ReadCentralPackageVersions(AnalysisContext context, List<string> warnings)
+    private static Dictionary<string, string> ReadMsBuildProperties(AnalysisContext context, List<string> warnings)
+    {
+        var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var props in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.props")
+                     .Concat(RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.targets")))
+        {
+            var relativePath = DependencyInventorySupport.Relative(context, props);
+            if (DependencyInventorySupport.TryLoadXml(props, warnings, relativePath, out var document))
+            {
+                AddMsBuildProperties(document, properties);
+            }
+        }
+
+        return properties;
+    }
+
+    private static Dictionary<string, string> ReadCentralPackageVersions(
+        AnalysisContext context,
+        List<string> warnings,
+        IReadOnlyDictionary<string, string> msBuildProperties)
     {
         var versions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var props in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "Directory.Packages.props"))
@@ -203,14 +229,61 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
                 var name = DependencyInventorySupport.ReadXmlAttribute(packageVersion, "Include") ??
                            DependencyInventorySupport.ReadXmlAttribute(packageVersion, "Update");
                 var version = DependencyInventorySupport.ReadXmlAttribute(packageVersion, "Version");
-                if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(version))
+                if (!string.IsNullOrWhiteSpace(name) &&
+                    !ContainsMsBuildExpression(name) &&
+                    !string.IsNullOrWhiteSpace(version))
                 {
-                    versions[name.Trim()] = version.Trim();
+                    versions[name.Trim()] = ResolveMsBuildValue(version, msBuildProperties) ?? version.Trim();
                 }
             }
         }
 
         return versions;
+    }
+
+    private static void AddMsBuildProperties(XDocument document, Dictionary<string, string> properties)
+    {
+        foreach (var property in document.Descendants().Where(element => element.Parent?.Name.LocalName == "PropertyGroup"))
+        {
+            if (property.HasElements)
+            {
+                continue;
+            }
+
+            var name = property.Name.LocalName;
+            var value = property.Value.Trim();
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+
+            properties[name] = ResolveMsBuildValue(value, properties) ?? value;
+        }
+    }
+
+    private static string? ResolveMsBuildValue(string? value, IReadOnlyDictionary<string, string> properties)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        var resolved = value.Trim();
+        for (var i = 0; i < 5; i++)
+        {
+            var updated = Regex.Replace(
+                resolved,
+                @"\$\((?<name>[A-Za-z_][A-Za-z0-9_.-]*)\)",
+                match => properties.TryGetValue(match.Groups["name"].Value, out var replacement) ? replacement : match.Value);
+            if (string.Equals(updated, resolved, StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            resolved = updated;
+        }
+
+        return resolved;
     }
 
     private static void ReadNuGetSources(AnalysisContext context, string configPath, DependencyInventoryState state)
@@ -282,11 +355,18 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
 
     private static bool IsPinnedVersion(string? version) =>
         !string.IsNullOrWhiteSpace(version) &&
+        !ContainsMsBuildExpression(version) &&
         !version.Contains('*', StringComparison.Ordinal) &&
         !version.Contains('[', StringComparison.Ordinal) &&
         !version.Contains(']', StringComparison.Ordinal) &&
         !version.Contains('(', StringComparison.Ordinal) &&
         !version.Contains(')', StringComparison.Ordinal);
+
+    private static bool ContainsMsBuildExpression(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        (value.Contains("$(", StringComparison.Ordinal) ||
+         value.Contains("@(", StringComparison.Ordinal) ||
+         value.Contains("%(", StringComparison.Ordinal));
 
     private static NuGetSourceKind ClassifySource(string source)
     {

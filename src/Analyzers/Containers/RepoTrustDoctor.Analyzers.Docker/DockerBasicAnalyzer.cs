@@ -38,6 +38,7 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var dockerfiles = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "Dockerfile*")
+            .Where(file => !IsNonRuntimeDockerfile(context.RepositoryPath, file))
             .ToArray();
 
         if (dockerfiles.Length == 0)
@@ -140,6 +141,29 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
             }
         }
         return line;
+    }
+
+    private static bool IsNonRuntimeDockerfile(string repositoryPath, string filePath)
+    {
+        var relativePath = Path.GetRelativePath(repositoryPath, filePath).Replace('\\', '/');
+        var fileName = Path.GetFileName(relativePath);
+
+        return fileName.EndsWith(".tt", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".tmpl", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".template", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".test", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("test/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/templates/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("templates/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("integration-test", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("smoke-test", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("dockertest", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("testfixtures", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void CheckCopyBeforeRestore(string content, string relativePath, List<Finding> findings)

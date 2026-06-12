@@ -39,7 +39,7 @@ public sealed partial class FrameworkRouteAnalyzer
     private static partial Regex DjangoRouteRegex();
 
     [GeneratedRegex(
-        @"@login_required|LoginRequiredMixin|@permission_required",
+        @"@login_required|LoginRequiredMixin|@permission_required|staff_member_required|user_passes_test|admin_view",
         RegexOptions.IgnoreCase)]
     private static partial Regex DjangoAuthRegex();
 

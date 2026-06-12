@@ -67,7 +67,6 @@ public sealed class DependencyInventoryRubyAndNativeEcosystemTests
     public async Task AnalyzeAsync_GemfileNonExactVersion_ReportsDep035()
     {
         using var fixture = TemporaryRepository.Create();
-        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile.lock"), "");
         File.WriteAllText(Path.Combine(fixture.Path, "Gemfile"), """
         source "https://rubygems.org"
         gem "rails", "~> 7.1"
@@ -83,7 +82,6 @@ public sealed class DependencyInventoryRubyAndNativeEcosystemTests
     public async Task AnalyzeAsync_GemfileMissingVersion_ReportsDep035()
     {
         using var fixture = TemporaryRepository.Create();
-        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile.lock"), "");
         File.WriteAllText(Path.Combine(fixture.Path, "Gemfile"), """
         source "https://rubygems.org"
         gem "rails"
@@ -93,6 +91,26 @@ public sealed class DependencyInventoryRubyAndNativeEcosystemTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
 
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP035" && f.Message.Contains("rails", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GemfileWithLockfile_DoesNotReportConstraintFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile"), """
+        source "https://rubygems.org"
+        gem "rails", "~> 7.1"
+        gem "pg"
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP035");
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, p => p.Name == "rails" && !p.IsVersionPinned);
+        Assert.Contains(inventory.Packages, p => p.Name == "pg" && !p.IsVersionPinned);
     }
 
     [Fact]

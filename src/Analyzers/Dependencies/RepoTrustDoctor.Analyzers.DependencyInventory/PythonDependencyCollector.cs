@@ -243,6 +243,11 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
         bool prerelease,
         DependencyInventoryState state)
     {
+        if (DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath))
+        {
+            return;
+        }
+
         if (!pinned)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
@@ -274,7 +279,8 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
 
     private static void AddMissingLockfileFinding(string relativePath, DependencyInventoryState state, string evidence)
     {
-        if (state.Lockfiles.Any(lockfile => lockfile.Ecosystem == DependencyEcosystem.Python))
+        if (state.Lockfiles.Any(lockfile => lockfile.Ecosystem == DependencyEcosystem.Python) ||
+            DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath))
         {
             return;
         }
