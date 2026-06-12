@@ -424,6 +424,28 @@ public sealed class GitHubActionsBasicAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_JobLevelWritePermsAtFileStart_NoWorkflowWriteFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "ci.yml"), """
+        jobs:
+          publish:
+            permissions:
+              contents: write
+            runs-on: ubuntu-latest
+            steps: []
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA011");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA016");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ReadOnlyTopPerms_NoGHA016()
     {
         using var fixture = TemporaryRepository.Create();

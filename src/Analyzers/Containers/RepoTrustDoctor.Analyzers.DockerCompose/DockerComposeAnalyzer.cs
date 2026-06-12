@@ -93,6 +93,11 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
         foreach (Match match in HostVolumePattern().Matches(content))
         {
             var path = match.Groups["path"].Value;
+            if (IsDockerSocketPath(path))
+            {
+                continue;
+            }
+
             findings.Add(CreateFinding("TRUST-COMP003", "Docker Compose mounts host directory",
                 Severity.Medium, relativePath, $"Mounts host path '{path}'.",
                 GetLineNumber(content, match.Index), Confidence.Medium));
@@ -104,7 +109,7 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
         foreach (Match match in BroadPortPattern().Matches(content))
         {
             findings.Add(CreateFinding("TRUST-COMP004", "Docker Compose exposes broad port range",
-                Severity.Low, relativePath, "Port mapping binds to 0.0.0.0 (all interfaces).",
+                Severity.Low, relativePath, "Port mapping binds to all interfaces by default or through 0.0.0.0.",
                 GetLineNumber(content, match.Index)));
         }
     }
@@ -133,27 +138,100 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
 
     private static void CheckEnvFileLoading(string content, string relativePath, List<Finding> findings)
     {
-        foreach (Match match in EnvFilePattern().Matches(content))
+        var lines = content.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        for (var index = 0; index < lines.Length; index++)
         {
-            var envFile = match.Groups["file"].Value.Trim();
-            // Skip example env files
-            if (envFile.EndsWith(".example", StringComparison.OrdinalIgnoreCase) ||
-                envFile.Contains("example.env", StringComparison.OrdinalIgnoreCase) ||
-                envFile.Contains("sample", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            // Only flag .env-like files
-            var fileName = Path.GetFileName(envFile);
-            if (fileName.StartsWith(".env", StringComparison.OrdinalIgnoreCase) ||
-                fileName.EndsWith(".secret", StringComparison.OrdinalIgnoreCase) ||
-                fileName.EndsWith(".secrets", StringComparison.OrdinalIgnoreCase))
+            var match = EnvFileLinePattern().Match(lines[index]);
+            if (!match.Success)
             {
-                findings.Add(CreateFinding("TRUST-COMP007", "Docker Compose loads .env-like file",
-                    Severity.Medium, relativePath, $"Loads environment from '{envFile}'. Review for secrets or sensitive configuration.",
-                    GetLineNumber(content, match.Index), Confidence.Medium));
+                continue;
+            }
+
+            var inlineEntry = NormalizeEnvFileEntry(match.Groups["file"].Value);
+            if (!string.IsNullOrWhiteSpace(inlineEntry))
+            {
+                AddEnvFileFindingIfRisky(inlineEntry, relativePath, findings, index + 1);
+                continue;
+            }
+
+            var parentIndent = match.Groups["indent"].Value.Length;
+            for (var itemIndex = index + 1; itemIndex < lines.Length; itemIndex++)
+            {
+                var line = lines[itemIndex];
+                if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith('#'))
+                {
+                    continue;
+                }
+
+                if (CountIndent(line) <= parentIndent)
+                {
+                    break;
+                }
+
+                var itemMatch = EnvFileItemPattern().Match(line);
+                if (!itemMatch.Success)
+                {
+                    continue;
+                }
+
+                var listEntry = NormalizeEnvFileEntry(itemMatch.Groups["file"].Value);
+                AddEnvFileFindingIfRisky(listEntry, relativePath, findings, itemIndex + 1);
             }
         }
     }
+
+    private static void AddEnvFileFindingIfRisky(string envFile, string relativePath, List<Finding> findings, int lineNumber)
+    {
+        if (string.IsNullOrWhiteSpace(envFile) ||
+            envFile.EndsWith(".example", StringComparison.OrdinalIgnoreCase) ||
+            envFile.Contains("example.env", StringComparison.OrdinalIgnoreCase) ||
+            envFile.Contains("sample", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var fileName = Path.GetFileName(envFile);
+        if (fileName.StartsWith(".env", StringComparison.OrdinalIgnoreCase) ||
+            fileName.EndsWith(".secret", StringComparison.OrdinalIgnoreCase) ||
+            fileName.EndsWith(".secrets", StringComparison.OrdinalIgnoreCase))
+        {
+            findings.Add(CreateFinding("TRUST-COMP007", "Docker Compose loads .env-like file",
+                Severity.Medium, relativePath, $"Loads environment from '{envFile}'. Review for secrets or sensitive configuration.",
+                lineNumber, Confidence.Medium));
+        }
+    }
+
+    private static string NormalizeEnvFileEntry(string value)
+    {
+        var trimmed = value.Trim();
+        var commentIndex = trimmed.IndexOf(" #", StringComparison.Ordinal);
+        if (commentIndex >= 0)
+        {
+            trimmed = trimmed[..commentIndex].Trim();
+        }
+
+        if (trimmed.StartsWith("path:", StringComparison.OrdinalIgnoreCase))
+        {
+            trimmed = trimmed["path:".Length..].Trim();
+        }
+
+        return trimmed.Trim('"', '\'');
+    }
+
+    private static int CountIndent(string line)
+    {
+        var count = 0;
+        while (count < line.Length && char.IsWhiteSpace(line[count]))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    private static bool IsDockerSocketPath(string path) =>
+        path.Equals("/var/run/docker.sock", StringComparison.OrdinalIgnoreCase) ||
+        path.Equals("/run/docker.sock", StringComparison.OrdinalIgnoreCase);
 
     private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High, bool isBlocking = false)
     {
@@ -177,18 +255,21 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"(?m)^\s*network_mode\s*:\s*['""]?host['""]?\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex HostNetworkPattern();
 
-    [GeneratedRegex(@"(?m)^\s*-\s*(?<path>/[^:\n]+):/[^:\n]*(?::rw)?\s*$")]
+    [GeneratedRegex(@"(?m)^\s*-\s*['""]?(?<path>/[^:'""\n]+):/[^:'""\n]*(?::[A-Za-z]+)?['""]?\s*$")]
     private static partial Regex HostVolumePattern();
 
-    [GeneratedRegex(@"(?m)^\s*-\s*['""]?0\.0\.0\.0:\d+.*['""]?\s*$")]
+    [GeneratedRegex(@"(?m)^\s*-\s*['""]?(?:(?:0\.0\.0\.0|\*)\s*:\s*)?\d+(?:-\d+)?\s*:\s*\d+(?:-\d+)?(?:/\w+)?['""]?\s*$")]
     private static partial Regex BroadPortPattern();
 
     [GeneratedRegex(@"(?mi)^\s*(?:-\s+)?(?<key>PASSWORD|TOKEN|SECRET|API_KEY)\s*[=:]\s*\S+")]
     private static partial Regex SecretEnvPattern();
 
-    [GeneratedRegex(@"(?m)-\s*(?<socket>/var/run/docker\.sock|/run/docker\.sock)\s*:")]
+    [GeneratedRegex(@"(?m)-\s*['""]?(?<socket>/var/run/docker\.sock|/run/docker\.sock)\s*:")]
     private static partial Regex DockerSocketPattern();
 
-    [GeneratedRegex(@"(?m)^\s*env_file\s*:\s*(?<file>[^\n]+)")]
-    private static partial Regex EnvFilePattern();
+    [GeneratedRegex(@"^(?<indent>\s*)env_file\s*:\s*(?<file>.*)$")]
+    private static partial Regex EnvFileLinePattern();
+
+    [GeneratedRegex(@"^\s*-\s*(?<file>[^#]+)")]
+    private static partial Regex EnvFileItemPattern();
 }

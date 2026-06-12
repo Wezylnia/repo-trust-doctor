@@ -102,6 +102,36 @@ public sealed class FrameworkRouteAnalyzerTests
     }
 
     [Fact]
+    public async Task FrameworkRouteAnalyzer_DetectsAuthHintAfterMultilineMinimalApiHandler()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Program.cs"), """
+        var app = WebApplication.Create();
+        app.MapGet("/health", () =>
+        {
+            var status = new
+            {
+                name = "repo-trust-doctor",
+                version = "test",
+                ok = true
+            };
+
+            return Results.Ok(status);
+        }).AllowAnonymous();
+        app.Run();
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE012");
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+        var route = Assert.Single(routesArtifact.Routes);
+        Assert.True(route.HasAuthHint);
+        Assert.Equal("/health", route.PathPattern);
+    }
+
+    [Fact]
     public async Task FrameworkRouteAnalyzer_SkipsTestSourceFiles()
     {
         using var fixture = TemporaryRepository.Create();

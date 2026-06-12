@@ -164,7 +164,7 @@ Recommendation: use bridge networks instead of host mode.
 - Default severity: Medium
 - Default confidence: Medium
 
-Detects host path volume mounts in Compose files.
+Detects unquoted or quoted host path volume mounts in Compose files. Docker socket mounts are reported only by `TRUST-COMP006` to avoid duplicate findings for the same line.
 
 Why it matters: host directory mounts can expose the host filesystem to the container.
 
@@ -176,7 +176,7 @@ Recommendation: prefer named volumes and review host path mounts.
 - Default severity: Low
 - Default confidence: High
 
-Detects port mappings bound to `0.0.0.0` (all interfaces).
+Detects port mappings bound to `0.0.0.0`, `*`, or the Compose default all-interface bind such as `8080:80`.
 
 Why it matters: binding to all interfaces exposes the service to potentially untrusted networks.
 
@@ -212,7 +212,7 @@ Recommendation: do not mount the Docker socket into application services. Use a 
 - Default severity: Medium
 - Default confidence: Medium
 
-Detects `env_file:` entries pointing to `.env`, `.env.production`, `.env.prod`, `.env.local`, or files ending in `.secret`/`.secrets`.
+Detects scalar, quoted, list, and `path:` object-style `env_file:` entries pointing to `.env`, `.env.production`, `.env.prod`, `.env.local`, or files ending in `.secret`/`.secrets`.
 
 Why it matters: environment files may contain secrets or sensitive configuration. Loading them into containers increases exposure risk.
 

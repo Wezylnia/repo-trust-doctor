@@ -161,6 +161,32 @@ public sealed class SecretQuickScanAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_SkipsSensitiveFileNames_InExampleFixturePaths()
+    {
+        using var fixture = TemporaryRepository.Create();
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "tests", "Fixtures"));
+        File.WriteAllText(Path.Combine(fixture.Path, "tests", "Fixtures", ".env"), """
+        API_KEY=example
+        """);
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "docs", "examples"));
+        File.WriteAllText(Path.Combine(fixture.Path, "docs", "examples", ".env.production"), """
+        API_KEY=example
+        """);
+
+        File.WriteAllText(Path.Combine(fixture.Path, ".env"), """
+        API_KEY=real-looking
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET001");
+        Assert.Equal(".env", Assert.Single(finding.Evidence).FilePath);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_SkipsBinaryFilesWithNullBytes()
     {
         using var fixture = TemporaryRepository.Create();

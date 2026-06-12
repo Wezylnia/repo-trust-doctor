@@ -49,7 +49,25 @@ public sealed class DockerComposeAnalyzerTests
           app:
             image: nginx
             volumes:
-              - /var/run/docker.sock:/var/run/docker.sock
+              - /var/log/app:/logs
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-COMP003");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DetectsQuotedHostVolumeMount()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "docker-compose.yml"), """
+        services:
+          app:
+            image: nginx
+            volumes:
+              - "/var/log/app:/logs:ro"
         """);
 
         var analyzer = new DockerComposeAnalyzer();
@@ -68,6 +86,24 @@ public sealed class DockerComposeAnalyzerTests
             image: nginx
             ports:
               - "0.0.0.0:8080:80"
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-COMP004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DetectsDefaultBroadPortExposure()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "docker-compose.yml"), """
+        services:
+          app:
+            image: nginx
+            ports:
+              - "8080:80"
         """);
 
         var analyzer = new DockerComposeAnalyzer();
@@ -141,13 +177,14 @@ public sealed class DockerComposeAnalyzerTests
           app:
             image: nginx
             volumes:
-              - /var/run/docker.sock:/var/run/docker.sock
+              - "/var/run/docker.sock:/var/run/docker.sock"
         """);
 
         var analyzer = new DockerComposeAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-COMP006" && f.IsBlocking);
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP003");
     }
 
     [Fact]
@@ -198,6 +235,47 @@ public sealed class DockerComposeAnalyzerTests
           app:
             image: nginx
             env_file: .env.example
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP007");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_EnvFileListAndQuotedScalar_DetectsRiskyEntries()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "docker-compose.yml"), """
+        services:
+          app:
+            image: nginx
+            env_file:
+              - ".env.production"
+              - path: ./runtime.secret
+          worker:
+            image: nginx
+            env_file: '.env.local'
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Equal(3, result.Findings.Count(f => f.RuleId == "TRUST-COMP007"));
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_EnvFileListExample_NoCOMP007()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "docker-compose.yml"), """
+        services:
+          app:
+            image: nginx
+            env_file:
+              - .env.example
+              - sample.secret
         """);
 
         var analyzer = new DockerComposeAnalyzer();
