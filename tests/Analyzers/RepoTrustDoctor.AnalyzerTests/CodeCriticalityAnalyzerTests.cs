@@ -188,6 +188,65 @@ public sealed class CodeCriticalityAnalyzerTests
     }
 
     [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotReportStaticAnalyzerRuleVocabularyAsApplicationCriticality()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "Analyzers", "CiCd");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "WorkflowSecurityAnalyzer.cs"), """
+        using System.Text.RegularExpressions;
+
+        public sealed partial class WorkflowSecurityAnalyzer : IRepositoryAnalyzer
+        {
+            public async Task AnalyzeAsync(string path)
+            {
+                var content = await File.ReadAllTextAsync(path);
+                if (PermissionsPattern().IsMatch(content))
+                {
+                    CheckHardcodedSecretsInEnv(content);
+                }
+            }
+
+            private static void CheckHardcodedSecretsInEnv(string content) { }
+
+            [GeneratedRegex("permissions:|secrets\\.")]
+            private static partial Regex PermissionsPattern();
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE004");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(artifact.Files);
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_StillReportsCommandExecutionInsideStaticAnalyzerImplementations()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "Analyzers", "Dangerous");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "DangerousAnalyzer.cs"), """
+        public sealed class DangerousAnalyzer : IRepositoryAnalyzer
+        {
+            public void Analyze(string command)
+            {
+                System.Diagnostics.Process.Start("cmd.exe", command);
+            }
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Contains(artifact.Files, file => file.Reasons.Contains(CodeCriticalityReason.CommandExecution));
+    }
+
+    [Fact]
     public async Task CodeCriticalityAnalyzer_IgnoresNonCriticalSmallFiles()
     {
         using var fixture = TemporaryRepository.Create();

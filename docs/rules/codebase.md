@@ -49,6 +49,8 @@ Recommendation: regenerate the coverage artifact in Cobertura XML or lcov format
 
 A source file appears to contain security-sensitive or operationally critical logic. Signals include authentication, authorization, payments, database access, file operations, network calls, cryptography, secrets, and credentials.
 
+Static analyzer implementation files suppress rule-vocabulary matches such as `Secret`, `Permission`, or regex helper names so analyzer rule text is not treated as application-critical code. Dangerous APIs such as command execution and unsafe deserialization are still reported.
+
 Recommendation: prioritize review and tests for these files.
 
 ### `TRUST-CODE005` - Large critical source file was detected
@@ -138,6 +140,8 @@ Recommendation: review added and removed symbols before release and update the b
 - Default confidence: `Medium`
 
 A source file is imported by many other files, making it a high-impact change target.
+
+Type-only TypeScript imports such as `import type { Foo } from './types'` are ignored because they do not create runtime coupling.
 
 Recommendation: ensure highly central files have thorough tests and careful review gates.
 
