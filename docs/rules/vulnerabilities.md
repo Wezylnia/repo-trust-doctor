@@ -6,7 +6,7 @@
 - Default severity: High
 - Default confidence: High
 
-Detects OSV advisories that match a direct dependency name and version.
+Detects OSV advisories that match a direct dependency name and version. Dependencies declared only in common test, fixture, example, or playground manifests are skipped to avoid reporting vulnerabilities in intentionally fake package fixtures.
 
 Why it matters: direct vulnerable dependencies are usually easier to prioritize because the repository explicitly chose the dependency.
 
@@ -18,7 +18,7 @@ Recommendation: review the advisory and update the dependency to a fixed version
 - Default severity: Medium
 - Default confidence: Medium
 
-Detects OSV advisories that match a transitive dependency name and version when transitive package data is available.
+Detects OSV advisories that match a transitive dependency name and version when transitive package data is available. Dependencies declared only in common test, fixture, example, or playground manifests are skipped.
 
 Why it matters: transitive vulnerabilities may still matter, but reachability and upgrade path usually require additional review.
 

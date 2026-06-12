@@ -66,18 +66,20 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
         }
 
         var section = PythonTomlSection.None;
+        var inProjectDependencies = false;
         foreach (var rawLine in DependencyInventorySupport.SplitLines(content))
         {
             var line = rawLine.Trim();
             if (line.StartsWith('[') && line.EndsWith(']'))
             {
                 section = ReadTomlSection(line);
+                inProjectDependencies = false;
                 continue;
             }
 
-            if (section == PythonTomlSection.Project && line.StartsWith('"'))
+            if (section == PythonTomlSection.Project)
             {
-                AddRequirement(relativePath, line.Trim(',', '"'), DependencyScope.Production, state);
+                ReadProjectDependencyLine(relativePath, line, ref inProjectDependencies, state);
                 continue;
             }
 
@@ -85,6 +87,44 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
             {
                 AddPoetryDependency(relativePath, line, section, state);
             }
+        }
+    }
+
+    private static void ReadProjectDependencyLine(
+        string relativePath,
+        string line,
+        ref bool inProjectDependencies,
+        DependencyInventoryState state)
+    {
+        if (!inProjectDependencies)
+        {
+            if (!line.StartsWith("dependencies", StringComparison.OrdinalIgnoreCase) || !line.Contains('['))
+            {
+                return;
+            }
+
+            var afterOpenBracket = line[(line.IndexOf('[', StringComparison.Ordinal) + 1)..];
+            AddQuotedRequirements(relativePath, afterOpenBracket, DependencyScope.Production, state);
+            inProjectDependencies = !afterOpenBracket.Contains(']');
+            return;
+        }
+
+        AddQuotedRequirements(relativePath, line, DependencyScope.Production, state);
+        if (line.Contains(']'))
+        {
+            inProjectDependencies = false;
+        }
+    }
+
+    private static void AddQuotedRequirements(
+        string relativePath,
+        string value,
+        DependencyScope scope,
+        DependencyInventoryState state)
+    {
+        foreach (Match match in QuotedRequirementPattern().Matches(value))
+        {
+            AddRequirement(relativePath, match.Groups["requirement"].Value, scope, state);
         }
     }
 
@@ -269,6 +309,9 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
 
     [GeneratedRegex(@"^(?<name>[A-Za-z0-9_.-]+)\s*(?<op>===|==|~=|!=|<=|>=|<|>)?\s*(?<version>[^\s;]+)?", RegexOptions.CultureInvariant)]
     private static partial Regex RequirementPattern();
+
+    [GeneratedRegex(@"['""](?<requirement>[^'""]+)['""]", RegexOptions.CultureInvariant)]
+    private static partial Regex QuotedRequirementPattern();
 
     private enum PythonTomlSection
     {

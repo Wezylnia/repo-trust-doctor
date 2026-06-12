@@ -82,6 +82,31 @@ public sealed class DependencyInventoryAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_NpmWorkspaceManifestUsesRootLockfile()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "pnpm-lock.yaml"), "");
+        var packageDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "app"));
+        File.WriteAllText(Path.Combine(packageDirectory.FullName, "package.json"), """
+        {
+          "dependencies": {
+            "react": "^19.0.0",
+            "workspace-lib": "workspace:*"
+          }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId is "TRUST-DEP001" or "TRUST-DEP006" or "TRUST-DEP012");
+        var inventory = GetInventory(result);
+        var package = Assert.Single(inventory.Packages, package => package.Name == "react");
+        Assert.Equal("pnpm-lock.yaml", package.LockfilePath);
+        Assert.Contains(inventory.Packages, package => package.Name == "workspace-lib" && package.Metadata?["sourceKind"] == "workspace");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_NuGetProjectWithoutLockfile_ReportsDep002()
     {
         using var fixture = TemporaryRepository.Create();
@@ -263,9 +288,27 @@ public sealed class DependencyInventoryAnalyzerTests
         var inventory = GetInventory(result);
         Assert.Contains(inventory.Packages, package => package.Ecosystem == DependencyEcosystem.Npm && package.Name == "stable" && package.Scope == DependencyScope.Production);
         Assert.Contains(inventory.Manifests, manifest => manifest.Metadata?["packageManager"] == "npm@10.0.0");
-        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP006" && finding.Message.Contains("react", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DEP006" && finding.Message.Contains("react", StringComparison.Ordinal));
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP007" && finding.Message.Contains("preview", StringComparison.Ordinal));
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP008");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_NpmRangeWithoutLockfile_ReportsDep006()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "package.json"), """
+        {
+          "dependencies": {
+            "react": "^19.0.0"
+          }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP006" && finding.Message.Contains("react", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -293,6 +336,37 @@ public sealed class DependencyInventoryAnalyzerTests
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP012" && finding.Message.Contains("local-lib", StringComparison.Ordinal));
         Assert.Equal("1", inventory.Metrics["dependency.package.npm.remote-source.count"]);
         Assert.Equal("1", inventory.Metrics["dependency.package.npm.local-source.count"]);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_NpmLocalSourcesInFixtures_AreRecordedWithoutFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "pnpm-lock.yaml"), "");
+        var testDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "tool", "__tests__"));
+        File.WriteAllText(Path.Combine(testDirectory.FullName, "package.json"), """
+        {
+          "dependencies": {
+            "fixture-lib": "file:./fixtures/fixture-lib"
+          }
+        }
+        """);
+        var playgroundDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "playground", "demo"));
+        File.WriteAllText(Path.Combine(playgroundDirectory.FullName, "package.json"), """
+        {
+          "dependencies": {
+            "playground-lib": "link:../playground-lib"
+          }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, package => package.Name == "fixture-lib" && package.Metadata?["sourceKind"] == "local");
+        Assert.Contains(inventory.Packages, package => package.Name == "playground-lib" && package.Metadata?["sourceKind"] == "local");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DEP012");
     }
 
     [Fact]
@@ -359,6 +433,30 @@ public sealed class DependencyInventoryAnalyzerTests
         Assert.Contains(inventory.Packages, package => package.Name == "httpx");
         Assert.Contains(inventory.Packages, package => package.Name == "fastapi" && package.Scope == DependencyScope.Production);
         Assert.Contains(inventory.Packages, package => package.Name == "pytest" && package.Scope == DependencyScope.Development);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PythonPyprojectClassifiers_AreNotParsedAsDependencies()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "uv.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "pyproject.toml"), """
+        [project]
+        classifiers = [
+          "Intended Audience :: Developers",
+          "Programming Language :: Python :: 3",
+          "Topic :: Internet :: WWW/HTTP"
+        ]
+        dependencies = ["fastapi>=0.110.0"]
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, package => package.Name == "fastapi");
+        Assert.DoesNotContain(inventory.Packages, package => package.Name is "Intended" or "Programming" or "Topic");
+        Assert.DoesNotContain(result.Findings, finding => finding.Message.Contains("Intended", StringComparison.Ordinal));
     }
 
     [Fact]

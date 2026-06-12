@@ -98,6 +98,23 @@ internal static partial class DependencyInventorySupport
         !string.IsNullOrWhiteSpace(version) &&
         Regex.IsMatch(version, @"\d+\.\d+(\.\d+)?[-][0-9A-Za-z]", RegexOptions.CultureInvariant);
 
+    public static bool IsLikelyExampleOrTestPath(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/');
+        return normalized.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("__tests__/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/__tests__/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("playground/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/playground/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("testdata/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/testdata/", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static Finding CreateDependencyFinding(
         string ruleId,
         string title,

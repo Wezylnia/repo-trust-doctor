@@ -417,4 +417,29 @@ public sealed class CodeCriticalityAnalyzerTests
         var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
         Assert.Empty(artifact.Files);
     }
+
+    [Theory]
+    [InlineData("playground/demo/CommandFixture.ts")]
+    [InlineData("examples/demo/CommandFixture.ts")]
+    [InlineData("fixtures/demo/CommandFixture.ts")]
+    [InlineData("docs/demo/CommandFixture.ts")]
+    public async Task CodeCriticalityAnalyzer_SkipsExampleAndPlaygroundSourceFiles(string relativePath)
+    {
+        using var fixture = TemporaryRepository.Create();
+        var filePath = Path.Combine(fixture.Path, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, """
+        import { execSync } from 'child_process'
+        export function run() {
+          execSync('whoami')
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(artifact.Files);
+    }
 }

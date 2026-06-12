@@ -6,7 +6,7 @@
 - Default severity: Medium
 - Default confidence: High
 
-Detects repositories with `package.json` but no matching lockfile (`package-lock.json`, `pnpm-lock.yaml`, or `yarn.lock`).
+Detects `package.json` manifests without a covering lockfile (`package-lock.json`, `pnpm-lock.yaml`, or `yarn.lock`) in the manifest directory or an ancestor workspace directory.
 
 Why it matters: without a lockfile, dependency resolution is non-deterministic and builds are not reproducible, exposing the repository to dependency drift and security risk.
 
@@ -66,11 +66,11 @@ Recommendation: review whether the prerelease dependency is intentional before p
 - Default severity: Medium
 - Default confidence: High
 
-Detects npm dependencies in `package.json` that use ranges, tags, workspace references, file references, or other non-exact versions.
+Detects npm dependencies in `package.json` that use ranges, tags, or other non-exact registry versions when no covering lockfile is present.
 
-Why it matters: non-exact dependency specifications can produce different installs over time. Lockfiles reduce this risk, but exact direct dependency declarations are easier to review.
+Why it matters: non-exact dependency specifications can produce different installs over time when there is no committed lockfile covering the manifest.
 
-Recommendation: use exact dependency versions together with a committed lockfile for reproducible installs.
+Recommendation: use exact dependency versions or commit a package-manager lockfile that covers the manifest.
 
 ## TRUST-DEP007: npm Dependency Uses a Prerelease Version
 
@@ -102,7 +102,7 @@ Recommendation: review install-time scripts and avoid downloading or executing u
 - Default severity: Medium
 - Default confidence: High
 
-Detects Python dependencies that are missing an exact pinned version.
+Detects Python dependencies that are missing an exact pinned version. For `pyproject.toml`, only `[project].dependencies` and Poetry dependency sections are interpreted as dependencies; classifiers and other metadata arrays are ignored.
 
 Why it matters: unpinned Python requirements can resolve to different packages over time and make repository review less repeatable.
 
@@ -138,7 +138,7 @@ Recommendation: review direct remote dependency sources and prefer registry pack
 - Default severity: Low
 - Default confidence: High
 
-Detects npm dependencies that use local `file:`, `link:`, `workspace:`, or `portal:` references.
+Detects npm dependencies that use local `file:`, `link:`, or `portal:` references. Workspace protocol dependencies are recorded as workspace-internal package references instead of local file-source risks. Local-source dependencies in common test, fixture, example, or playground manifests are recorded in inventory but do not emit this finding.
 
 Why it matters: local dependency sources depend on repository layout and package manager behavior. They can be legitimate in monorepos, but they deserve review because they bypass registry provenance.
 
@@ -174,7 +174,7 @@ Recommendation: review local package sources and document whether they are devel
 - Default severity: Medium
 - Default confidence: Medium
 
-Detects direct dependencies where package metadata reports a newer major version than the requested version.
+Detects direct production dependencies where package metadata reports a newer major version than the requested version. Development dependencies and packages declared only in common test, fixture, example, or playground manifests are skipped for metadata freshness findings.
 
 Why it matters: major-version drift can indicate missed maintenance, unfixed defects, or delayed security updates. It is not automatically unsafe, but it is useful review evidence.
 
@@ -186,7 +186,7 @@ Recommendation: review the dependency changelog and plan an update if compatible
 - Default severity: High
 - Default confidence: High
 
-Detects package metadata that clearly marks a dependency as deprecated or yanked.
+Detects package metadata that clearly marks a production dependency as deprecated or yanked. Development dependencies and packages declared only in common test, fixture, example, or playground manifests are skipped for metadata deprecation findings.
 
 Why it matters: deprecated or yanked packages may no longer receive fixes or may have been withdrawn because of correctness, security, or maintenance concerns.
 

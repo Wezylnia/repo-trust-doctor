@@ -20,8 +20,27 @@ public sealed class DependencyRiskAnalyzerTests
 
         var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == PackageMetadataArtifact.ArtifactKey);
         var metadata = Assert.IsType<PackageMetadataArtifact>(artifact.Value);
-        Assert.Single(metadata.Packages);
+        var package = Assert.Single(metadata.Packages);
+        Assert.Equal(nameof(DependencyScope.Production), package.Metadata?["dependency.scope"]);
         Assert.Equal("1", metadata.Metrics["dependency.metadata.package.count"]);
+    }
+
+    [Fact]
+    public async Task PackageMetadataAnalyzer_SkipsExampleAndTestManifestPackages()
+    {
+        var context = CreateContextWithInventory([
+            CreatePackage(DependencyEcosystem.Npm, "production-lib", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "fixture-lib", "1.0.0", manifestPath: "packages/tool/__tests__/package.json"),
+            CreatePackage(DependencyEcosystem.Npm, "playground-lib", "1.0.0", manifestPath: "playground/demo/package.json")
+        ]);
+        var analyzer = new PackageMetadataAnalyzer([new FakeMetadataClient(DependencyEcosystem.Npm)]);
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == PackageMetadataArtifact.ArtifactKey);
+        var metadata = Assert.IsType<PackageMetadataArtifact>(artifact.Value);
+        var package = Assert.Single(metadata.Packages);
+        Assert.Equal("production-lib", package.Name);
     }
 
     [Fact]
@@ -51,6 +70,31 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
+    public async Task PackageFreshnessAnalyzer_SkipsDevelopmentDependencies()
+    {
+        var context = CreateContextWithMetadata([
+            new PackageRegistryMetadata(
+                DependencyEcosystem.NuGet,
+                "xunit",
+                "2.9.0",
+                "3.0.0",
+                null,
+                true,
+                false,
+                null,
+                null,
+                "MIT",
+                null,
+                "nuget.org",
+                new Dictionary<string, string> { ["dependency.scope"] = nameof(DependencyScope.Development) })
+        ]);
+
+        var result = await new PackageFreshnessAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+    }
+
+    [Fact]
     public async Task DependencyVulnerabilityAnalyzer_ReportsDirectVulnerabilityAndFixedVersion()
     {
         var context = CreateContextWithInventory([
@@ -64,6 +108,21 @@ public sealed class DependencyRiskAnalyzerTests
 
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-VULN001");
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-VULN003");
+    }
+
+    [Fact]
+    public async Task DependencyVulnerabilityAnalyzer_SkipsExampleAndTestManifestPackages()
+    {
+        var context = CreateContextWithInventory([
+            CreatePackage(DependencyEcosystem.Npm, "fixture-lib", "1.0.0", manifestPath: "playground/demo/package.json")
+        ]);
+        var analyzer = new DependencyVulnerabilityAnalyzer(new FakeOsvClient([
+            new VulnerabilityAdvisory("GHSA-test", [], "test advisory", Severity.High, ["2.0.0"], null, null)
+        ]));
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
     }
 
     [Fact]
@@ -192,8 +251,13 @@ public sealed class DependencyRiskAnalyzerTests
         return context;
     }
 
-    private static DependencyPackageInfo CreatePackage(DependencyEcosystem ecosystem, string name, string version, DependencyScope scope = DependencyScope.Production) =>
-        new(ecosystem, name, version, scope, "manifest", null, true, true, false);
+    private static DependencyPackageInfo CreatePackage(
+        DependencyEcosystem ecosystem,
+        string name,
+        string version,
+        DependencyScope scope = DependencyScope.Production,
+        string manifestPath = "manifest") =>
+        new(ecosystem, name, version, scope, manifestPath, null, true, true, false);
 
     private sealed class FakeMetadataClient(DependencyEcosystem ecosystem) : IPackageMetadataClient
     {

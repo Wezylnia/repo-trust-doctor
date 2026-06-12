@@ -27,7 +27,13 @@ public sealed class PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadata
         var metadata = new List<PackageRegistryMetadata>();
         var warnings = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var package in inventory.Packages.Where(package => package.IsDirect && package.IsVersionPinned && !string.IsNullOrWhiteSpace(package.Version)).Take(50))
+        foreach (var package in inventory.Packages
+                     .Where(package =>
+                         package.IsDirect &&
+                         package.IsVersionPinned &&
+                         !string.IsNullOrWhiteSpace(package.Version) &&
+                         !DependencyRiskPathFilters.IsLikelyExampleOrTestManifest(package.ManifestPath))
+                     .Take(50))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var key = $"{package.Ecosystem}:{package.Name}:{package.Version}";
@@ -46,7 +52,7 @@ public sealed class PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadata
             {
                 if (await client.GetMetadataAsync(package, cancellationToken) is { } item)
                 {
-                    metadata.Add(item);
+                    metadata.Add(WithDependencyContext(item, package));
                 }
             }
             catch (Exception ex) when (ex is InvalidOperationException or FormatException)
@@ -63,6 +69,38 @@ public sealed class PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadata
         return AnalyzerResult.Completed([], [new AnalyzerArtifact(PackageMetadataArtifact.ArtifactKey, artifact)], metrics, warnings);
     }
 
+    private static PackageRegistryMetadata WithDependencyContext(PackageRegistryMetadata metadata, DependencyPackageInfo package)
+    {
+        var enriched = new Dictionary<string, string>(metadata.Metadata ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase)
+        {
+            ["dependency.scope"] = package.Scope.ToString(),
+            ["dependency.manifestPath"] = package.ManifestPath,
+            ["dependency.isDirect"] = package.IsDirect.ToString()
+        };
+
+        return metadata with { Metadata = enriched };
+    }
+
+}
+
+internal static class DependencyRiskPathFilters
+{
+    public static bool IsLikelyExampleOrTestManifest(string manifestPath)
+    {
+        var normalized = manifestPath.Replace('\\', '/');
+        return normalized.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("__tests__/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/__tests__/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("playground/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/playground/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("testdata/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/testdata/", StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 public sealed class PackageFreshnessAnalyzer : IRepositoryAnalyzer
@@ -91,6 +129,11 @@ public sealed class PackageFreshnessAnalyzer : IRepositoryAnalyzer
         foreach (var package in artifact.Packages)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (IsDevelopmentDependency(package))
+            {
+                continue;
+            }
+
             if (package.IsDeprecated || package.IsYanked)
             {
                 findings.Add(CreateFinding(
@@ -142,6 +185,10 @@ public sealed class PackageFreshnessAnalyzer : IRepositoryAnalyzer
     private static bool IsPrereleaseVersion(string? version) =>
         !string.IsNullOrWhiteSpace(version) &&
         version.Contains('-', StringComparison.Ordinal);
+
+    private static bool IsDevelopmentDependency(PackageRegistryMetadata package) =>
+        package.Metadata?.TryGetValue("dependency.scope", out var scope) == true &&
+        scope.Equals(nameof(DependencyScope.Development), StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient) : IRepositoryAnalyzer
@@ -169,7 +216,11 @@ public sealed class DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient
 
         var findings = new List<Finding>();
         var cache = new Dictionary<string, IReadOnlyList<VulnerabilityAdvisory>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var package in inventory.Packages.Where(package => !string.IsNullOrWhiteSpace(package.Version)).Take(50))
+        foreach (var package in inventory.Packages
+                     .Where(package =>
+                         !string.IsNullOrWhiteSpace(package.Version) &&
+                         !DependencyRiskPathFilters.IsLikelyExampleOrTestManifest(package.ManifestPath))
+                     .Take(50))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var key = $"{package.Ecosystem}:{package.Name}:{package.Version}";

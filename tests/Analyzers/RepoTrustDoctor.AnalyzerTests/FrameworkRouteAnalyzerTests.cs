@@ -61,6 +61,65 @@ public sealed class FrameworkRouteAnalyzerTests
     }
 
     [Fact]
+    public async Task FrameworkRouteAnalyzer_DoesNotTreatExpressMiddlewareAsEndpoint()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "server.ts"), """
+        app.use(corsMiddleware());
+        app.use(compression());
+        app.use('/api', router);
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        var artifact = Assert.Single(result.Artifacts!, art => art.Key == FrameworkRouteArtifact.ArtifactKey);
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(artifact.Value);
+        var route = Assert.Single(routesArtifact.Routes);
+        Assert.Equal("/api", route.PathPattern);
+        Assert.DoesNotContain(result.Findings, finding => finding.Message.Contains("corsMiddleware", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Findings, finding => finding.Message.Contains("compression", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task FrameworkRouteAnalyzer_DoesNotTreatPythonPathHelpersAsDjangoRoutes()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "script.py"), """
+        from pathlib import Path
+        from typing import Annotated
+        subprocess.run(f"dpkg-deb -x {Path(deb_file)} {tmp_dir}", shell=True)
+        item_id: Annotated[int, Path(title="The ID of the item to get", ge=1)]
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(routesArtifact.Routes);
+    }
+
+    [Fact]
+    public async Task FrameworkRouteAnalyzer_DetectsLineAnchoredDjangoRoutes()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "urls.py"), """
+        urlpatterns = [
+            path("admin/", admin.site.urls),
+            re_path(r"^api/$", view),
+        ]
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Equal(2, routesArtifact.Routes.Count);
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-CODE012");
+    }
+
+    [Fact]
     public async Task FrameworkRouteAnalyzer_DoesNotTreatControllerTypeAsAuthentication()
     {
         using var fixture = TemporaryRepository.Create();
@@ -141,6 +200,30 @@ public sealed class FrameworkRouteAnalyzerTests
         {
             private const string Fixture = "app.MapGet(\"/fixture\", () => \"ok\");";
         }
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(routesArtifact.Routes);
+    }
+
+    [Theory]
+    [InlineData("playground/ssr/server.js")]
+    [InlineData("examples/web/server.js")]
+    [InlineData("fixtures/routes/server.js")]
+    [InlineData("docs/demo/server.js")]
+    public async Task FrameworkRouteAnalyzer_SkipsExampleAndPlaygroundSourceFiles(string relativePath)
+    {
+        using var fixture = TemporaryRepository.Create();
+        var filePath = Path.Combine(fixture.Path, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, """
+        app.use('*all', async (req, res) => {
+          res.end('demo')
+        });
         """);
 
         var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);

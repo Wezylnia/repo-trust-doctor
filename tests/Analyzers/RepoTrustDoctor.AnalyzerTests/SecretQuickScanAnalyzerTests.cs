@@ -187,6 +187,32 @@ public sealed class SecretQuickScanAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_SkipsSensitiveFiles_InCommonTestAndPlaygroundPaths()
+    {
+        using var fixture = TemporaryRepository.Create();
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "tests", "TestFiles", "ClientCertificates"));
+        File.WriteAllText(Path.Combine(fixture.Path, "tests", "TestFiles", "ClientCertificates", "client.key"), """
+        test key fixture
+        """);
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "app", "__tests__", "fixtures", "env"));
+        File.WriteAllText(Path.Combine(fixture.Path, "packages", "app", "__tests__", "fixtures", "env", ".env"), """
+        API_KEY=example
+        """);
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "playground", "env"));
+        File.WriteAllText(Path.Combine(fixture.Path, "playground", "env", ".env.production"), """
+        API_KEY=example
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-SECRET001");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_SkipsBinaryFilesWithNullBytes()
     {
         using var fixture = TemporaryRepository.Create();
@@ -299,6 +325,28 @@ public sealed class SecretQuickScanAnalyzerTests
         Assert.Equal(1, evidence.LineNumber);
         Assert.Contains("[redacted]", evidence.Value);
         Assert.DoesNotContain("eyJ", evidence.Value);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportJwtToken_InMarkdownDocumentation()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var fakeJwt = string.Join(
+            ".",
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+            "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0",
+            "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c");
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "docs", "tutorial"));
+        File.WriteAllText(Path.Combine(fixture.Path, "docs", "tutorial", "oauth2.md"), $"""
+        Example token:
+        {fakeJwt}
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-SECRET010");
     }
 
     [Fact]

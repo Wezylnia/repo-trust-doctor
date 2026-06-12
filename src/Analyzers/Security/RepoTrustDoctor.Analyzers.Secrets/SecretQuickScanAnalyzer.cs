@@ -107,7 +107,7 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
                 findings.Add(CreateFinding("TRUST-SECRET009", "Possible GCP service account key found", Severity.High, Confidence.Medium, relativePath, "A Google Cloud service account JSON key was found.", GetLineNumber(content, gcpMatch.Index), isBlocking: true));
             }
 
-            if (JwtTokenPattern().Match(content) is { Success: true } jwtMatch)
+            if (JwtTokenPattern().Match(content) is { Success: true } jwtMatch && !IsDocumentationMarkdownPath(relativePath))
             {
                 findings.Add(CreateFinding("TRUST-SECRET010", "Possible JWT token found", Severity.Medium, Confidence.Medium, relativePath, "A JWT-like token was found and redacted.", GetLineNumber(content, jwtMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(jwtMatch.Value)));
             }
@@ -167,8 +167,27 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
     {
         var normalized = relativePath.Replace('\\', '/');
         return normalized.Contains("tests/Fixtures/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/__tests__/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("__tests__/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/TestFiles/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("TestFiles/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/playground/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("playground/", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("testdata/", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("docs/examples/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDocumentationMarkdownPath(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/');
+        return normalized.EndsWith(".md", StringComparison.OrdinalIgnoreCase) &&
+               (normalized.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
+                normalized.Contains("/docs/", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsPlaceholderValue(string value)
