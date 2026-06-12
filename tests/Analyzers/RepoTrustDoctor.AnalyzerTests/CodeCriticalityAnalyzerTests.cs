@@ -143,4 +143,84 @@ public sealed class CodeCriticalityAnalyzerTests
         var file = Assert.Single(artifact.Files);
         Assert.Contains(CodeCriticalityReason.CommandExecution, file.Reasons);
     }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotReportBoundedProcessStartInfoAsCommandExecution()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "git");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "GitRunner.cs"), """
+        using System.Diagnostics;
+
+        public sealed class GitRunner
+        {
+            public void Run(string repositoryUrl, string clonePath)
+            {
+                using var process = new Process();
+                process.StartInfo = new ProcessStartInfo
+                {
+                    FileName = "git",
+                    UseShellExecute = false
+                };
+                process.StartInfo.ArgumentList.Add("clone");
+                process.StartInfo.ArgumentList.Add(repositoryUrl);
+                process.StartInfo.ArgumentList.Add(clonePath);
+                process.Start();
+            }
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.DoesNotContain(artifact.Files, file => file.Reasons.Contains(CodeCriticalityReason.CommandExecution));
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_IgnoresDangerousTermsInsideStringLiterals()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "docs");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "RuleText.cs"), """
+        public sealed class RuleText
+        {
+            public string Message => "BinaryFormatter and Process.Start are examples in documentation only.";
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId is "TRUST-CODE014" or "TRUST-CODE015");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(artifact.Files);
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_SkipsTestSourceFiles()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "tests");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "UnsafeHandlerTests.cs"), """
+        public sealed class UnsafeHandlerTests
+        {
+            public void Fixture()
+            {
+                System.Diagnostics.Process.Start("cmd.exe", "/c whoami");
+            }
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(artifact.Files);
+    }
 }

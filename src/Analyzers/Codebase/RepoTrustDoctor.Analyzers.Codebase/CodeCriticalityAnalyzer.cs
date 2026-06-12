@@ -22,8 +22,8 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         new(CodeCriticalityReason.Network, ["httpclient", "fetch(", "axios", "request", "socket", "webhook"]),
         new(CodeCriticalityReason.Cryptography, ["encrypt", "decrypt", "hash", "hmac", "rsa", "aes", "crypto"]),
         new(CodeCriticalityReason.Secrets, ["secret", "password", "token", "apikey", "api_key", "credential"]),
-        new(CodeCriticalityReason.Deserialization, ["binaryformatter", "objectinputstream", "pickle.load", "yaml.unsafe_load", "xmlserializer", "deserialize", "unmarshal", "readobject"]),
-        new(CodeCriticalityReason.CommandExecution, ["process.start", "runtime.exec", "subprocess", "os.system", "exec(", "eval(", "popen", "system("])
+        new(CodeCriticalityReason.Deserialization, ["binaryformatter", "typenamehandling", "objectinputstream", "pickle.load", "yaml.unsafe_load", "readobject"]),
+        new(CodeCriticalityReason.CommandExecution, ["process.start", "runtime.exec", "subprocess.", "os.system", "child_process", "execsync", "spawnsync", "command::new", "eval(", "popen"])
     ];
 
     public string Id => "codebase-02-criticality";
@@ -186,17 +186,25 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 
     private static IEnumerable<string> EnumerateSourceFiles(string root) =>
         RepositoryFileSystem.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-            .Where(file => SourceExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase));
+            .Where(file => SourceExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
+            .Where(file => !IsTestSource(root, file));
 
     private static CodeCriticalityFile AnalyzeFile(string repositoryPath, string filePath, string text)
     {
         var reasons = new HashSet<CodeCriticalityReason>();
         var firstRelevantLine = default(int?);
-        var lower = text.ToLowerInvariant();
-        var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        var searchableText = RemoveQuotedText(text);
+        var lower = searchableText.ToLowerInvariant();
+        var lines = searchableText.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
 
         foreach (var group in KeywordGroups)
         {
+            if (group.Reason == CodeCriticalityReason.CommandExecution &&
+                HasBoundedProcessInvocation(lower))
+            {
+                continue;
+            }
+
             if (group.Keywords.Any(keyword => lower.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
             {
                 reasons.Add(group.Reason);
@@ -209,7 +217,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             reasons.Add(CodeCriticalityReason.LargeFile);
         }
 
-        if (BroadExceptionRegex().IsMatch(text))
+        if (BroadExceptionRegex().IsMatch(searchableText))
         {
             reasons.Add(CodeCriticalityReason.BroadExceptionHandling);
             firstRelevantLine ??= FindFirstBroadExceptionLine(lines);
@@ -267,6 +275,31 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         return null;
     }
 
+    private static bool IsTestSource(string root, string filePath)
+    {
+        var relativePath = Path.GetRelativePath(root, filePath).Replace('\\', '/');
+        var fileName = Path.GetFileNameWithoutExtension(relativePath);
+        return relativePath.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith("Tests", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith("Test", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".spec", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".test", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string RemoveQuotedText(string text) =>
+        QuotedTextRegex().Replace(text, match =>
+        {
+            var newlineCount = match.Value.Count(character => character == '\n');
+            return newlineCount == 0 ? string.Empty : new string('\n', newlineCount);
+        });
+
+    private static bool HasBoundedProcessInvocation(string searchableText) =>
+        searchableText.Contains("processstartinfo", StringComparison.OrdinalIgnoreCase) &&
+        searchableText.Contains("useshellexecute = false", StringComparison.OrdinalIgnoreCase) &&
+        searchableText.Contains("argumentlist.add", StringComparison.OrdinalIgnoreCase);
+
     private static Finding CreateCriticalityFinding(
         string ruleId,
         Severity severity,
@@ -291,6 +324,9 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"catch\s*\(\s*(Exception|System\.Exception|Throwable|Error)\b|except\s+(Exception|BaseException)\b|catch\s*\(\s*err\s*\)", RegexOptions.IgnoreCase)]
     private static partial Regex BroadExceptionRegex();
+
+    [GeneratedRegex("\"\"\"[\\s\\S]*?\"\"\"|@\"(?:[^\"]|\"\")*\"|\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|`(?:\\\\.|[^`\\\\])*`", RegexOptions.Multiline)]
+    private static partial Regex QuotedTextRegex();
 
     private sealed record KeywordGroup(CodeCriticalityReason Reason, IReadOnlyList<string> Keywords);
 }
