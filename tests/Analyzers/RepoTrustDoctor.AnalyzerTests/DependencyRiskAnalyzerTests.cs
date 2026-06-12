@@ -39,6 +39,18 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
+    public async Task PackageFreshnessAnalyzer_IgnoresPrereleaseLatestForStablePackage()
+    {
+        var context = CreateContextWithMetadata([
+            new PackageRegistryMetadata(DependencyEcosystem.NuGet, "stable-lib", "3.2.2", "4.0.0-pre.1", null, false, false, null, null, "MIT", null, "nuget.org")
+        ]);
+
+        var result = await new PackageFreshnessAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DEP015");
+    }
+
+    [Fact]
     public async Task DependencyVulnerabilityAnalyzer_ReportsDirectVulnerabilityAndFixedVersion()
     {
         var context = CreateContextWithInventory([
@@ -104,6 +116,35 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
+    public async Task PackageOriginAnalyzer_SkipsMissingRepositoryForDevelopmentPackages()
+    {
+        var context = CreateContextWithInventory(
+        [
+            CreatePackage(DependencyEcosystem.NuGet, "xunit.v3", "3.2.2", DependencyScope.Development)
+        ]);
+        context.AddArtifact(new AnalyzerArtifact(PackageMetadataArtifact.ArtifactKey, new PackageMetadataArtifact(
+            [new PackageRegistryMetadata(DependencyEcosystem.NuGet, "xunit.v3", "3.2.2", "3.2.2", null, false, false, null, null, "MIT", null, "nuget.org")],
+            new Dictionary<string, string>())));
+
+        var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN003");
+    }
+
+    [Fact]
+    public async Task PackageOriginAnalyzer_DoesNotCompareThirdPartyDependencyRepositoryToTarget()
+    {
+        var context = new AnalysisContext(".", "https://github.com/example/application", AnalysisDepth.Standard);
+        context.AddArtifact(new AnalyzerArtifact(PackageMetadataArtifact.ArtifactKey, new PackageMetadataArtifact(
+            [new PackageRegistryMetadata(DependencyEcosystem.Npm, "react", "19.0.0", "19.0.0", null, false, false, "https://github.com/facebook/react", null, "MIT", null, "registry.npmjs.org")],
+            new Dictionary<string, string>())));
+
+        var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN001");
+    }
+
+    [Fact]
     public async Task PackageOriginAnalyzer_RequiresMatchingNpmScopeRegistry()
     {
         using var fixture = TemporaryRepository.Create();
@@ -151,8 +192,8 @@ public sealed class DependencyRiskAnalyzerTests
         return context;
     }
 
-    private static DependencyPackageInfo CreatePackage(DependencyEcosystem ecosystem, string name, string version) =>
-        new(ecosystem, name, version, DependencyScope.Production, "manifest", null, true, true, false);
+    private static DependencyPackageInfo CreatePackage(DependencyEcosystem ecosystem, string name, string version, DependencyScope scope = DependencyScope.Production) =>
+        new(ecosystem, name, version, scope, "manifest", null, true, true, false);
 
     private sealed class FakeMetadataClient(DependencyEcosystem ecosystem) : IPackageMetadataClient
     {

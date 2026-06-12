@@ -75,6 +75,7 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
             return;
         }
 
+        var projectScope = InferProjectScope(relativePath, document);
         foreach (var reference in document.Descendants().Where(element => element.Name.LocalName == "PackageReference"))
         {
             var name = DependencyInventorySupport.ReadXmlAttribute(reference, "Include") ??
@@ -92,11 +93,11 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
                 version = centralVersion;
             }
 
-            AddPackage(relativePath, name.Trim(), version, state);
+            AddPackage(relativePath, name.Trim(), version, projectScope, state);
         }
     }
 
-    private static void AddPackage(string relativePath, string name, string? version, DependencyInventoryState state)
+    private static void AddPackage(string relativePath, string name, string? version, DependencyScope scope, DependencyInventoryState state)
     {
         var normalizedVersion = DependencyInventorySupport.NormalizeVersion(version);
         var pinned = IsPinnedVersion(normalizedVersion);
@@ -106,7 +107,7 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
             DependencyEcosystem.NuGet,
             name,
             normalizedVersion,
-            DependencyScope.Production,
+            scope,
             relativePath,
             null,
             true,
@@ -140,6 +141,50 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
                 relativePath,
                 "Review whether the prerelease dependency is intentional before production use."));
         }
+    }
+
+    private static DependencyScope InferProjectScope(string relativePath, XDocument document)
+    {
+        if (IsTestPath(relativePath) ||
+            HasPropertyValue(document, "IsTestProject", "true") ||
+            document.Descendants().Any(IsKnownTestPackageReference))
+        {
+            return DependencyScope.Development;
+        }
+
+        return DependencyScope.Production;
+    }
+
+    private static bool IsTestPath(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/');
+        var fileName = Path.GetFileNameWithoutExtension(normalized);
+        return normalized.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".Tests", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".Test", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasPropertyValue(XDocument document, string propertyName, string expectedValue) =>
+        document.Descendants().Any(element =>
+            element.Name.LocalName == propertyName &&
+            string.Equals(element.Value.Trim(), expectedValue, StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsKnownTestPackageReference(XElement element)
+    {
+        if (element.Name.LocalName != "PackageReference")
+        {
+            return false;
+        }
+
+        var name = DependencyInventorySupport.ReadXmlAttribute(element, "Include") ??
+                   DependencyInventorySupport.ReadXmlAttribute(element, "Update");
+        return name is not null && (
+            name.Equals("Microsoft.NET.Test.Sdk", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("xunit", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("NUnit", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("MSTest.", StringComparison.OrdinalIgnoreCase));
     }
 
     private static Dictionary<string, string> ReadCentralPackageVersions(AnalysisContext context, List<string> warnings)

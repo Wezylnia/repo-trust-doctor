@@ -113,7 +113,8 @@ public static class PackageMetadataParser
             ReadString(selected, "projectUrl"),
             ReadString(selected, "licenseExpression") ?? ReadString(selected, "licenseUrl"),
             null,
-            "nuget.org");
+            "nuget.org",
+            BuildPackageMetadata(package));
     }
 
     public static PackageRegistryMetadata? ParseNpm(DependencyPackageInfo package, string json)
@@ -166,7 +167,8 @@ public static class PackageMetadataParser
             ReadString(versionElement, "homepage"),
             ReadString(versionElement, "license"),
             null,
-            "registry.npmjs.org");
+            "registry.npmjs.org",
+            BuildPackageMetadata(package));
     }
 
     public static PackageRegistryMetadata? ParsePyPi(DependencyPackageInfo package, string json)
@@ -210,7 +212,8 @@ public static class PackageMetadataParser
             ReadString(info, "home_page"),
             ReadString(info, "license_expression") ?? ReadString(info, "license"),
             null,
-            "pypi.org");
+            "pypi.org",
+            BuildPackageMetadata(package));
     }
 
     public static PackageRegistryMetadata? ParseMavenCentral(DependencyPackageInfo package, string json)
@@ -237,8 +240,16 @@ public static class PackageMetadataParser
             null,
             null,
             null,
-            "search.maven.org");
+            "search.maven.org",
+            BuildPackageMetadata(package));
     }
+
+    private static IReadOnlyDictionary<string, string> BuildPackageMetadata(DependencyPackageInfo package) =>
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["scope"] = package.Scope.ToString(),
+            ["isDirect"] = package.IsDirect.ToString()
+        };
 
     private static void CollectCatalogEntries(JsonElement element, List<JsonElement> entries)
     {

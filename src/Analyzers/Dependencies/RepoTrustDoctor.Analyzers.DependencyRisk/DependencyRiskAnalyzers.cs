@@ -104,7 +104,8 @@ public sealed class PackageFreshnessAnalyzer : IRepositoryAnalyzer
                     "Replace deprecated packages or upgrade to a maintained version."));
             }
 
-            if (MajorVersion(package.RequestedVersion) is { } requestedMajor &&
+            if (!IsStablePackageWithPrereleaseLatest(package) &&
+                MajorVersion(package.RequestedVersion) is { } requestedMajor &&
                 MajorVersion(package.LatestVersion) is { } latestMajor &&
                 latestMajor > requestedMajor)
             {
@@ -133,6 +134,14 @@ public sealed class PackageFreshnessAnalyzer : IRepositoryAnalyzer
         var first = version.Trim().TrimStart('v').Split('.', '-', '+')[0];
         return int.TryParse(first, out var major) ? major : null;
     }
+
+    private static bool IsStablePackageWithPrereleaseLatest(PackageRegistryMetadata package) =>
+        !IsPrereleaseVersion(package.RequestedVersion) &&
+        IsPrereleaseVersion(package.LatestVersion);
+
+    private static bool IsPrereleaseVersion(string? version) =>
+        !string.IsNullOrWhiteSpace(version) &&
+        version.Contains('-', StringComparison.Ordinal);
 }
 
 public sealed class DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient) : IRepositoryAnalyzer
@@ -281,22 +290,26 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
         var findings = new List<Finding>();
         context.TryGetArtifact<DependencyInventoryArtifact>(DependencyInventoryArtifact.ArtifactKey, out var inventory);
         context.TryGetArtifact<PackageMetadataArtifact>(PackageMetadataArtifact.ArtifactKey, out var metadata);
+        var packageScopes = BuildScopeLookup(inventory);
 
         if (metadata is not null)
         {
             foreach (var package in metadata.Packages)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (string.IsNullOrWhiteSpace(package.RepositoryUrl))
+                var shouldReportOriginMetadata = IsProductionOrUnknownScope(package, packageScopes);
+                if (string.IsNullOrWhiteSpace(package.RepositoryUrl) && shouldReportOriginMetadata)
                 {
                     findings.Add(CreateFinding("TRUST-ORIGIN003", "Package origin metadata is incomplete", Severity.Low, Confidence.Medium, $"Package `{package.Name}` metadata does not include a repository URL.", "package-origin", $"Package `{package.Name}` has no repository URL in {package.SourceRegistry}.", "Prefer dependencies with traceable repository metadata."));
                 }
-                else if (IsRepositoryMismatch(context.Target, package.RepositoryUrl))
+                else if (!string.IsNullOrWhiteSpace(package.RepositoryUrl) &&
+                         ShouldCompareRepositoryToTarget(context.Target, package) &&
+                         IsRepositoryMismatch(context.Target, package.RepositoryUrl))
                 {
                     findings.Add(CreateFinding("TRUST-ORIGIN001", "Package repository URL does not match analyzed repository", Severity.Medium, Confidence.Medium, $"Package `{package.Name}` repository metadata points to a different repository.", "package-origin", $"Repository metadata is `{package.RepositoryUrl}`.", "Verify that package metadata points to the expected source repository."));
                 }
 
-                if (LooksOfficial(package.Name) && string.IsNullOrWhiteSpace(package.RepositoryUrl))
+                if (LooksOfficial(package.Name) && string.IsNullOrWhiteSpace(package.RepositoryUrl) && shouldReportOriginMetadata)
                 {
                     findings.Add(CreateFinding("TRUST-ORIGIN002", "Package has official-looking name from unverified origin", Severity.Low, Confidence.Low, $"Package `{package.Name}` has an official-looking name but incomplete origin metadata.", "package-origin", $"Package `{package.Name}` needs publisher/origin review.", "Manually verify the package publisher and repository before relying on it."));
                 }
@@ -309,6 +322,43 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
         }
 
         return Task.FromResult(AnalyzerResult.Completed(findings));
+    }
+
+    private static Dictionary<string, DependencyScope> BuildScopeLookup(DependencyInventoryArtifact? inventory)
+    {
+        var lookup = new Dictionary<string, DependencyScope>(StringComparer.OrdinalIgnoreCase);
+        if (inventory is null)
+        {
+            return lookup;
+        }
+
+        foreach (var package in inventory.Packages.Where(package => package.IsDirect))
+        {
+            lookup[PackageKey(package.Ecosystem, package.Name, package.Version)] = package.Scope;
+        }
+
+        return lookup;
+    }
+
+    private static bool IsProductionOrUnknownScope(PackageRegistryMetadata package, IReadOnlyDictionary<string, DependencyScope> scopes)
+    {
+        var scope = ReadMetadataScope(package) ??
+                    (scopes.TryGetValue(PackageKey(package.Ecosystem, package.Name, package.RequestedVersion), out var inventoryScope)
+                        ? inventoryScope
+                        : DependencyScope.Unknown);
+
+        return scope is DependencyScope.Production or DependencyScope.Optional or DependencyScope.Peer or DependencyScope.Unknown;
+    }
+
+    private static DependencyScope? ReadMetadataScope(PackageRegistryMetadata package)
+    {
+        if (package.Metadata?.TryGetValue("scope", out var value) == true &&
+            Enum.TryParse<DependencyScope>(value, ignoreCase: true, out var scope))
+        {
+            return scope;
+        }
+
+        return null;
     }
 
     private static void AddDependencyConfusionFindings(AnalysisContext context, DependencyInventoryArtifact inventory, List<Finding> findings)
@@ -404,6 +454,21 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
         return false;
     }
 
+    private static bool ShouldCompareRepositoryToTarget(string target, PackageRegistryMetadata package)
+    {
+        if (string.IsNullOrWhiteSpace(package.RepositoryUrl) ||
+            !Uri.TryCreate(target, UriKind.Absolute, out var targetUri))
+        {
+            return false;
+        }
+
+        var targetName = NormalizePackageName(Path.GetFileName(targetUri.AbsolutePath.TrimEnd('/')));
+        var packageName = NormalizePackageName(package.Name);
+        return targetName.Length > 0 &&
+               (string.Equals(targetName, packageName, StringComparison.OrdinalIgnoreCase) ||
+                packageName.EndsWith($"/{targetName}", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static bool IsRepositoryMismatch(string target, string repositoryUrl)
     {
         if (!Uri.TryCreate(target, UriKind.Absolute, out var targetUri) ||
@@ -417,6 +482,16 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
     }
 
     private static string NormalizeRepoPath(string path) => path.Trim('/').Replace(".git", string.Empty, StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizePackageName(string name)
+    {
+        var normalized = name.Trim().TrimStart('@').Replace(".git", string.Empty, StringComparison.OrdinalIgnoreCase);
+        var slash = normalized.LastIndexOf('/');
+        return slash >= 0 ? normalized[(slash + 1)..] : normalized;
+    }
+
+    private static string PackageKey(DependencyEcosystem ecosystem, string name, string? version) =>
+        $"{ecosystem}:{name}:{version ?? string.Empty}";
 
     private static bool LooksOfficial(string name) =>
         name.Contains("microsoft", StringComparison.OrdinalIgnoreCase) ||

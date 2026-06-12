@@ -166,6 +166,30 @@ public sealed class DependencyInventoryAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_NuGetTestProjectReferences_AreDevelopmentScope()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "tests"));
+        File.WriteAllText(Path.Combine(fixture.Path, "packages.lock.json"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "tests", "Widget.Tests.csproj"), """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <IsTestProject>true</IsTestProject>
+          </PropertyGroup>
+          <ItemGroup>
+            <PackageReference Include="xunit.v3" Version="3.2.2" />
+          </ItemGroup>
+        </Project>
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var package = Assert.Single(GetInventory(result).Packages, package => package.Name == "xunit.v3");
+        Assert.Equal(DependencyScope.Development, package.Scope);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_NuGetConfigSources_AreRecordedWithCredentialRedaction()
     {
         using var fixture = TemporaryRepository.Create();
