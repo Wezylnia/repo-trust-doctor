@@ -13,25 +13,33 @@ The project is intentionally evidence-based: analyzers produce findings with rul
 
 ## What It Checks Today
 
-The current `v1.5.0` development line focuses on local, static repository trust signals across 12 package ecosystems:
+The current `v1.7.5` development line focuses on local, static repository trust signals across 12 package ecosystems, CI/CD pipeline security, infrastructure-as-code checks, and deep code intelligence:
 
 - repository health files such as README, LICENSE, SECURITY.md, contributing docs, CODEOWNERS, templates, and changelog,
-- GitHub Actions workflow risks such as broad permissions, `pull_request_target`, unpinned actions, shell pipe execution, and checkout credential persistence,
-- possible committed secrets or sensitive files with redacted evidence,
+- GitHub Actions workflow risks such as broad permissions, `pull_request_target`, unpinned actions, shell pipe execution, checkout credential persistence, and advanced hardening rules,
+- GitLab CI security checks for remote includes, CI variable injection, unpinned images, Docker-in-Docker, and broad cache paths,
+- Azure Pipelines security checks for PR variable expansion, persisted credentials, unpinned images, and self-hosted pools,
+- CircleCI security checks for unpinned orbs, Docker executor images, workspace persistence, and inline secrets,
+- possible committed secrets or sensitive files with redacted evidence and reduced false positives,
 - Dockerfile hygiene signals such as `latest` tags, missing `.dockerignore`, root user risk, missing healthcheck, secret-like `ENV`, and missing multi-stage builds,
-- dependency lockfile coverage and static package-origin signals for npm, NuGet, Python, Maven, Gradle, and Spring Boot manifests/configuration,
+- Docker Compose security checks for privileged mode, host network, Docker socket mounts, and .env file loading,
+- Kubernetes manifest checks for privileged containers, host namespace sharing, hostPath volumes, broad capabilities, and privilege escalation,
+- Terraform infrastructure checks for public ingress, wildcard IAM, public S3 ACLs, missing encryption, and provider version constraints,
+- package registry configuration checks for HTTP registries, inline credentials, and insecure protocols,
+- dependency lockfile coverage and static package-origin signals for npm, NuGet, Python, Maven, Gradle (including version catalogs), Go, Cargo, Composer, Ruby, Dart/Pub, Elixir/Hex, SwiftPM, and C/C++,
+- Spring Boot Actuator exposure and configuration analysis,
 - deterministic JSON, Markdown, and SARIF reports with stable finding fingerprints,
-- release artifact checksum, SBOM/provenance, changelog, package-version, and release workflow evidence,
-- deep scan coverage import, critical code heuristics, and .NET public API baseline review,
+- release artifact checksum, SBOM/provenance validation, changelog, package-version, release workflow evidence, and SBOM correlation,
+- deep scan coverage import, critical code heuristics, multi-language public API extraction, import graph analysis, and framework route detection,
 - trust diff between JSON scan reports with new/resolved/worsened/improved finding changes,
 - a local-first React workbench for GitHub repository scans,
 - CI gate behavior through score and severity thresholds.
 
 ## Current Status
 
-This repository is at the `v1.5.0` development milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, cautious package-origin review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
+This repository is at the `v1.7.5` development milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
 
-Implemented through `v1.5.0`:
+Implemented through `v1.7.5`:
 
 - a clean .NET solution structure,
 - pure domain models,
@@ -44,22 +52,28 @@ Implemented through `v1.5.0`:
 - minimal API scan endpoints for health, start, status, progress, modules, findings, report export, and cancellation,
 - worker-based queued scan execution,
 - a local React trust workbench that starts GitHub repository scans and opens completed reports directly,
-- repository health, GitHub Actions, secret quick scan, Docker, and dependency lockfile analyzers,
+- repository health, GitHub Actions, GitLab CI, Azure Pipelines, CircleCI, secret quick scan, Docker, Docker Compose, Kubernetes, and Terraform analyzers,
 - expanded repository documentation quality checks,
-- expanded GitHub Actions release and artifact checks,
+- expanded GitHub Actions release, artifact, and advanced hardening checks,
 - GitLab CI security checks,
 - expanded Docker cache and package-layering checks,
 - Docker Compose and Kubernetes manifest checks,
-- structured npm, NuGet, Python, Maven, Gradle, Go, Cargo, Composer, Ruby, Dart/Pub, Elixir/Hex, SwiftPM, and C/C++ dependency inventory artifacts,
+- Azure Pipelines, CircleCI, and Terraform infrastructure analyzers,
+- package registry configuration checks,
+- structured npm, NuGet, Python, Maven, Gradle (including version catalogs), Go, Cargo, Composer, Ruby, Dart/Pub, Elixir/Hex, SwiftPM, and C/C++ dependency inventory artifacts,
 - lockfile coverage checks across supported package ecosystems,
 - direct NuGet `PackageReference` parsing, including basic Central Package Management version resolution,
 - `package.json` dependency section parsing for production, development, optional, and peer dependencies,
 - conservative Python dependency parsing for `requirements.txt`, `pyproject.toml`, and `Pipfile`,
-- Java dependency parsing for Maven `pom.xml`, Gradle `build.gradle`, and `build.gradle.kts`,
+- Java dependency parsing for Maven `pom.xml`, Gradle `build.gradle`, `build.gradle.kts`, and `libs.versions.toml`,
 - Spring Boot Actuator exposure checks from static application configuration,
 - Go, Rust/Cargo, PHP/Composer, Ruby/Bundler, Dart/Flutter, Elixir/Hex, SwiftPM, and C/C++ package manager parsing,
 - static dependency hygiene findings for unpinned/ranged and prerelease versions,
 - npm install-time script findings for manual review,
+- SBOM and provenance evidence validation, correlation, and completeness checks,
+- multi-language public API extractors for TypeScript, Python, Java, Go, and Rust,
+- import graph analysis, framework route detection, and deserialization/command execution heuristics,
+- refactored analyzer files split into focused helpers for maintainability,
 - NuGet package source recording from `NuGet.config` without network access,
 - static package-origin findings for direct remote npm dependencies, local npm dependencies, insecure NuGet sources, and local NuGet sources,
 - Markdown dependency inventory summaries,
@@ -242,6 +256,8 @@ The roadmap grows the platform gradually:
 | `v1.3.x` | Workspace detection and clearer console/report drill-downs |
 | `v1.4.x` | GitLab CI, Docker Compose, and Kubernetes static security checks |
 | `v1.5.x` | SBOM/provenance evidence import and review hardening |
+| `v1.6.x` | Azure Pipelines, CircleCI, and Terraform static security checks; package registry configuration rules; SBOM correlation; GitHub Actions advanced hardening; Gradle version catalog support |
+| `v1.7.x` | Multi-language public API extraction, import graph analysis, framework route detection, deserialization/command execution heuristics, deeper code intelligence and false-positive reduction |
 
 See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scope boundaries, and success criteria.
 
