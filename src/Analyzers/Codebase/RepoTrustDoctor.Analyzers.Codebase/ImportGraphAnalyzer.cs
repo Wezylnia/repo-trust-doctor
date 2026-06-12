@@ -125,51 +125,54 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
         context.TryGetArtifact<CoverageArtifact>(CoverageArtifact.ArtifactKey, out var coverageArtifact);
         var coverageLookup = BuildCoverageLookup(coverageArtifact);
 
-        var coverageFindingCount = 0;
-        foreach (var entry in centralFiles)
+        if (coverageArtifact?.Reports.Count > 0)
         {
-            if (coverageFindingCount >= MaxCoverageFindings)
+            var coverageFindingCount = 0;
+            foreach (var entry in centralFiles)
             {
-                break;
-            }
-
-            var hasLowCoverage = false;
-            string coverageMessage;
-
-            if (TryFindCoverageRate(coverageLookup, entry.FilePath, out var rate))
-            {
-                if (rate < LowCoverageThreshold)
+                if (coverageFindingCount >= MaxCoverageFindings)
                 {
-                    hasLowCoverage = true;
-                    coverageMessage = $"{entry.FilePath} is imported by {entry.InDegree.ToString(CultureInfo.InvariantCulture)} files but has only {rate.ToString("P0", CultureInfo.InvariantCulture)} line coverage.";
+                    break;
+                }
+
+                var hasLowCoverage = false;
+                string coverageMessage;
+
+                if (TryFindCoverageRate(coverageLookup, entry.FilePath, out var rate))
+                {
+                    if (rate < LowCoverageThreshold)
+                    {
+                        hasLowCoverage = true;
+                        coverageMessage = $"{entry.FilePath} is imported by {entry.InDegree.ToString(CultureInfo.InvariantCulture)} files but has only {rate.ToString("P0", CultureInfo.InvariantCulture)} line coverage.";
+                    }
+                    else
+                    {
+                        continue;
+                    }
                 }
                 else
                 {
-                    continue;
+                    hasLowCoverage = true;
+                    coverageMessage = $"{entry.FilePath} is imported by {entry.InDegree.ToString(CultureInfo.InvariantCulture)} files but has no coverage data.";
                 }
-            }
-            else
-            {
-                hasLowCoverage = true;
-                coverageMessage = $"{entry.FilePath} is imported by {entry.InDegree.ToString(CultureInfo.InvariantCulture)} files but has no coverage data.";
-            }
 
-            if (hasLowCoverage)
-            {
-                findings.Add(new Finding(
-                    "TRUST-CODE011",
-                    "Central file has low or missing coverage",
-                    AnalysisCategory.Codebase,
-                    Severity.High,
-                    Confidence.Medium,
-                    coverageMessage,
-                    [new Evidence(
-                        "import.centrality.coverage",
+                if (hasLowCoverage)
+                {
+                    findings.Add(new Finding(
+                        "TRUST-CODE011",
+                        "Central file has low or missing coverage",
+                        AnalysisCategory.Codebase,
+                        Severity.High,
+                        Confidence.Medium,
                         coverageMessage,
-                        entry.FilePath)],
-                    new Recommendation("Add targeted tests for central files to reduce risk of cascading breakage."),
-                    Tags: ["codebase", "import-graph", "coverage"]));
-                coverageFindingCount++;
+                        [new Evidence(
+                            "import.centrality.coverage",
+                            coverageMessage,
+                            entry.FilePath)],
+                        new Recommendation("Add targeted tests for central files to reduce risk of cascading breakage."),
+                        Tags: ["codebase", "import-graph", "coverage"]));
+                    coverageFindingCount++;
+                }
             }
         }
 
