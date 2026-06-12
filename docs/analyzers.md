@@ -95,10 +95,12 @@ Deep scan analyzers import or infer code quality and change-risk signals:
 
 - Cobertura XML and lcov coverage import,
 - missing or low coverage signals,
-- critical-code heuristics for auth, authorization, payments, data access, file operations, networking, cryptography, and secrets,
+- critical-code heuristics for auth, authorization, payments, data access, file operations, networking, cryptography, secrets, deserialization, and command execution,
 - large file and broad exception handling signals,
 - correlation between critical code and weak coverage,
-- .NET public API surface extraction and baseline diff review.
+- multi-language public API surface extraction and baseline diff review,
+- static import graph centrality analysis,
+- framework route detection for common web stacks.
 
 Deep code intelligence remains conservative. It does not run tests or build projects to generate coverage.
 

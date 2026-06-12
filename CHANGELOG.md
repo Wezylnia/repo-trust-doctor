@@ -11,7 +11,7 @@ This development milestone adds language-specific API extractors, static import 
 - **Multi-language API extractors**: TypeScript, Python, Java, Go, and Rust public API extractors in `PublicApiAnalyzer`.
 - **Static Import Graph**: Adjacency-based file dependency analysis (TRUST-CODE010) and low-coverage central file correlation (TRUST-CODE011).
 - **Framework Route Detection**: Detects HTTP endpoints in ASP.NET, Express.js, Flask, Django, Spring Boot, Go (Gin/Echo), and Rust (Actix/Axum), and reports endpoints without authentication annotations (TRUST-CODE012) or framework routes (TRUST-CODE013).
-- **Enhanced Heuristics**: Added deserialization API usage detection in critical code (TRUST-CODE014) and command execution keyword coverage.
+- **Enhanced Heuristics**: Added deserialization API usage detection in critical code (TRUST-CODE014) and command execution API usage detection (TRUST-CODE015).
 
 ### Changed
 

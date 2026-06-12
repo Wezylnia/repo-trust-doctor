@@ -114,13 +114,13 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
                     continue;
                 }
 
-                var hasAuth = framework.AuthPattern.IsMatch(text);
                 var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
 
                 foreach (Match routeMatch in routeMatches)
                 {
                     var lineNumber = CountLineNumber(text, routeMatch.Index);
-                    var snippet = routeMatch.Value.Trim();
+                    var snippet = ExtractRouteSnippet(text, routeMatch);
+                    var hasAuth = HasAuthNearRoute(framework, lines, lineNumber, text, routeMatch);
 
                     detectedRoutes.Add(new FrameworkRouteInfo(
                         relativePath,
@@ -150,7 +150,7 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
                 AnalysisCategory.Codebase,
                 Severity.Medium,
                 Confidence.Low,
-                $"{route.FilePath}:{route.LineNumber.ToString(CultureInfo.InvariantCulture)} — {route.Framework} route \"{Truncate(route.Snippet, 80)}\" has no visible auth annotation in the same file.",
+                $"{route.FilePath}:{route.LineNumber.ToString(CultureInfo.InvariantCulture)} - {route.Framework} route \"{Truncate(route.Snippet, 80)}\" has no visible auth annotation near the route.",
                 [new Evidence(
                     "route.no_auth",
                     $"No authentication or authorization annotation found near {route.Framework} route.",
@@ -169,7 +169,7 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
                 AnalysisCategory.Codebase,
                 Severity.Info,
                 Confidence.High,
-                $"{route.FilePath}:{route.LineNumber.ToString(CultureInfo.InvariantCulture)} — {route.Framework} route \"{Truncate(route.Snippet, 80)}\" detected.",
+                $"{route.FilePath}:{route.LineNumber.ToString(CultureInfo.InvariantCulture)} - {route.Framework} route \"{Truncate(route.Snippet, 80)}\" detected.",
                 [new Evidence(
                     "route.detected",
                     $"{route.Framework} HTTP route detected.",
@@ -240,7 +240,87 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
     private static string Truncate(string value, int maxLength) =>
         value.Length <= maxLength ? value : string.Concat(value.AsSpan(0, maxLength - 3), "...");
 
-    // ── ASP.NET ──────────────────────────────────────────────────────────
+    private static string ExtractRouteSnippet(string text, Match routeMatch)
+    {
+        var value = routeMatch.Value.Trim();
+        return value.EndsWith('(')
+            ? GetRouteStatement(text, routeMatch).Trim()
+            : value;
+    }
+
+    private static bool HasAuthNearRoute(
+        FrameworkDefinition framework,
+        string[] lines,
+        int lineNumber,
+        string text,
+        Match routeMatch)
+    {
+        var routeIndex = Math.Clamp(lineNumber - 1, 0, Math.Max(0, lines.Length - 1));
+
+        if (framework.Name == "ASP.NET")
+        {
+            var start = Math.Max(0, routeIndex - 4);
+            var end = Math.Min(lines.Length - 1, routeIndex + 4);
+            var nearby = string.Join('\n', lines[start..(end + 1)]);
+            if (framework.AuthPattern.IsMatch(nearby))
+            {
+                return true;
+            }
+
+            return HasAspNetClassAuthorize(lines, routeIndex) ||
+                   HasRequireAuthorizationInChainedCall(text, routeMatch);
+        }
+
+        if (framework.Name is "Express.js" or "Go Gin/Echo" or "Rust Actix/Axum")
+        {
+            return framework.AuthPattern.IsMatch(GetRouteStatement(text, routeMatch));
+        }
+
+        var contextStart = Math.Max(0, routeIndex - 2);
+        var contextEnd = Math.Min(lines.Length - 1, routeIndex + 2);
+        var routeContext = string.Join('\n', lines[contextStart..(contextEnd + 1)]);
+        if (framework.AuthPattern.IsMatch(routeContext))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasAspNetClassAuthorize(string[] lines, int routeIndex)
+    {
+        for (var i = Math.Min(routeIndex, lines.Length - 1); i >= 0; i--)
+        {
+            if (!lines[i].Contains("class ", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var start = Math.Max(0, i - 6);
+            var classHeader = string.Join('\n', lines[start..(i + 1)]);
+            return AspNetAuthRegex().IsMatch(classHeader);
+        }
+
+        return false;
+    }
+
+    private static bool HasRequireAuthorizationInChainedCall(string text, Match routeMatch)
+    {
+        return GetRouteStatement(text, routeMatch).Contains("RequireAuthorization", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetRouteStatement(string text, Match routeMatch)
+    {
+        var end = text.IndexOf(';', routeMatch.Index);
+        var newline = text.IndexOf('\n', routeMatch.Index);
+        if (end < 0 || (newline >= 0 && newline < end))
+        {
+            end = newline >= 0 ? newline : Math.Min(text.Length, routeMatch.Index + 300);
+        }
+
+        var length = Math.Min(end - routeMatch.Index + 1, text.Length - routeMatch.Index);
+        return length <= 0 ? string.Empty : text.Substring(routeMatch.Index, length);
+    }
 
     [GeneratedRegex(
         @"\[\s*(?:HttpGet|HttpPost|HttpPut|HttpDelete|HttpPatch|Route)\s*(?:\(.*?\))?\s*\]|app\.(?:MapGet|MapPost|MapPut|MapDelete|MapPatch)\s*\(",
@@ -248,11 +328,9 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
     private static partial Regex AspNetRouteRegex();
 
     [GeneratedRegex(
-        @"\[\s*(?:Authorize|AllowAnonymous|ApiController)\s*(?:\(.*?\))?\s*\]|:\s*(?:ControllerBase|Controller)\b|RequireAuthorization\s*\(",
+        @"\[\s*(?:Authorize|AllowAnonymous)\s*(?:\(.*?\))?\s*\]|RequireAuthorization\s*\(",
         RegexOptions.IgnoreCase)]
     private static partial Regex AspNetAuthRegex();
-
-    // ── Express.js ───────────────────────────────────────────────────────
 
     [GeneratedRegex(
         @"(?:app|router)\s*\.\s*(?:get|post|put|delete|patch|all|use)\s*\(",
@@ -260,11 +338,9 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
     private static partial Regex ExpressRouteRegex();
 
     [GeneratedRegex(
-        @"passport|authenticate|(?:^|[.\s(])auth(?:[.\s(]|$)|jwt|isAuthenticated|requireAuth",
+        @"passport|authenticate|authMiddleware|(?:^|[.\s(,])auth(?:[.\s),]|$)|jwt|isAuthenticated|requireAuth",
         RegexOptions.IgnoreCase)]
     private static partial Regex ExpressAuthRegex();
-
-    // ── Flask ────────────────────────────────────────────────────────────
 
     [GeneratedRegex(
         @"@\s*(?:app|bp|blueprint)\s*\.\s*route\s*\(",
@@ -276,8 +352,6 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
         RegexOptions.IgnoreCase)]
     private static partial Regex FlaskAuthRegex();
 
-    // ── Django ───────────────────────────────────────────────────────────
-
     [GeneratedRegex(
         @"(?:path|re_path|url)\s*\(",
         RegexOptions.IgnoreCase)]
@@ -287,8 +361,6 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
         @"@login_required|LoginRequiredMixin|@permission_required",
         RegexOptions.IgnoreCase)]
     private static partial Regex DjangoAuthRegex();
-
-    // ── Spring Boot ──────────────────────────────────────────────────────
 
     [GeneratedRegex(
         @"@\s*(?:GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)\s*(?:\(.*?\))?",
@@ -300,8 +372,6 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
         RegexOptions.IgnoreCase)]
     private static partial Regex SpringAuthRegex();
 
-    // ── Go (Gin / Echo) ──────────────────────────────────────────────────
-
     [GeneratedRegex(
         @"(?:r|router|e|g|group)\s*\.\s*(?:GET|POST|PUT|DELETE|PATCH|Handle|Any)\s*\(",
         RegexOptions.None)]
@@ -312,8 +382,6 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
         RegexOptions.None)]
     private static partial Regex GoAuthRegex();
 
-    // ── Rust (Actix / Axum) ──────────────────────────────────────────────
-
     [GeneratedRegex(
         @"web::(?:get|post|put|delete|patch|resource)\s*\(|\.route\s*\(|Router::new\s*\(|#\[\s*(?:get|post|put|delete|patch)\s*\(",
         RegexOptions.IgnoreCase)]
@@ -323,8 +391,6 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
         @"auth|AuthMiddleware|jwt|Claims",
         RegexOptions.IgnoreCase)]
     private static partial Regex RustAuthRegex();
-
-    // ── Supporting types ─────────────────────────────────────────────────
 
     private sealed record FrameworkDefinition(
         string Name,
