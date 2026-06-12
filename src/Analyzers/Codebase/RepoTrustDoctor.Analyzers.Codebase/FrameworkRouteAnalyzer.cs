@@ -320,6 +320,14 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
         return relativePath.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/docs/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("playground/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/playground/", StringComparison.OrdinalIgnoreCase) ||
                fileName.EndsWith("Tests", StringComparison.OrdinalIgnoreCase) ||
                fileName.EndsWith("Test", StringComparison.OrdinalIgnoreCase) ||
                fileName.EndsWith(".spec", StringComparison.OrdinalIgnoreCase) ||

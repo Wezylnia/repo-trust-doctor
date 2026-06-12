@@ -26,20 +26,14 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
             return;
         }
 
-        var localLockfiles = LockfileNames
-            .Select(name => Path.Combine(directory, name))
-            .Where(File.Exists)
-            .ToArray();
+        var coveringLockfiles = FindCoveringLockfiles(context.RepositoryPath, directory);
 
-        foreach (var lockfile in localLockfiles)
+        foreach (var lockfile in coveringLockfiles)
         {
-            state.Lockfiles.Add(new DependencyLockfileInfo(
-                DependencyEcosystem.Npm,
-                DependencyInventorySupport.Relative(context, lockfile),
-                Path.GetFileName(lockfile)));
+            AddLockfile(context, state, lockfile);
         }
 
-        if (localLockfiles.Length == 0)
+        if (coveringLockfiles.Length == 0)
         {
             state.Findings.Add(new Finding(
                 "TRUST-DEP001",
@@ -68,10 +62,10 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
                 "package.json",
                 ReadManifestMetadata(root)));
 
-            ReadDependencySection(root, "dependencies", DependencyScope.Production, relativePath, localLockfiles, state);
-            ReadDependencySection(root, "devDependencies", DependencyScope.Development, relativePath, localLockfiles, state);
-            ReadDependencySection(root, "optionalDependencies", DependencyScope.Optional, relativePath, localLockfiles, state);
-            ReadDependencySection(root, "peerDependencies", DependencyScope.Peer, relativePath, localLockfiles, state);
+            ReadDependencySection(root, "dependencies", DependencyScope.Production, relativePath, coveringLockfiles, context, state);
+            ReadDependencySection(root, "devDependencies", DependencyScope.Development, relativePath, coveringLockfiles, context, state);
+            ReadDependencySection(root, "optionalDependencies", DependencyScope.Optional, relativePath, coveringLockfiles, context, state);
+            ReadDependencySection(root, "peerDependencies", DependencyScope.Peer, relativePath, coveringLockfiles, context, state);
             AddInstallScriptFindings(root, relativePath, state);
         }
         catch (JsonException ex)
@@ -86,7 +80,8 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
         string sectionName,
         DependencyScope scope,
         string manifestPath,
-        string[] localLockfiles,
+        string[] coveringLockfiles,
+        AnalysisContext context,
         DependencyInventoryState state)
     {
         if (!root.TryGetProperty(sectionName, out var section) || section.ValueKind != JsonValueKind.Object)
@@ -108,7 +103,7 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
                 normalizedVersion,
                 scope,
                 manifestPath,
-                localLockfiles.Length == 0 ? null : Path.GetFileName(localLockfiles[0]),
+                coveringLockfiles.Length == 0 ? null : DependencyInventorySupport.Relative(context, coveringLockfiles[0]),
                 true,
                 pinned,
                 prerelease,
@@ -118,7 +113,7 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
                     ["sourceKind"] = sourceKind.Kind
                 }));
 
-            AddVersionFindings(dependency.Name, sectionName, normalizedVersion, pinned, prerelease, sourceKind, manifestPath, state);
+            AddVersionFindings(dependency.Name, sectionName, normalizedVersion, pinned, prerelease, sourceKind, manifestPath, coveringLockfiles.Length > 0, state);
         }
     }
 
@@ -130,9 +125,10 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
         bool prerelease,
         NpmSourceKind sourceKind,
         string manifestPath,
+        bool hasCoveringLockfile,
         DependencyInventoryState state)
     {
-        if (!pinned)
+        if (!pinned && !hasCoveringLockfile)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP006",
@@ -169,6 +165,11 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
     private static void AddSourceFinding(string name, string sectionName, string? version, NpmSourceKind sourceKind, string manifestPath, DependencyInventoryState state)
     {
         var remote = sourceKind.IsRemote;
+        if (!remote && DependencyInventorySupport.IsLikelyExampleOrTestPath(manifestPath))
+        {
+            return;
+        }
+
         state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
             remote ? "TRUST-DEP011" : "TRUST-DEP012",
             remote ? "npm dependency uses a direct remote source" : "npm dependency uses a local file source",
@@ -253,10 +254,57 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
 
         return value.StartsWith("file:", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("link:", StringComparison.OrdinalIgnoreCase) ||
-               value.StartsWith("workspace:", StringComparison.OrdinalIgnoreCase) ||
-               value.StartsWith("portal:", StringComparison.OrdinalIgnoreCase)
+            value.StartsWith("portal:", StringComparison.OrdinalIgnoreCase)
             ? new NpmSourceKind("local", false, true)
+            : value.StartsWith("workspace:", StringComparison.OrdinalIgnoreCase)
+            ? new NpmSourceKind("workspace", false, false)
             : new NpmSourceKind("registry", false, false);
+    }
+
+    private static string[] FindCoveringLockfiles(string repositoryPath, string manifestDirectory)
+    {
+        var root = Path.GetFullPath(repositoryPath);
+        var current = Path.GetFullPath(manifestDirectory);
+        var results = new List<string>();
+
+        while (current.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var lockfile in LockfileNames.Select(name => Path.Combine(current, name)).Where(File.Exists))
+            {
+                results.Add(lockfile);
+            }
+
+            if (string.Equals(current, root, StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            var parent = Directory.GetParent(current);
+            if (parent is null)
+            {
+                break;
+            }
+
+            current = parent.FullName;
+        }
+
+        return results.ToArray();
+    }
+
+    private static void AddLockfile(AnalysisContext context, DependencyInventoryState state, string lockfile)
+    {
+        var relativePath = DependencyInventorySupport.Relative(context, lockfile);
+        if (state.Lockfiles.Any(existing =>
+                existing.Ecosystem == DependencyEcosystem.Npm &&
+                existing.FilePath.Equals(relativePath, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        state.Lockfiles.Add(new DependencyLockfileInfo(
+            DependencyEcosystem.Npm,
+            relativePath,
+            Path.GetFileName(lockfile)));
     }
 
     private sealed record NpmSourceKind(string Kind, bool IsRemote, bool IsLocal);

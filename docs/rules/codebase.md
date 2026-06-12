@@ -51,6 +51,8 @@ A source file appears to contain security-sensitive or operationally critical lo
 
 Static analyzer implementation files suppress rule-vocabulary matches such as `Secret`, `Permission`, or regex helper names so analyzer rule text is not treated as application-critical code. Dangerous APIs such as command execution and unsafe deserialization are still reported.
 
+Source files under common `tests`, `docs`, `examples`, `fixtures`, and `playground` paths are skipped for criticality findings so example and fixture code is not treated as production-critical code.
+
 Recommendation: prioritize review and tests for these files.
 
 ### `TRUST-CODE005` - Large critical source file was detected
@@ -165,6 +167,8 @@ Recommendation: add targeted tests for central files to reduce risk of cascading
 
 An HTTP route handler was detected without a visible authentication or authorization annotation.
 
+Express middleware-only `app.use(middleware)` calls are not treated as endpoints; `app.use('/path', ...)` remains route evidence. Django route detection is line-anchored to URL pattern entries so Python helpers such as `Path(...)` are not treated as Django routes. Source files under common `tests`, `docs`, `examples`, `fixtures`, and `playground` paths are skipped for route findings.
+
 Recommendation: add authentication middleware or auth annotations to HTTP endpoints, or document why public access is intentional.
 
 ### `TRUST-CODE013` - Framework route detected
@@ -174,5 +178,7 @@ Recommendation: add authentication middleware or auth annotations to HTTP endpoi
 - Default confidence: `High`
 
 An HTTP route or controller endpoint was detected using a common web framework.
+
+Route detection uses framework-specific context to reduce false positives from middleware registration, test fixtures, and non-route helper calls.
 
 Recommendation: review HTTP endpoints for proper authentication, authorization, input validation, and rate limiting.

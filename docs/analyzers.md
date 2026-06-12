@@ -54,7 +54,7 @@ Builds a structured dependency inventory artifact from supported package manifes
 
 Current ecosystem collectors:
 
-- npm: `package.json`, npm/pnpm/Yarn lockfiles, dependency sections, install-time scripts, direct Git/URL sources, local/workspace sources.
+- npm: `package.json`, npm/pnpm/Yarn lockfiles including ancestor workspace lockfiles, dependency sections, install-time scripts, direct Git/URL sources, local sources, and workspace references.
 - NuGet: `.csproj`, `Directory.Packages.props`, `packages.lock.json`, `NuGet.config`, direct `PackageReference` versions, Central Package Management versions, package sources.
 - Python: `requirements.txt`, `pyproject.toml`, `Pipfile`, `poetry.lock`, `uv.lock`, `Pipfile.lock`, pinned requirement checks.
 - Maven and Gradle: `pom.xml`, `build.gradle`, `build.gradle.kts`, Java lock evidence, dynamic versions, snapshots/prereleases, Gradle wrapper evidence.

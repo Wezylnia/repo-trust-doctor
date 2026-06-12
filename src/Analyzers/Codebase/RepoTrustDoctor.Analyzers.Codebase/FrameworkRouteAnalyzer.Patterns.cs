@@ -15,7 +15,7 @@ public sealed partial class FrameworkRouteAnalyzer
     private static partial Regex AspNetAuthRegex();
 
     [GeneratedRegex(
-        @"(?:app|router)\s*\.\s*(?:get|post|put|delete|patch|all|use)\s*\(",
+        @"(?:app|router)\s*\.\s*(?:(?:get|post|put|delete|patch|all)\s*\(|use\s*\((?=\s*['""]))",
         RegexOptions.IgnoreCase)]
     private static partial Regex ExpressRouteRegex();
 
@@ -35,8 +35,7 @@ public sealed partial class FrameworkRouteAnalyzer
     private static partial Regex FlaskAuthRegex();
 
     [GeneratedRegex(
-        @"(?:path|re_path|url)\s*\(",
-        RegexOptions.IgnoreCase)]
+        @"(?m)^\s*(?:path|re_path|url)\s*\(")]
     private static partial Regex DjangoRouteRegex();
 
     [GeneratedRegex(
