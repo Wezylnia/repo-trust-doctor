@@ -82,4 +82,42 @@ public sealed class FrameworkRouteAnalyzerTests
         var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(artifact.Value);
         Assert.All(routesArtifact.Routes, route => Assert.False(route.HasAuthHint));
     }
+
+    [Fact]
+    public async Task FrameworkRouteAnalyzer_TreatsMinimalApiAllowAnonymousAsIntentionalPublicAccess()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Program.cs"), """
+        var app = WebApplication.Create();
+        app.MapGet("/health", () => "ok").AllowAnonymous();
+        app.Run();
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE012");
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.All(routesArtifact.Routes, route => Assert.True(route.HasAuthHint));
+    }
+
+    [Fact]
+    public async Task FrameworkRouteAnalyzer_SkipsTestSourceFiles()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Directory.CreateDirectory(Path.Combine(fixture.Path, "tests"));
+        File.WriteAllText(Path.Combine(directory.FullName, "RouteFixtureTests.cs"), """
+        public sealed class RouteFixtureTests
+        {
+            private const string Fixture = "app.MapGet(\"/fixture\", () => \"ok\");";
+        }
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(routesArtifact.Routes);
+    }
 }
