@@ -9,6 +9,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 {
     private const int LargeFileLineThreshold = 400;
     private const int FindingLimit = 12;
+    private const int BroadExceptionLookaheadLines = 24;
 
     private static readonly string[] SourceExtensions = [".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".java", ".kt", ".rs"];
 
@@ -267,7 +268,8 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
     {
         for (var index = 0; index < lines.Length; index++)
         {
-            if (IsBroadExceptionLine(lines[index]))
+            if (IsBroadExceptionLine(lines[index]) &&
+                !IsBoundedBroadExceptionHandler(lines, index))
             {
                 return index + 1;
             }
@@ -304,6 +306,19 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
     private static bool IsBroadExceptionLine(string line) =>
         BroadExceptionRegex().IsMatch(line) &&
         !line.Contains(" when (", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsBoundedBroadExceptionHandler(string[] lines, int catchLineIndex)
+    {
+        var block = string.Join(
+            '\n',
+            lines
+                .Skip(catchLineIndex)
+                .Take(BroadExceptionLookaheadLines));
+
+        return block.Contains("throw;", StringComparison.OrdinalIgnoreCase) ||
+               block.Contains("logerror", StringComparison.OrdinalIgnoreCase) ||
+               block.Contains("scanlifecyclestate.failed", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static Finding CreateCriticalityFinding(
         string ruleId,
