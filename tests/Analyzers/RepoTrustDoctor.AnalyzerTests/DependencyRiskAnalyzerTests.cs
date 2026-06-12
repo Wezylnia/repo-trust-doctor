@@ -103,9 +103,43 @@ public sealed class DependencyRiskAnalyzerTests
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN002");
     }
 
-    private static AnalysisContext CreateContextWithInventory(IReadOnlyList<DependencyPackageInfo> packages)
+    [Fact]
+    public async Task PackageOriginAnalyzer_RequiresMatchingNpmScopeRegistry()
     {
-        var context = new AnalysisContext(".", ".", AnalysisDepth.Standard);
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".npmrc"), """
+        @other:registry=https://npm.example.test/
+        """);
+        var context = CreateContextWithInventory(
+        [
+            CreatePackage(DependencyEcosystem.Npm, "@internal/widget", "1.0.0")
+        ], fixture.Path);
+
+        var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN005");
+    }
+
+    [Fact]
+    public async Task PackageOriginAnalyzer_AcceptsMatchingNpmScopeRegistry()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".npmrc"), """
+        @internal:registry = https://npm.example.test/
+        """);
+        var context = CreateContextWithInventory(
+        [
+            CreatePackage(DependencyEcosystem.Npm, "@internal/widget", "1.0.0")
+        ], fixture.Path);
+
+        var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN005");
+    }
+
+    private static AnalysisContext CreateContextWithInventory(IReadOnlyList<DependencyPackageInfo> packages, string repositoryPath = ".")
+    {
+        var context = new AnalysisContext(repositoryPath, repositoryPath, AnalysisDepth.Standard);
         context.AddArtifact(new AnalyzerArtifact(DependencyInventoryArtifact.ArtifactKey, new DependencyInventoryArtifact([], [], packages, [], new Dictionary<string, string>())));
         return context;
     }

@@ -320,11 +320,11 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
             findings.Add(CreateFinding("TRUST-ORIGIN004", "Package source mapping is missing for mixed NuGet sources", Severity.Medium, Confidence.Medium, "NuGet config mixes public and non-public package sources without visible packageSourceMapping.", "nuget-source", "Mixed NuGet sources were detected without package source mapping.", "Add NuGet package source mapping to reduce dependency confusion risk."));
         }
 
-        var npmrcHasScopeRegistry = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, ".npmrc")
-            .Any(path => File.ReadAllText(path).Contains(":registry=", StringComparison.OrdinalIgnoreCase));
         foreach (var package in inventory.Packages.Where(package => package.Ecosystem == DependencyEcosystem.Npm))
         {
-            if (package.Name.StartsWith("@", StringComparison.Ordinal) && !npmrcHasScopeRegistry && LooksInternal(package.Name))
+            if (package.Name.StartsWith("@", StringComparison.Ordinal) &&
+                LooksInternal(package.Name) &&
+                !NpmScopeRegistryExists(context.RepositoryPath, package.Name))
             {
                 findings.Add(CreateFinding("TRUST-ORIGIN005", "npm scope registry configuration appears risky", Severity.Medium, Confidence.Medium, $"Scoped package `{package.Name}` appears internal but no scope registry mapping was found.", "npm-registry", $"Package `{package.Name}` has no matching .npmrc scope registry mapping.", "Add explicit scope registry mapping in .npmrc for private scopes."));
             }
@@ -340,12 +340,62 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
         }
     }
 
+    private static bool NpmScopeRegistryExists(string repositoryPath, string packageName)
+    {
+        var scope = GetNpmScope(packageName);
+        if (scope is null)
+        {
+            return false;
+        }
+
+        var prefix = scope + ":registry";
+        foreach (var npmrc in RepositoryFileSystem.EnumerateFiles(repositoryPath, ".npmrc"))
+        {
+            if (!TryReadText(npmrc, out var content))
+            {
+                continue;
+            }
+
+            var lines = content.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+            foreach (var line in lines)
+            {
+                var trimmed = line.Trim();
+                if (trimmed.Length == 0 ||
+                    trimmed.StartsWith('#') ||
+                    trimmed.StartsWith(';') ||
+                    !trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var remainder = trimmed[prefix.Length..].TrimStart();
+                if (remainder.StartsWith('='))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static string? GetNpmScope(string packageName)
+    {
+        if (!packageName.StartsWith('@'))
+        {
+            return null;
+        }
+
+        var slash = packageName.IndexOf('/');
+        return slash > 1 ? packageName[..slash] : null;
+    }
+
     private static bool NuGetSourceMappingExists(string repositoryPath)
     {
         foreach (var config in RepositoryFileSystem.EnumerateFiles(repositoryPath, "NuGet.config"))
         {
-            if (RepositoryFileSystem.CanReadAsText(config) &&
-                File.ReadAllText(config).Contains("packageSourceMapping", StringComparison.OrdinalIgnoreCase))
+            if (TryReadText(config, out var content) &&
+                content.Contains("packageSourceMapping", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -379,6 +429,25 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
         name.Contains("private", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("@company/", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("@internal/", StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryReadText(string path, out string content)
+    {
+        content = string.Empty;
+        if (!RepositoryFileSystem.CanReadAsText(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            content = File.ReadAllText(path);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.DecoderFallbackException)
+        {
+            return false;
+        }
+    }
 }
 
 internal static class FindingFactory
