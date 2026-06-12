@@ -36,7 +36,7 @@ app.MapGet("/health", () => Results.Ok(new
 {
     status = "ok",
     version = ProductInfo.Version
-}));
+})).AllowAnonymous();
 
 app.MapPost("/api/scans", async (StartScanRequest request, ScanCoordinator coordinator, CancellationToken cancellationToken) =>
 {
@@ -48,20 +48,20 @@ app.MapPost("/api/scans", async (StartScanRequest request, ScanCoordinator coord
 
     var statusUrl = $"/api/scans/{result.ScanId}";
     return Results.Accepted(statusUrl, new StartScanResponse(result.ScanId, "Queued", statusUrl));
-});
+}).AllowAnonymous();
 
 app.MapGet("/api/scans", (IScanStore store) =>
-    Results.Ok(store.List().Select(scan => scan.ToStatusResponse())));
+    Results.Ok(store.List().Select(scan => scan.ToStatusResponse()))).AllowAnonymous();
 
 app.MapGet("/api/scans/{scanId:guid}", (Guid scanId, IScanStore store) =>
     store.TryGet(scanId, out var state) && state is not null
         ? Results.Ok(state.ToStatusResponse())
-        : Results.NotFound());
+        : Results.NotFound()).AllowAnonymous();
 
 app.MapGet("/api/scans/{scanId:guid}/progress", (Guid scanId, IScanStore store) =>
     store.TryGet(scanId, out var state) && state is not null
         ? Results.Ok(state.ToProgressDto())
-        : Results.NotFound());
+        : Results.NotFound()).AllowAnonymous();
 
 app.MapGet("/api/scans/{scanId:guid}/modules", (Guid scanId, IScanStore store) =>
 {
@@ -73,7 +73,7 @@ app.MapGet("/api/scans/{scanId:guid}/modules", (Guid scanId, IScanStore store) =
     return state.Result is null
         ? Results.Conflict(new { error = "Scan has not completed yet." })
         : Results.Ok(state.Result.Modules);
-});
+}).AllowAnonymous();
 
 app.MapGet("/api/scans/{scanId:guid}/findings", (Guid scanId, IScanStore store) =>
 {
@@ -85,7 +85,7 @@ app.MapGet("/api/scans/{scanId:guid}/findings", (Guid scanId, IScanStore store) 
     return state.Result is null
         ? Results.Conflict(new { error = "Scan has not completed yet." })
         : Results.Ok(state.Result.Findings);
-});
+}).AllowAnonymous();
 
 app.MapGet("/api/scans/{scanId:guid}/report", (Guid scanId, string? format, IScanStore store) =>
 {
@@ -106,12 +106,12 @@ app.MapGet("/api/scans/{scanId:guid}/report", (Guid scanId, string? format, ISca
         "sarif" => Results.Text(new SarifReportWriter().Write(state.Result), "application/sarif+json"),
         _ => Results.BadRequest(new { error = "Unsupported report format. Use json, markdown, md, or sarif." })
     };
-});
+}).AllowAnonymous();
 
 app.MapPost("/api/scans/{scanId:guid}/cancel", (Guid scanId, ScanCoordinator coordinator) =>
     coordinator.TryCancel(scanId)
         ? Results.Accepted($"/api/scans/{scanId}", new { scanId, status = "CancellationRequested" })
-        : Results.NotFound());
+        : Results.NotFound()).AllowAnonymous();
 
 app.Run();
 

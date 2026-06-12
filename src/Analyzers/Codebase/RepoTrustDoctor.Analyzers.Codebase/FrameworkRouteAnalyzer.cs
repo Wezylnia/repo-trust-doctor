@@ -212,6 +212,7 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 
     private static IEnumerable<string> EnumerateSourceFiles(string root) =>
         RepositoryFileSystem.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+            .Where(file => !IsTestSource(root, file))
             .Where(file =>
             {
                 var ext = Path.GetExtension(file);
@@ -268,7 +269,7 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
             }
 
             return HasAspNetClassAuthorize(lines, routeIndex) ||
-                   HasRequireAuthorizationInChainedCall(text, routeMatch);
+                   HasAspNetAuthInChainedCall(text, routeMatch);
         }
 
         if (framework.Name is "Express.js" or "Go Gin/Echo" or "Rust Actix/Axum")
@@ -304,9 +305,24 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
         return false;
     }
 
-    private static bool HasRequireAuthorizationInChainedCall(string text, Match routeMatch)
+    private static bool HasAspNetAuthInChainedCall(string text, Match routeMatch)
     {
-        return GetRouteStatement(text, routeMatch).Contains("RequireAuthorization", StringComparison.OrdinalIgnoreCase);
+        var statement = GetRouteStatement(text, routeMatch);
+        return statement.Contains("RequireAuthorization", StringComparison.OrdinalIgnoreCase) ||
+               statement.Contains("AllowAnonymous", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTestSource(string root, string filePath)
+    {
+        var relativePath = Path.GetRelativePath(root, filePath).Replace('\\', '/');
+        var fileName = Path.GetFileNameWithoutExtension(relativePath);
+        return relativePath.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith("Tests", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith("Test", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".spec", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".test", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetRouteStatement(string text, Match routeMatch)
@@ -328,7 +344,7 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
     private static partial Regex AspNetRouteRegex();
 
     [GeneratedRegex(
-        @"\[\s*(?:Authorize|AllowAnonymous)\s*(?:\(.*?\))?\s*\]|RequireAuthorization\s*\(",
+        @"\[\s*(?:Authorize|AllowAnonymous)\s*(?:\(.*?\))?\s*\]|(?:RequireAuthorization|AllowAnonymous)\s*\(",
         RegexOptions.IgnoreCase)]
     private static partial Regex AspNetAuthRegex();
 
