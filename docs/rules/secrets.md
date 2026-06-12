@@ -86,12 +86,12 @@ Recommendation: manually verify the finding, revoke or rotate the webhook URL if
 
 ## False-Positive Suppression
 
-To avoid noise in automated testing and documentation, the secret scanner ignores internal secret pattern matches (such as API keys, webhooks, or tokens) within files residing in the following paths:
+To avoid noise in automated testing and documentation, the secret scanner ignores internal secret pattern matches and sensitive-looking example filenames (such as `.env`) within files residing in the following paths:
 - `tests/Fixtures/`
 - `testdata/`
 - `docs/examples/`
 
-Note that files under these paths are still checked for general repository metadata or container settings where appropriate, but pattern-based secret rules will not fire.
+Note that files under these paths are still checked for general repository metadata or container settings where appropriate, but secret rules will not fire.
 
 ## Generic API Key Filtering (TRUST-SECRET012)
 

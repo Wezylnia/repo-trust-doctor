@@ -126,11 +126,11 @@ Recommendation: upload only specific build outputs and avoid broad artifact path
 - Default severity: Medium
 - Default confidence: High
 
-Detects workflows that declare permissions but do not set restrictive per-job permissions for `GITHUB_TOKEN`.
+Detects top-level workflow `permissions:` blocks that grant write access instead of keeping the workflow default read-only and moving write scopes to the specific job that needs them.
 
 Why it matters: without explicit job-level permission restrictions, the token may carry broader access than needed. If a job is compromised through a supply-chain or injection vector, the token may allow wider repository actions.
 
-Recommendation: set per-job permissions to restrict `GITHUB_TOKEN` to the minimum required scope.
+Recommendation: keep top-level workflow permissions read-only or empty, then set per-job permissions to the minimum required scope.
 
 ## TRUST-GHA013: Workflow May Contain Hardcoded Secret in Step Env
 

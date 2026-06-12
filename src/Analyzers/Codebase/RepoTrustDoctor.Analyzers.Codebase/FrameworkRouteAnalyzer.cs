@@ -9,6 +9,7 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 {
     private const int UnauthFindingLimit = 15;
     private const int RouteFindingLimit = 20;
+    private const int MaxRouteStatementLength = 1200;
 
     private static readonly IReadOnlyList<FrameworkDefinition> Frameworks =
     [
@@ -245,7 +246,7 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
     {
         var value = routeMatch.Value.Trim();
         return value.EndsWith('(')
-            ? GetRouteStatement(text, routeMatch).Trim()
+            ? NormalizeRouteSnippet(GetRouteStatement(text, routeMatch))
             : value;
     }
 
@@ -327,15 +328,88 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 
     private static string GetRouteStatement(string text, Match routeMatch)
     {
-        var end = text.IndexOf(';', routeMatch.Index);
-        var newline = text.IndexOf('\n', routeMatch.Index);
-        if (end < 0 || (newline >= 0 && newline < end))
+        var maxEnd = Math.Min(text.Length, routeMatch.Index + MaxRouteStatementLength);
+        var end = FindStatementEnd(text, routeMatch.Index, maxEnd);
+        if (end < 0)
         {
-            end = newline >= 0 ? newline : Math.Min(text.Length, routeMatch.Index + 300);
+            var newline = text.IndexOf('\n', routeMatch.Index, maxEnd - routeMatch.Index);
+            end = newline >= 0 ? newline : maxEnd - 1;
         }
 
         var length = Math.Min(end - routeMatch.Index + 1, text.Length - routeMatch.Index);
         return length <= 0 ? string.Empty : text.Substring(routeMatch.Index, length);
+    }
+
+    private static string NormalizeRouteSnippet(string value) =>
+        WhitespaceRegex().Replace(value.Trim(), " ");
+
+    private static int FindStatementEnd(string text, int start, int maxEnd)
+    {
+        var parenDepth = 0;
+        var braceDepth = 0;
+        var bracketDepth = 0;
+        var inString = false;
+        var stringDelimiter = '\0';
+        var escaped = false;
+
+        for (var index = start; index < maxEnd; index++)
+        {
+            var current = text[index];
+            if (inString)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+
+                if (current == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (current == stringDelimiter)
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (current is '"' or '\'' or '`')
+            {
+                inString = true;
+                stringDelimiter = current;
+                continue;
+            }
+
+            switch (current)
+            {
+                case '(':
+                    parenDepth++;
+                    break;
+                case ')':
+                    parenDepth = Math.Max(0, parenDepth - 1);
+                    break;
+                case '{':
+                    braceDepth++;
+                    break;
+                case '}':
+                    braceDepth = Math.Max(0, braceDepth - 1);
+                    break;
+                case '[':
+                    bracketDepth++;
+                    break;
+                case ']':
+                    bracketDepth = Math.Max(0, bracketDepth - 1);
+                    break;
+                case ';' when parenDepth == 0 && braceDepth == 0 && bracketDepth == 0:
+                    return index;
+            }
+        }
+
+        return -1;
     }
 
 }

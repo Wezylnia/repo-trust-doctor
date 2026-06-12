@@ -50,6 +50,11 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             var fileName = Path.GetFileName(file);
             var extension = Path.GetExtension(file);
 
+            if (IsExampleFixturePath(relativePath))
+            {
+                continue;
+            }
+
             if (SensitiveFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) || SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
             {
                 findings.Add(CreateFinding("TRUST-SECRET001", "Sensitive-looking file is committed", Severity.High, Confidence.High, relativePath, $"Sensitive-looking file '{fileName}' exists."));
@@ -57,11 +62,6 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             }
 
             if (!RepositoryFileSystem.CanReadAsText(file))
-            {
-                continue;
-            }
-
-            if (IsExampleFixturePath(relativePath))
             {
                 continue;
             }

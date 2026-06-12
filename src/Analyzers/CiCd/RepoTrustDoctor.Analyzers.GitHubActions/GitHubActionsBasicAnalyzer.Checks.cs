@@ -128,13 +128,14 @@ public sealed partial class GitHubActionsBasicAnalyzer
 
     private static void CheckTokenScope(string content, string relativePath, List<Finding> findings)
     {
-        var permsMatch = PermissionsPattern().Match(content);
+        var workflowHeader = GetTopLevelWorkflowHeader(content);
+        var permsMatch = PermissionsPattern().Match(workflowHeader);
         if (!permsMatch.Success)
         {
             return;
         }
 
-        if (!PermissionsGrantWriteScope(content, permsMatch.Index))
+        if (!PermissionsGrantWriteScope(workflowHeader, permsMatch.Index))
         {
             return;
         }
@@ -255,9 +256,7 @@ public sealed partial class GitHubActionsBasicAnalyzer
 
     private static void CheckWorkflowWritePermissions(string content, string relativePath, List<Finding> findings)
     {
-        // Only check top-level permissions (before first job)
-        var jobIdx = content.IndexOf("\njobs:", StringComparison.OrdinalIgnoreCase);
-        var permSection = jobIdx > 0 ? content[..jobIdx] : content;
+        var permSection = GetTopLevelWorkflowHeader(content);
 
         if (WorkflowWritePermPattern().IsMatch(permSection))
         {
@@ -283,6 +282,25 @@ public sealed partial class GitHubActionsBasicAnalyzer
                 break;
             }
         }
+    }
+
+    private static string GetTopLevelWorkflowHeader(string content)
+    {
+        var normalized = content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var offset = 0;
+
+        foreach (var line in lines)
+        {
+            if (GetIndentation(line) == 0 && line.TrimStart().StartsWith("jobs:", StringComparison.OrdinalIgnoreCase))
+            {
+                return normalized[..offset];
+            }
+
+            offset += line.Length + 1;
+        }
+
+        return normalized;
     }
 
     private static void CheckJobContainerLatest(string content, string relativePath, List<Finding> findings)
