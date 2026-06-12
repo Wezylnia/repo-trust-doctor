@@ -155,6 +155,39 @@ public sealed class CodeCriticalityAnalyzerTests
     }
 
     [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotTreatAnalyzerVocabularyAsApplicationCriticality()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "contracts");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "CodebaseArtifacts.cs"), """
+        public enum CodeCriticalityReason
+        {
+            Authentication,
+            Authorization,
+            Payments,
+            Database,
+            FileSystem,
+            Network,
+            Cryptography,
+            Secrets
+        }
+
+        public sealed class RuleMapper
+        {
+            public string Map(CodeCriticalityReason reason) => CodeCriticalityReason.Authentication.ToString();
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(artifact.Files);
+    }
+
+    [Fact]
     public async Task CodeCriticalityAnalyzer_IgnoresNonCriticalSmallFiles()
     {
         using var fixture = TemporaryRepository.Create();
