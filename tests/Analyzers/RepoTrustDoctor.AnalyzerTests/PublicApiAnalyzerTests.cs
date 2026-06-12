@@ -100,6 +100,27 @@ public sealed class PublicApiAnalyzerTests
     }
 
     [Fact]
+    public async Task PublicApiAnalyzer_SkipsTestSources()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var testsDirectory = Path.Combine(fixture.Path, "tests");
+        Directory.CreateDirectory(testsDirectory);
+        File.WriteAllText(Path.Combine(testsDirectory, "WidgetClientTests.cs"), """
+        public sealed class WidgetClientTests
+        {
+            public void CreatesWidget() { }
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new PublicApiAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        var artifact = Assert.IsType<CodePublicApiArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(artifact.Symbols);
+    }
+
+    [Fact]
     public async Task PublicApiAnalyzer_SupportsMultiLanguageExtraction()
     {
         using var fixture = TemporaryRepository.Create();

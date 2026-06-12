@@ -1,0 +1,269 @@
+﻿# RepoTrustDoctor public API baseline
+# Generated from a deep static scan after excluding test sources.
+
+export const severities
+export const severityOrder
+export default
+export function ApiScanPanel
+export function buildAreaScores
+export function buildGitHubRepositoryUrl
+export function CategoryScoreTable
+export function DecisionPanel
+export function explainFinding
+export function FilterToolbar
+export function FindingDetail
+export function FindingList
+export function formatCategory
+export function formatDecision
+export function formatEvidenceKind
+export function formatStatus
+export function formatTrustProfile
+export function getDependencyInventory
+export function Header
+export function isTerminalScanState
+export function Metric
+export function normalizeApiBaseUrl
+export function normalizeGitHubRepositoryInput
+export function recommendationText
+export function ReportSidebar
+export function ReportViewer
+export function ScanGuide
+export function ScanIntro
+export function scoreTone
+export function SeverityBadge
+export function StatusPill
+export function summarizeFindings
+export function useFindingFilters
+export interface ApiScanRequest
+export interface AreaScore
+export interface CategoryScore
+export interface DependencyInventoryArtifact
+export interface Evidence
+export interface Finding
+export interface FindingSummary
+export interface Recommendation
+export interface RepositoryScan
+export interface ScanModule
+export interface ScanStatusResponse
+export interface StartScanResponse
+export interface TrustScore
+export type Severity
+member AnalysisContext.AddArtifact()
+member AnalysisContext.Depth
+member AnalysisContext.RepositoryPath
+member AnalysisContext.Target
+member AnalyzerExecutor.ExecuteAsync()
+member AnalyzerResult.Completed()
+member AzurePipelinesAnalyzer.AnalyzeAsync()
+member CircleCiAnalyzer.AnalyzeAsync()
+member CodeCriticalityAnalyzer.AnalyzeAsync()
+member CoverageCriticalityAnalyzer.AnalyzeAsync()
+member CoverageImportAnalyzer.AnalyzeAsync()
+member DefaultRepositoryScanRunner.CreateAnalyzers()
+member DefaultRepositoryScanRunner.RunAsync()
+member DependencyInventoryAnalyzer.AnalyzeAsync()
+member DependencyLicenseAnalyzer.AnalyzeAsync()
+member DependencyVulnerabilityAnalyzer.AnalyzeAsync()
+member DockerBasicAnalyzer.AnalyzeAsync()
+member DockerComposeAnalyzer.AnalyzeAsync()
+member EvidenceImportAnalyzer.AnalyzeAsync()
+member FindingFingerprinter.AddFingerprints()
+member FindingFingerprinter.Compute()
+member FindingSummary.From()
+member FrameworkRouteAnalyzer.AnalyzeAsync()
+member GitHubActionsBasicAnalyzer.AnalyzeAsync()
+member GitLabCiAnalyzer.AnalyzeAsync()
+member ImportGraphAnalyzer.AnalyzeAsync()
+member InMemoryScanJobQueue.DequeueAsync()
+member InMemoryScanJobQueue.EnqueueAsync()
+member InMemoryScanStore.CreateQueued()
+member InMemoryScanStore.List()
+member InMemoryScanStore.TryGet()
+member InMemoryScanStore.TryUpdate()
+member JsonReportWriter.SortFindings()
+member JsonReportWriter.Write()
+member KubernetesAnalyzer.AnalyzeAsync()
+member MarkdownReportWriter.Write()
+member MavenCentralPackageMetadataClient.GetMetadataAsync()
+member NpmPackageMetadataClient.GetMetadataAsync()
+member NuGetPackageMetadataClient.GetMetadataAsync()
+member OsvAdvisoryClient.Parse()
+member OsvAdvisoryClient.QueryAsync()
+member PackageFreshnessAnalyzer.AnalyzeAsync()
+member PackageLicenseNormalizer.Normalize()
+member PackageMetadataAnalyzer.AnalyzeAsync()
+member PackageMetadataParser.ParseMavenCentral()
+member PackageMetadataParser.ParseNpm()
+member PackageMetadataParser.ParseNuGet()
+member PackageMetadataParser.ParsePyPi()
+member PackageOriginAnalyzer.AnalyzeAsync()
+member PackageRegistryConfigAnalyzer.AnalyzeAsync()
+member PublicApiAnalyzer.AnalyzeAsync()
+member PublicApiAnalyzer.ExtractSymbols()
+member PyPiPackageMetadataClient.GetMetadataAsync()
+member ReleaseEvidenceAnalyzer.AnalyzeAsync()
+member RepositoryComparisonEngine.Compare()
+member RepositoryFileSystem.CanReadAsText()
+member RepositoryFileSystem.EnumerateFiles()
+member RepositoryHealthAnalyzer.AnalyzeAsync()
+member RepositoryWorkspace.CloneFromUrlAsync()
+member RepositoryWorkspace.Dispose()
+member RepositoryWorkspace.ForLocalPath()
+member RepositoryWorkspace.Path
+member RepositoryWorkspace.Target
+member Result.Failure()
+member Result.Success()
+member SafeHttpLookup.GetStringAsync()
+member SafeHttpLookup.PostJsonAsync()
+member SafeLookupResult.Fail()
+member SafeLookupResult.Ok()
+member SarifReportWriter.Write()
+member ScanCoordinator.StartAsync()
+member ScanCoordinator.TryCancel()
+member ScanJobProcessor.ProcessAsync()
+member ScanJsonSerializerOptions.Configure()
+member ScanJsonSerializerOptions.Create()
+member ScanOrchestrator.RunAsync()
+member ScanRequestValidator.TryCreateOptions()
+member ScanState.ToProgressDto()
+member ScanState.ToStatusResponse()
+member SecretQuickScanAnalyzer.AnalyzeAsync()
+member TerraformAnalyzer.AnalyzeAsync()
+member TerraformAnalyzer.StripComments()
+member TrustDiffEngine.Compare()
+member TrustPolicyEvaluator.Evaluate()
+member TrustPolicyPresets.ForProfile()
+member TrustProfileCatalog.ActiveProfiles
+member TrustProfileCatalog.IsActive()
+member TrustProfileCatalog.Normalize()
+member TrustRegressionDetector.Detect()
+member TrustScorer.Score()
+member TrustSnapshotFactory.Create()
+member WorkspaceAnalyzer.AnalyzeAsync()
+type AnalysisContext
+type AnalyzerArtifact
+type AnalyzerExecutionResult
+type AnalyzerExecutor
+type AnalyzerResult
+type ApplicationMarker
+type AzurePipelinesAnalyzer
+type CategoryScore
+type CategoryScoreDelta
+type CategoryScoreSnapshot
+type CentralFileEntry
+type CircleCiAnalyzer
+type CodeCriticalityAnalyzer
+type CodeCriticalityArtifact
+type CodeCriticalityFile
+type CodePublicApiArtifact
+type CoverageArtifact
+type CoverageCriticalityAnalyzer
+type CoverageFileInfo
+type CoverageImportAnalyzer
+type CoverageReportInfo
+type DefaultRepositoryScanRunner
+type DependencyInventoryAnalyzer
+type DependencyInventoryArtifact
+type DependencyLicenseAnalyzer
+type DependencyLockfileInfo
+type DependencyManifestInfo
+type DependencyPackageInfo
+type DependencyPackageSourceInfo
+type DependencyVulnerabilityAnalyzer
+type DockerBasicAnalyzer
+type DockerComposeAnalyzer
+type EnqueueScanResult
+type Evidence
+type EvidenceImportAnalyzer
+type FinalDecision
+type Finding
+type FindingChange
+type FindingFingerprinter
+type FindingSnapshot
+type FindingSummary
+type FrameworkRouteAnalyzer
+type FrameworkRouteArtifact
+type GitHubActionsBasicAnalyzer
+type GitLabCiAnalyzer
+type ImportGraphAnalyzer
+type ImportGraphArtifact
+type InMemoryScanJobQueue
+type InMemoryScanStore
+type IOsvAdvisoryClient
+type IPackageMetadataClient
+type IRepositoryAnalyzer
+type IRepositoryScanRunner
+type IScanJobQueue
+type IScanStore
+type JsonReportWriter
+type KubernetesAnalyzer
+type MarkdownReportWriter
+type MavenCentralPackageMetadataClient
+type NormalizedPackageLicense
+type NpmPackageMetadataClient
+type NuGetPackageMetadataClient
+type OsvAdvisoryClient
+type PackageFreshnessAnalyzer
+type PackageLicenseNormalizer
+type PackageMetadataAnalyzer
+type PackageMetadataArtifact
+type PackageMetadataParser
+type PackageOriginAnalyzer
+type PackageRegistryConfigAnalyzer
+type PackageRegistryMetadata
+type PolicyEvaluation
+type PolicyViolation
+type ProductInfo
+type Program
+type PublicApiAnalyzer
+type PyPiPackageMetadataClient
+type QueuedScanBackgroundService
+type QueuedScanWorkerService
+type Recommendation
+type ReleaseEvidenceAnalyzer
+type RepositoryComparisonEngine
+type RepositoryComparisonEntry
+type RepositoryComparisonResult
+type RepositoryFileSystem
+type RepositoryHealthAnalyzer
+type RepositoryScan
+type RepositoryWorkspace
+type Result
+type RouteEntry
+type RuleMetadata
+type SafeHttpLookup
+type SafeLookupResult
+type SarifReportWriter
+type ScanCoordinator
+type ScanJob
+type ScanJobProcessor
+type ScanJsonSerializerOptions
+type ScanModule
+type ScanModuleProgressDto
+type ScanOrchestrator
+type ScanProgressDto
+type ScanRequestOptions
+type ScanRequestValidator
+type ScanSnapshot
+type ScanState
+type ScanStatusResponse
+type ScheduledScanDefinition
+type SecretQuickScanAnalyzer
+type StartScanRequest
+type StartScanResponse
+type TerraformAnalyzer
+type TrustDiffEngine
+type TrustDiffResult
+type TrustPolicy
+type TrustPolicyEvaluator
+type TrustPolicyPresets
+type TrustProfileCatalog
+type TrustRegressionAlert
+type TrustRegressionDetector
+type TrustScore
+type TrustScorer
+type TrustSnapshotFactory
+type VulnerabilityAdvisory
+type WorkspaceAnalyzer
+type WorkspaceArtifact
+type WorkspaceMember

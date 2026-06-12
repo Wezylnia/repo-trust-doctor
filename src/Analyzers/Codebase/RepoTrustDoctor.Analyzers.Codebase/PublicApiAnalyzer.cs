@@ -53,7 +53,8 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
         var symbols = new SortedSet<string>(StringComparer.Ordinal);
         var extensions = new[] { ".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".go", ".rs" };
         var files = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*", SearchOption.AllDirectories)
-            .Where(file => extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase));
+            .Where(file => extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
+            .Where(file => !IsTestSource(context.RepositoryPath, file));
 
         foreach (var file in files)
         {
@@ -177,6 +178,19 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
         }
 
         return symbols.ToArray();
+    }
+
+    private static bool IsTestSource(string root, string filePath)
+    {
+        var relativePath = Path.GetRelativePath(root, filePath).Replace('\\', '/');
+        var fileName = Path.GetFileNameWithoutExtension(relativePath);
+        return relativePath.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith("Tests", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith("Test", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".spec", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".test", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<ApiBaseline?> ReadBaselineAsync(string repositoryPath, CancellationToken cancellationToken)
