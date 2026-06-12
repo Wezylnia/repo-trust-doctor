@@ -101,6 +101,35 @@ public sealed class CodeCriticalityAnalyzerTests
     }
 
     [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotReportDiagnosticBoundaryExceptionHandlersAsBroad()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "workers");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "ScanWorker.cs"), """
+        public sealed class ScanWorker
+        {
+            public void Run(string secret)
+            {
+                try { File.ReadAllText(secret); }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Worker failed.");
+                    State = ScanLifecycleState.Failed;
+                }
+            }
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE006");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.DoesNotContain(Assert.Single(artifact.Files).Reasons, reason => reason == CodeCriticalityReason.BroadExceptionHandling);
+    }
+
+    [Fact]
     public async Task CodeCriticalityAnalyzer_DoesNotTreatInfrastructureTypeNamesAsSecretOrCryptoSignals()
     {
         using var fixture = TemporaryRepository.Create();
