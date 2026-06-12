@@ -125,6 +125,11 @@ describe('report selectors', () => {
     expect(explainFinding(finding('TRUST-EVI004', 'Medium', false))).toContain('parsed as valid JSON');
     expect(explainFinding(finding('TRUST-DEP050', 'Medium', false))).toContain('dynamic version');
   });
+
+  it('explains v1.7 codebase rules specifically', () => {
+    expect(explainFinding(finding('TRUST-CODE012', 'Medium', false))).toContain('authentication');
+    expect(explainFinding(finding('TRUST-CODE015', 'High', false))).toContain('command execution');
+  });
 });
 
 function finding(ruleId: string, severity: string, isBlocking: boolean, recommendation = 'Review.'): Finding {

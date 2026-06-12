@@ -19,11 +19,58 @@ public sealed class ScanOrchestrator
         AnalyzerExecutor executor,
         TrustScorer scorer)
     {
-        this.analyzers = analyzers.OrderBy(analyzer => analyzer.Id, StringComparer.OrdinalIgnoreCase).ToArray();
+        var analyzerList = analyzers.ToArray();
+        ValidateAnalyzers(analyzerList);
+
+        this.analyzers = OrderAnalyzers(analyzerList);
         this.executor = executor;
         this.scorer = scorer;
+    }
 
-        ValidateAnalyzers(this.analyzers);
+    private static IReadOnlyList<IRepositoryAnalyzer> OrderAnalyzers(IReadOnlyList<IRepositoryAnalyzer> analyzers)
+    {
+        var byId = analyzers.ToDictionary(analyzer => analyzer.Id, StringComparer.OrdinalIgnoreCase);
+        var ordered = new List<IRepositoryAnalyzer>();
+        var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var analyzer in analyzers.OrderBy(analyzer => analyzer.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            Visit(analyzer, byId, ordered, visiting, visited);
+        }
+
+        return ordered;
+    }
+
+    private static void Visit(
+        IRepositoryAnalyzer analyzer,
+        IReadOnlyDictionary<string, IRepositoryAnalyzer> byId,
+        List<IRepositoryAnalyzer> ordered,
+        HashSet<string> visiting,
+        HashSet<string> visited)
+    {
+        if (visited.Contains(analyzer.Id))
+        {
+            return;
+        }
+
+        if (!visiting.Add(analyzer.Id))
+        {
+            throw new InvalidOperationException($"Analyzer dependency cycle detected at '{analyzer.Id}'.");
+        }
+
+        foreach (var dependency in analyzer.DependsOn)
+        {
+            var dependencyId = ResolveDependencyId(dependency);
+            if (byId.TryGetValue(dependencyId, out var dependencyAnalyzer))
+            {
+                Visit(dependencyAnalyzer, byId, ordered, visiting, visited);
+            }
+        }
+
+        visiting.Remove(analyzer.Id);
+        visited.Add(analyzer.Id);
+        ordered.Add(analyzer);
     }
 
     private static void ValidateAnalyzers(IReadOnlyList<IRepositoryAnalyzer> analyzers)
@@ -56,7 +103,32 @@ public sealed class ScanOrchestrator
                 }
             }
         }
+
+        foreach (var analyzer in analyzers)
+        {
+            foreach (var dependency in analyzer.DependsOn)
+            {
+                var dependencyId = ResolveDependencyId(dependency);
+                if (!analyzerIds.Contains(dependencyId))
+                {
+                    throw new InvalidOperationException(
+                        $"Analyzer '{analyzer.Id}' depends on unknown analyzer or artifact '{dependency}'.");
+                }
+            }
+        }
     }
+
+    private static string ResolveDependencyId(string dependency) => dependency switch
+    {
+        "dependency.inventory" => "dependency-inventory",
+        "dependency.packageMetadata" => "dependency-metadata",
+        "code.coverage" => "codebase-01-coverage-import",
+        "code.criticality" => "codebase-02-criticality",
+        "code.public-api" => "codebase-04-public-api",
+        "code.import-graph" => "codebase-05-import-graph",
+        "code.framework-routes" => "codebase-06-framework-routes",
+        _ => dependency
+    };
 
     public async Task<RepositoryScan> RunAsync(
         string target,

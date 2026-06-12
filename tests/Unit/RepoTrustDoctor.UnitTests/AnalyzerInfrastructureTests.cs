@@ -1,11 +1,9 @@
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Analysis.Engine;
 using RepoTrustDoctor.Analysis.Orchestration;
-using RepoTrustDoctor.Analyzers.Docker;
-using RepoTrustDoctor.Analyzers.GitHubActions;
 using RepoTrustDoctor.Analyzers.Repository;
-using RepoTrustDoctor.Analyzers.Secrets;
 using RepoTrustDoctor.Domain;
+using RepoTrustDoctor.Infrastructure.Scanning;
 using RepoTrustDoctor.Scoring;
 
 namespace RepoTrustDoctor.UnitTests;
@@ -15,17 +13,19 @@ public sealed class AnalyzerInfrastructureTests
     [Fact]
     public void AllAnalyzers_ExposeNonEmptyRuleMetadata()
     {
-        IRepositoryAnalyzer[] analyzers =
-        [
-            new RepositoryHealthAnalyzer(),
-            new GitHubActionsBasicAnalyzer(),
-            new SecretQuickScanAnalyzer(),
-            new DockerBasicAnalyzer()
-        ];
+        var analyzers = DefaultRepositoryScanRunner.CreateAnalyzers();
+        var artifactOnlyAnalyzers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "dependency-metadata"
+        };
 
         foreach (var analyzer in analyzers)
         {
-            Assert.NotEmpty(analyzer.Rules);
+            if (!artifactOnlyAnalyzers.Contains(analyzer.Id))
+            {
+                Assert.NotEmpty(analyzer.Rules);
+            }
+
             foreach (var rule in analyzer.Rules)
             {
                 Assert.False(string.IsNullOrWhiteSpace(rule.RuleId), $"Analyzer '{analyzer.Id}' has a rule with empty RuleId.");
@@ -39,13 +39,7 @@ public sealed class AnalyzerInfrastructureTests
     [Fact]
     public void AllAnalyzers_HaveUniqueRuleIds()
     {
-        IRepositoryAnalyzer[] analyzers =
-        [
-            new RepositoryHealthAnalyzer(),
-            new GitHubActionsBasicAnalyzer(),
-            new SecretQuickScanAnalyzer(),
-            new DockerBasicAnalyzer()
-        ];
+        var analyzers = DefaultRepositoryScanRunner.CreateAnalyzers();
 
         var allRuleIds = analyzers.SelectMany(a => a.Rules).Select(r => r.RuleId).ToArray();
         var unique = new HashSet<string>(allRuleIds, StringComparer.OrdinalIgnoreCase);
@@ -97,13 +91,7 @@ public sealed class AnalyzerInfrastructureTests
     [Fact]
     public void AllAnalyzers_HavePositiveTimeout()
     {
-        IRepositoryAnalyzer[] analyzers =
-        [
-            new RepositoryHealthAnalyzer(),
-            new GitHubActionsBasicAnalyzer(),
-            new SecretQuickScanAnalyzer(),
-            new DockerBasicAnalyzer()
-        ];
+        var analyzers = DefaultRepositoryScanRunner.CreateAnalyzers();
 
         foreach (var analyzer in analyzers)
         {
@@ -114,8 +102,7 @@ public sealed class AnalyzerInfrastructureTests
     [Fact]
     public void DefaultScanAnalyzers_IncludeAutomationAnalyzersForEveryActiveProfile()
     {
-        var analyzerIds = RepoTrustDoctor.Infrastructure.Scanning.DefaultRepositoryScanRunner
-            .CreateAnalyzers()
+        var analyzerIds = DefaultRepositoryScanRunner.CreateAnalyzers()
             .Select(analyzer => analyzer.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -127,22 +114,39 @@ public sealed class AnalyzerInfrastructureTests
         }
     }
 
+    [Fact]
+    public async Task ScanOrchestrator_RunsDependenciesBeforeDependents()
+    {
+        var dependent = new FakeAnalyzerWithRule("a-dependent", "TRUST-ORDER002", ["z-producer"]);
+        var producer = new FakeAnalyzerWithRule("z-producer", "TRUST-ORDER001");
+        var orchestrator = new ScanOrchestrator([dependent, producer], new AnalyzerExecutor(), new TrustScorer());
+
+        var scan = await orchestrator.RunAsync(".", ".", AnalysisDepth.Fast, TrustProfile.Personal, CancellationToken.None);
+
+        Assert.Collection(
+            scan.Modules,
+            module => Assert.Equal("z-producer", module.ModuleId),
+            module => Assert.Equal("a-dependent", module.ModuleId));
+    }
+
     private sealed class FakeAnalyzerWithRule : IRepositoryAnalyzer
     {
         private readonly string id;
         private readonly string ruleId;
+        private readonly IReadOnlyCollection<string> dependsOn;
 
-        public FakeAnalyzerWithRule(string id, string ruleId)
+        public FakeAnalyzerWithRule(string id, string ruleId, IReadOnlyCollection<string>? dependsOn = null)
         {
             this.id = id;
             this.ruleId = ruleId;
+            this.dependsOn = dependsOn ?? [];
         }
 
         public string Id => id;
         public string DisplayName => id;
         public AnalysisCategory Category => AnalysisCategory.RepositoryHealth;
         public AnalysisDepth MinimumDepth => AnalysisDepth.Fast;
-        public IReadOnlyCollection<string> DependsOn => [];
+        public IReadOnlyCollection<string> DependsOn => dependsOn;
         public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
         public TimeSpan Timeout => TimeSpan.FromSeconds(10);
         public IReadOnlyCollection<RuleMetadata> Rules =>

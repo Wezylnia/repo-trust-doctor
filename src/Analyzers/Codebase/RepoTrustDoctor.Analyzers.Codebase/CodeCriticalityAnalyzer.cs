@@ -73,7 +73,15 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             Severity.High,
             Confidence.Medium,
             "A source file uses deserialization APIs that are known vectors for remote code execution.",
-            "Use safe deserialization methods, avoid BinaryFormatter, restrict allowed types, and validate deserialized input.")
+            "Use safe deserialization methods, avoid BinaryFormatter, restrict allowed types, and validate deserialized input."),
+        new(
+            "TRUST-CODE015",
+            "Command execution in critical code",
+            AnalysisCategory.Codebase,
+            Severity.High,
+            Confidence.Medium,
+            "A source file invokes command execution APIs that can run operating-system commands.",
+            "Avoid shell execution for untrusted input; use safe APIs, allowlists, and explicit argument boundaries.")
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -90,7 +98,9 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 
             var text = await File.ReadAllTextAsync(file, cancellationToken);
             var analyzed = AnalyzeFile(context.RepositoryPath, file, text);
-            if (analyzed.Score >= 30)
+            if (analyzed.Score >= 30 ||
+                analyzed.Reasons.Contains(CodeCriticalityReason.CommandExecution) ||
+                analyzed.Reasons.Contains(CodeCriticalityReason.Deserialization))
             {
                 criticalFiles.Add(analyzed);
             }
@@ -144,7 +154,20 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 "Deserialization in critical code",
                 $"{file.FilePath} uses deserialization APIs that may enable remote code execution.",
                 "code.deserialization",
-                file)));
+                file,
+                "Use safe deserialization methods, avoid BinaryFormatter, restrict allowed types, and validate deserialized input.")));
+
+        findings.AddRange(ordered
+            .Where(file => file.Reasons.Contains(CodeCriticalityReason.CommandExecution))
+            .Take(FindingLimit)
+            .Select(file => CreateCriticalityFinding(
+                "TRUST-CODE015",
+                Severity.High,
+                "Command execution in critical code",
+                $"{file.FilePath} invokes command execution APIs that can run operating-system commands.",
+                "code.command_execution",
+                file,
+                "Avoid shell execution for untrusted input; use safe APIs, allowlists, and explicit argument boundaries.")));
 
         var artifact = new CodeCriticalityArtifact(
             ordered,
@@ -153,7 +176,9 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 ["code.criticality.file.count"] = ordered.Length.ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.highest_score"] = (ordered.FirstOrDefault()?.Score ?? 0).ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.large_file.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.LargeFile)).ToString(CultureInfo.InvariantCulture),
-                ["code.criticality.broad_exception.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.BroadExceptionHandling)).ToString(CultureInfo.InvariantCulture)
+                ["code.criticality.broad_exception.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.BroadExceptionHandling)).ToString(CultureInfo.InvariantCulture),
+                ["code.criticality.deserialization.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.Deserialization)).ToString(CultureInfo.InvariantCulture),
+                ["code.criticality.command_execution.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.CommandExecution)).ToString(CultureInfo.InvariantCulture)
             });
 
         return AnalyzerResult.Completed(findings, [new AnalyzerArtifact(CodeCriticalityArtifact.ArtifactKey, artifact)]);
@@ -202,7 +227,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
     private static int ScoreReason(CodeCriticalityReason reason) => reason switch
     {
         CodeCriticalityReason.Deserialization => 30,
-        CodeCriticalityReason.CommandExecution => 28,
+        CodeCriticalityReason.CommandExecution => 30,
         CodeCriticalityReason.Authentication or
         CodeCriticalityReason.Authorization or
         CodeCriticalityReason.Payments or
@@ -248,7 +273,8 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         string title,
         string message,
         string evidenceKind,
-        CodeCriticalityFile file) =>
+        CodeCriticalityFile file,
+        string recommendation = "Review critical code files with extra care and ensure their behavior is covered by targeted tests.") =>
         new(
             ruleId,
             title,
@@ -257,7 +283,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             Confidence.Medium,
             message,
             [new Evidence(evidenceKind, message, file.FilePath, file.FirstRelevantLine)],
-            new Recommendation("Review critical code files with extra care and ensure their behavior is covered by targeted tests."),
+            new Recommendation(recommendation),
             Tags: ["codebase", "criticality"]);
 
     private static string FormatReasons(IReadOnlyList<CodeCriticalityReason> reasons) =>

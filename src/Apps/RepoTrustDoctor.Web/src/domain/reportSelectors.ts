@@ -185,9 +185,33 @@ export function explainFinding(finding: Finding): string {
     return 'This finding affects package registry configuration. HTTP registries, global auth tokens, inline credentials, and insecure protocols can weaken supply-chain security.';
   }
 
+  if (finding.ruleId === 'TRUST-CODE010') {
+    return 'This source file is imported by many other files. Changes here can affect a large part of the repository, so it deserves careful review and targeted tests.';
+  }
+
+  if (finding.ruleId === 'TRUST-CODE011') {
+    return 'A highly central file has low or missing imported coverage evidence. Because many files depend on it, defects here can spread widely. Add focused tests before risky changes.';
+  }
+
+  if (finding.ruleId === 'TRUST-CODE012') {
+    return 'An HTTP endpoint was detected without a nearby authentication or authorization signal. Confirm whether the endpoint is intentionally public, then add middleware or annotations where access should be restricted.';
+  }
+
+  if (finding.ruleId === 'TRUST-CODE013') {
+    return 'The scanner found an HTTP route or controller endpoint. Review exposed endpoints for authentication, authorization, input validation, rate limiting, and logging.';
+  }
+
+  if (finding.ruleId === 'TRUST-CODE014') {
+    return 'A critical code path uses deserialization APIs that can become remote-code-execution risks when fed untrusted input. Prefer safe serializers, restrict allowed types, and validate input.';
+  }
+
+  if (finding.ruleId === 'TRUST-CODE015') {
+    return 'A critical code path invokes operating-system command execution APIs. Avoid shell execution for untrusted input, use strict allowlists, and pass arguments without shell interpolation.';
+  }
+
   if (finding.ruleId.startsWith('TRUST-COMP')) {
     if (finding.ruleId === 'TRUST-COMP006') {
-      return 'The Docker socket is mounted into a service container. This grants high privilege over the host Docker daemon — a compromised container could control all containers on the host. Remove the socket mount or use an isolated builder.';
+      return 'The Docker socket is mounted into a service container. This grants high privilege over the host Docker daemon - a compromised container could control all containers on the host. Remove the socket mount or use an isolated builder.';
     }
     if (finding.ruleId === 'TRUST-COMP007') {
       return 'A Compose service loads environment from a .env-like file. These files often contain secrets or sensitive configuration. Review whether the file content is safe to expose inside the container.';

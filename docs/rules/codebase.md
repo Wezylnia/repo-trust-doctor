@@ -91,6 +91,16 @@ A critical source file uses deserialization APIs (like BinaryFormatter, pickle, 
 
 Recommendation: use safe deserialization methods, restrict allowed types, and validate deserialized input.
 
+### `TRUST-CODE015` - Command execution in critical code
+
+- Category: `Codebase`
+- Default severity: `High`
+- Default confidence: `Medium`
+
+A critical source file invokes operating-system command execution APIs such as `Process.Start`, `Runtime.exec`, `subprocess`, `os.system`, `exec`, or `popen`.
+
+Recommendation: avoid shell execution for untrusted input. Prefer purpose-built APIs, strict allowlists, and explicit argument passing that does not interpolate user-controlled strings into a shell command.
+
 ## Public API
 
 ### `TRUST-CODE008` - Public API baseline is missing
@@ -99,7 +109,7 @@ Recommendation: use safe deserialization methods, restrict allowed types, and va
 - Default severity: `Info`
 - Default confidence: `Medium`
 
-Public .NET API symbols were detected, but no baseline file was found for compatibility comparison.
+Public API symbols were detected, but no baseline file was found for compatibility comparison.
 
 Baseline paths checked:
 
@@ -115,7 +125,7 @@ Recommendation: commit a reviewed public API baseline when the repository expose
 - Default severity: `Medium`
 - Default confidence: `Medium`
 
-The current public .NET API symbol list differs from the committed baseline. This is a review signal; it is not a claim that every change is breaking.
+The current public API symbol list differs from the committed baseline. This is a review signal; it is not a claim that every change is breaking.
 
 Recommendation: review added and removed symbols before release and update the baseline only after compatibility impact is understood.
 

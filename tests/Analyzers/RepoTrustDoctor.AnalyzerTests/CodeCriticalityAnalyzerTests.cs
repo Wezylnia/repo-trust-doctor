@@ -112,9 +112,35 @@ public sealed class CodeCriticalityAnalyzerTests
         var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
 
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-CODE014");
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
         var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
         var file = Assert.Single(artifact.Files);
         Assert.Contains(CodeCriticalityReason.Deserialization, file.Reasons);
+        Assert.Contains(CodeCriticalityReason.CommandExecution, file.Reasons);
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_DetectsCommandExecutionWithoutOtherSignals()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "jobs");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "CommandRunner.cs"), """
+        public sealed class CommandRunner
+        {
+            public void Run()
+            {
+                System.Diagnostics.Process.Start("cmd.exe", "/c whoami");
+            }
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        var file = Assert.Single(artifact.Files);
         Assert.Contains(CodeCriticalityReason.CommandExecution, file.Reasons);
     }
 }

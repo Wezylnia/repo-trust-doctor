@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
 
@@ -54,9 +53,12 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
     {
         var adjacency = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         var inDegree = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var allFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var sourceFiles = EnumerateSourceFiles(context.RepositoryPath).ToArray();
+        var allFiles = sourceFiles
+            .Select(file => ToRepoRelative(context.RepositoryPath, file))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var file in EnumerateSourceFiles(context.RepositoryPath))
+        foreach (var file in sourceFiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -66,11 +68,10 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
             }
 
             var relativePath = ToRepoRelative(context.RepositoryPath, file);
-            allFiles.Add(relativePath);
 
             var text = await File.ReadAllTextAsync(file, cancellationToken);
             var extension = Path.GetExtension(file).ToLowerInvariant();
-            var imports = ParseImports(text, extension, relativePath);
+            var imports = ParseImports(text, extension, relativePath, allFiles);
 
             if (imports.Count > 0)
             {
@@ -135,7 +136,7 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
             var hasLowCoverage = false;
             string coverageMessage;
 
-            if (coverageLookup.TryGetValue(entry.FilePath, out var rate))
+            if (TryFindCoverageRate(coverageLookup, entry.FilePath, out var rate))
             {
                 if (rate < LowCoverageThreshold)
                 {
@@ -199,208 +200,6 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
     private static string ToRepoRelative(string repositoryPath, string filePath) =>
         Path.GetRelativePath(repositoryPath, filePath).Replace('\\', '/');
 
-    private static List<string> ParseImports(string text, string extension, string sourceRelativePath)
-    {
-        var imports = new List<string>();
-
-        var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-
-        foreach (var line in lines)
-        {
-            var trimmed = line.TrimStart();
-
-            switch (extension)
-            {
-                case ".cs":
-                    ParseCSharpImport(trimmed, imports);
-                    break;
-                case ".ts" or ".tsx" or ".js" or ".jsx":
-                    ParseJavaScriptImport(trimmed, imports, sourceRelativePath);
-                    break;
-                case ".py":
-                    ParsePythonImport(trimmed, imports);
-                    break;
-                case ".java":
-                    ParseJavaImport(trimmed, imports);
-                    break;
-                case ".go":
-                    ParseGoImport(trimmed, imports);
-                    break;
-                case ".rs":
-                    ParseRustImport(trimmed, imports);
-                    break;
-            }
-        }
-
-        return imports;
-    }
-
-    private static void ParseCSharpImport(string line, List<string> imports)
-    {
-        // Skip: using var, using static, using System.*
-        if (!line.StartsWith("using ", StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        var match = CSharpUsingRegex().Match(line);
-        if (!match.Success)
-        {
-            return;
-        }
-
-        var ns = match.Groups["ns"].Value;
-
-        // Ignore system namespaces and directives
-        if (ns.StartsWith("System", StringComparison.Ordinal) ||
-            ns.StartsWith("Microsoft", StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        imports.Add(ns);
-    }
-
-    private static void ParseJavaScriptImport(string line, List<string> imports, string sourceRelativePath)
-    {
-        Match? match = null;
-
-        if (line.StartsWith("import", StringComparison.Ordinal))
-        {
-            match = JsImportFromRegex().Match(line);
-            if (!match.Success)
-            {
-                match = JsDynamicImportRegex().Match(line);
-            }
-        }
-        else if (line.Contains("require(", StringComparison.Ordinal))
-        {
-            match = JsRequireRegex().Match(line);
-        }
-
-        if (match is not { Success: true })
-        {
-            return;
-        }
-
-        var path = match.Groups["path"].Value;
-        if (string.IsNullOrWhiteSpace(path) || !path.StartsWith('.'))
-        {
-            // Only track relative imports
-            return;
-        }
-
-        var resolved = ResolveRelativePath(sourceRelativePath, path);
-        if (resolved is not null)
-        {
-            imports.Add(resolved);
-        }
-    }
-
-    private static void ParsePythonImport(string line, List<string> imports)
-    {
-        if (line.StartsWith("from ", StringComparison.Ordinal))
-        {
-            var match = PythonFromImportRegex().Match(line);
-            if (match.Success)
-            {
-                imports.Add(match.Groups["module"].Value);
-            }
-        }
-        else if (line.StartsWith("import ", StringComparison.Ordinal))
-        {
-            var match = PythonImportRegex().Match(line);
-            if (match.Success)
-            {
-                imports.Add(match.Groups["module"].Value);
-            }
-        }
-    }
-
-    private static void ParseJavaImport(string line, List<string> imports)
-    {
-        if (!line.StartsWith("import ", StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        var match = JavaImportRegex().Match(line);
-        if (match.Success)
-        {
-            imports.Add(match.Groups["pkg"].Value);
-        }
-    }
-
-    private static void ParseGoImport(string line, List<string> imports)
-    {
-        var match = GoImportRegex().Match(line);
-        if (match.Success)
-        {
-            imports.Add(match.Groups["path"].Value);
-        }
-    }
-
-    private static void ParseRustImport(string line, List<string> imports)
-    {
-        if (line.StartsWith("use ", StringComparison.Ordinal))
-        {
-            var match = RustUseRegex().Match(line);
-            if (match.Success)
-            {
-                imports.Add(match.Groups["path"].Value);
-            }
-        }
-        else if (line.StartsWith("mod ", StringComparison.Ordinal))
-        {
-            var match = RustModRegex().Match(line);
-            if (match.Success)
-            {
-                imports.Add(match.Groups["name"].Value);
-            }
-        }
-    }
-
-    private static string? ResolveRelativePath(string sourceRelativePath, string importPath)
-    {
-        var sourceDir = Path.GetDirectoryName(sourceRelativePath)?.Replace('\\', '/') ?? string.Empty;
-
-        // Normalize the import path
-        var combined = string.IsNullOrEmpty(sourceDir)
-            ? importPath
-            : $"{sourceDir}/{importPath}";
-
-        // Simple normalization: resolve .. and .
-        var parts = combined.Split('/');
-        var stack = new Stack<string>();
-
-        foreach (var part in parts)
-        {
-            if (part is "." or "")
-            {
-                continue;
-            }
-
-            if (part == "..")
-            {
-                if (stack.Count > 0)
-                {
-                    stack.Pop();
-                }
-            }
-            else
-            {
-                stack.Push(part);
-            }
-        }
-
-        if (stack.Count == 0)
-        {
-            return null;
-        }
-
-        return string.Join("/", stack.Reverse());
-    }
-
     private static List<CentralFileEntry> IdentifyCentralFiles(
         Dictionary<string, int> inDegree,
         int totalFileCount,
@@ -454,50 +253,41 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
         {
             if (file.LineRate.HasValue)
             {
-                lookup[file.FilePath] = file.LineRate.Value;
+                lookup[NormalizePath(file.FilePath)] = file.LineRate.Value;
             }
         }
 
         return lookup;
     }
 
-    // C#: using Namespace.Name;  (excludes using var, using static, using System.*)
-    [GeneratedRegex(@"^using\s+(?!var\b)(?!static\b)(?<ns>[A-Za-z_][\w.]*)\s*;", RegexOptions.None)]
-    private static partial Regex CSharpUsingRegex();
+    private static bool TryFindCoverageRate(
+        IReadOnlyDictionary<string, double> coverageLookup,
+        string filePath,
+        out double rate)
+    {
+        var normalizedPath = NormalizePath(filePath);
+        if (coverageLookup.TryGetValue(normalizedPath, out rate))
+        {
+            return true;
+        }
 
-    // JS/TS: import ... from 'path' or import ... from "path"
-    [GeneratedRegex(@"import\s+.*?\s+from\s+['""](?<path>[^'""]+)['""]", RegexOptions.None)]
-    private static partial Regex JsImportFromRegex();
+        var matches = coverageLookup
+            .Where(pair =>
+                normalizedPath.EndsWith(pair.Key, StringComparison.OrdinalIgnoreCase) ||
+                pair.Key.EndsWith(normalizedPath, StringComparison.OrdinalIgnoreCase) ||
+                Path.GetFileName(normalizedPath).Equals(Path.GetFileName(pair.Key), StringComparison.OrdinalIgnoreCase))
+            .Take(2)
+            .ToArray();
+        if (matches.Length == 1)
+        {
+            rate = matches[0].Value;
+            return true;
+        }
 
-    // JS/TS: import('path')
-    [GeneratedRegex(@"import\s*\(\s*['""](?<path>[^'""]+)['""]\s*\)", RegexOptions.None)]
-    private static partial Regex JsDynamicImportRegex();
+        rate = default;
+        return false;
+    }
 
-    // JS/TS: require('path')
-    [GeneratedRegex(@"require\s*\(\s*['""](?<path>[^'""]+)['""]\s*\)", RegexOptions.None)]
-    private static partial Regex JsRequireRegex();
+    private static string NormalizePath(string path) => path.Replace('\\', '/').TrimStart('.', '/');
 
-    // Python: from module import ...
-    [GeneratedRegex(@"^from\s+(?<module>[A-Za-z_][\w.]*)\s+import\b", RegexOptions.None)]
-    private static partial Regex PythonFromImportRegex();
-
-    // Python: import module
-    [GeneratedRegex(@"^import\s+(?<module>[A-Za-z_][\w.]*)", RegexOptions.None)]
-    private static partial Regex PythonImportRegex();
-
-    // Java: import x.y.z;
-    [GeneratedRegex(@"^import\s+(?:static\s+)?(?<pkg>[A-Za-z_][\w.]*)\s*;", RegexOptions.None)]
-    private static partial Regex JavaImportRegex();
-
-    // Go: "path" inside import block or single import
-    [GeneratedRegex(@"""(?<path>[^""]+)""", RegexOptions.None)]
-    private static partial Regex GoImportRegex();
-
-    // Rust: use path::to::module;
-    [GeneratedRegex(@"^use\s+(?<path>[A-Za-z_][\w:]*(?:::[A-Za-z_][\w:]*)*)", RegexOptions.None)]
-    private static partial Regex RustUseRegex();
-
-    // Rust: mod name;
-    [GeneratedRegex(@"^mod\s+(?<name>[A-Za-z_]\w*)\s*;", RegexOptions.None)]
-    private static partial Regex RustModRegex();
 }
