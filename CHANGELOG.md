@@ -2,7 +2,7 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
-## v1.7.5 - 2026-06-12
+## v0.8.3 - 2026-06-12
 
 This bugfix release hardens the v1.7 codebase analysis engine and reduces false positives across multiple analyzers.
 
@@ -19,7 +19,7 @@ This bugfix release hardens the v1.7 codebase analysis engine and reduces false 
 - Refactored large analyzer files into focused helpers (GitHub Actions, dependency inventory, package origin, CLI diff, routes).
 - Updated test framework packages and pinned web manifest versions.
 
-## v1.7.0 - 2026-06-11
+## v0.8.2 - 2026-06-11
 
 This development milestone adds language-specific API extractors, static import graphs, framework route detection, and enhanced security heuristics.
 
@@ -34,7 +34,7 @@ This development milestone adds language-specific API extractors, static import 
 
 - Improved path matching in `CoverageImportAnalyzer` and `CoverageCriticalityAnalyzer` to support monorepos with relative/absolute suffix and basename matching.
 
-## v1.6.0 - 2026-06-11
+## v0.8.1 - 2026-06-11
 
 This development milestone hardens v1.5 analyzers and adds CI/CD, infrastructure, and evidence coverage.
 
@@ -56,7 +56,7 @@ This development milestone hardens v1.5 analyzers and adds CI/CD, infrastructure
 - Web report explanations for all new hardening rules.
 - Rule catalog links updated.
 
-## v1.5.0 - 2026-06-11
+## v0.8.0 - 2026-06-11
 
 This development milestone adds imported evidence signals and hardens the v1.2-v1.5 analyzer set after review.
 
@@ -67,8 +67,8 @@ This development milestone adds imported evidence signals and hardens the v1.2-v
 
 ### Changed
 
-- Product version is now `1.5.0`.
-- Web app version is now `1.5.0`.
+- Product version is now `0.8.0`.
+- Web app version is now `0.8.0`.
 - Workspace and imported evidence signals are informational and do not reduce trust scores.
 - Kubernetes hardening checks now require Kubernetes workload content with container specs instead of relying on filename heuristics.
 - GitHub Actions hardcoded-secret checks ignore `${{ secrets.* }}` expressions and read-only permission declarations.
@@ -76,7 +76,7 @@ This development milestone adds imported evidence signals and hardens the v1.2-v
 - Lockfile checks for Ruby, Dart/Pub, Elixir/Hex, and SwiftPM now require a sibling lockfile for each manifest.
 - Dependency inventory tests and CLI console rendering were split into smaller, maintainable files.
 
-## v1.4.0 - 2026-06-11
+## v0.7.5 - 2026-06-11
 
 This development milestone expands static CI/CD and infrastructure coverage.
 
@@ -87,7 +87,7 @@ This development milestone expands static CI/CD and infrastructure coverage.
 - Kubernetes manifest analyzer for privileged containers, host namespace sharing, missing non-root/read-only filesystem hardening, and committed Secret manifests.
 - React report drill-down support for the new analyzer families.
 
-## v1.3.0 - 2026-06-11
+## v0.7.4 - 2026-06-11
 
 This development milestone adds workspace awareness and console/report ergonomics.
 
@@ -97,7 +97,7 @@ This development milestone adds workspace awareness and console/report ergonomic
 - Console category score bars, dependency summary output, and top recommended actions.
 - SARIF help URI support and richer report rule explanations.
 
-## v1.2.0 - 2026-06-11
+## v0.7.3 - 2026-06-11
 
 This release adds dependency ecosystem support for Go, Rust/Cargo, PHP/Composer, Ruby/Bundler, Dart/Flutter, Elixir/Hex, Swift Package Manager, and C/C++ package managers.
 
@@ -119,10 +119,10 @@ This release adds dependency ecosystem support for Go, Rust/Cargo, PHP/Composer,
 
 ### Changed
 
-- Product version is now `1.2.0`.
+- Product version is now `0.7.3`.
 - Rule count: 110 → 133 across 12 ecosystems.
 
-## v1.1.0 - 2026-06-11
+## v0.7.2 - 2026-06-11
 
 This release adds Java and Spring Boot dependency analysis.
 
@@ -136,23 +136,23 @@ This release adds Java and Spring Boot dependency analysis.
 
 ### Changed
 
-- Product version is now `1.1.0`.
-- Web app version is now `1.1.0`.
+- Product version is now `0.7.2`.
+- Web app version is now `0.7.2`.
 
-## v1.0.9 - 2026-06-11
+## v0.7.1 - 2026-06-11
 
 This release improves the React scan and report experience.
 
 ### Changed
 
-- Product version is now `1.0.9`.
-- Web app version is now `1.0.9`.
+- Product version is now `0.7.1`.
+- Web app version is now `0.7.1`.
 - Scan depth choices now use plain labels such as `Fast scan`, `Standard scan`, and `Deep scan`.
 - Trust profile choices are reduced to three clear options: personal, production, and enterprise/security-sensitive.
 - Legacy CI/CD and container profile inputs now map to production while the underlying workflow and container analyzers remain part of normal scans.
 - Added a main scan introduction, a clearer right-side profile guide, area score cards, report display labels, and richer finding explanations.
 
-## v1.0.6 - 2026-06-11
+## v0.7.0 - 2026-06-11
 
 This release corrects the React product flow so users scan a GitHub repository directly instead of importing or pasting raw JSON.
 
@@ -166,8 +166,8 @@ This release corrects the React product flow so users scan a GitHub repository d
 
 ### Changed
 
-- Product version is now `1.0.6`.
-- Web app version is now `1.0.6`.
+- Product version is now `0.7.0`.
+- Web app version is now `0.7.0`.
 - Removed the Saved report/import UI from the React app.
 - Removed sample report loading from the React app.
 - Hid the local backend URL from the user-facing scan form; `localhost:5000` is now treated as the local scan service, not a scan target.
@@ -193,8 +193,8 @@ This release improves the React experience from a secondary JSON viewer into a l
 
 ### Changed
 
-- Product version is now `1.0.5`.
-- Web app version is now `1.0.5`.
+- Product version is now `0.6.5`.
+- Web app version is now `0.6.5`.
 - The web app opens on the scan flow by default instead of asking users to import JSON first.
 - The UI language now treats saved JSON as an artifact fallback, not the primary report flow.
 - The visual design is flatter, denser, and more operations-focused.
@@ -222,7 +222,7 @@ This release promotes Repository Trust Doctor to a stable public platform with s
 
 ### Changed
 
-- Product version is now `1.0.0`.
+- Product version is now `0.6.0`.
 - CLI scan execution now uses the centralized repository scan runner instead of composing analyzers in the app entry point.
 - README, roadmap, architecture, development, report format, ADR, release checklist, and trust profile docs now reflect the stable 1.0 platform.
 

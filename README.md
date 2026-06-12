@@ -13,7 +13,7 @@ The project is intentionally evidence-based: analyzers produce findings with rul
 
 ## What It Checks Today
 
-The current `v1.7.5` development line focuses on local, static repository trust signals across 12 package ecosystems, CI/CD pipeline security, infrastructure-as-code checks, and deep code intelligence:
+The current `v0.8.3` development line focuses on local, static repository trust signals across 12 package ecosystems, CI/CD pipeline security, infrastructure-as-code checks, and deep code intelligence:
 
 - repository health files such as README, LICENSE, SECURITY.md, contributing docs, CODEOWNERS, templates, and changelog,
 - GitHub Actions workflow risks such as broad permissions, `pull_request_target`, unpinned actions, shell pipe execution, checkout credential persistence, and advanced hardening rules,
@@ -37,9 +37,9 @@ The current `v1.7.5` development line focuses on local, static repository trust 
 
 ## Current Status
 
-This repository is at the `v1.7.5` development milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
+This repository is at the `v0.8.3` development milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
 
-Implemented through `v1.7.5`:
+Implemented through `v0.8.3`:
 
 - a clean .NET solution structure,
 - pure domain models,
@@ -250,13 +250,13 @@ The roadmap grows the platform gradually:
 | `v0.7.x` | Release hygiene, artifact integrity, SBOM/provenance, and supply-chain evidence |
 | `v0.8.x` | Coverage import, code criticality, public API analysis, and deep scan signals |
 | `v0.9.x` | Trust history, comparison, trust diff, and monitoring models |
-| `v1.0.x` | Stable public platform with documented contracts, CLI/API/worker hosts, React scan workbench, and reliable reports |
-| `v1.1.0` | Java and Spring Boot dependency support, plus continued React/backend scan experience |
-| `v1.2.x` | Go, Cargo, Composer, Ruby, Dart/Pub, Elixir/Hex, SwiftPM, and C/C++ dependency inventory |
-| `v1.3.x` | Workspace detection and clearer console/report drill-downs |
-| `v1.4.x` | GitLab CI, Docker Compose, and Kubernetes static security checks |
-| `v1.5.x` | SBOM/provenance evidence import and review hardening |
-| `v1.6.x` | Azure Pipelines, CircleCI, and Terraform static security checks; package registry configuration rules; SBOM correlation; GitHub Actions advanced hardening; Gradle version catalog support |
+| `v0.7.0` | Stable public platform with documented contracts, CLI/API/worker hosts, React scan workbench, and reliable reports |
+| `v0.7.2` | Java and Spring Boot dependency support, plus continued React/backend scan experience |
+| `v0.7.3` | Go, Cargo, Composer, Ruby, Dart/Pub, Elixir/Hex, SwiftPM, and C/C++ dependency inventory |
+| `v0.7.4` | Workspace detection and clearer console/report drill-downs |
+| `v0.7.5` | GitLab CI, Docker Compose, and Kubernetes static security checks |
+| `v0.8.0` | SBOM/provenance evidence import and review hardening |
+| `v0.8.1` | Azure Pipelines, CircleCI, and Terraform static security checks; package registry configuration rules; SBOM correlation; GitHub Actions advanced hardening; Gradle version catalog support |
 | `v1.7.x` | Multi-language public API extraction, import graph analysis, framework route detection, deserialization/command execution heuristics, deeper code intelligence and false-positive reduction |
 
 See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scope boundaries, and success criteria.
