@@ -2,6 +2,23 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v1.7.5 - 2026-06-12
+
+This bugfix release hardens the v1.7 codebase analysis engine and reduces false positives across multiple analyzers.
+
+### Changed
+
+- Reduced code criticality scan noise and false positives by ignoring comments, vocabulary tokens, and bounded exception handlers.
+- Fixed public API baseline to avoid flagging intentional local API route endpoints.
+- Hardened release evidence file reads and scan state preservation on cancel.
+- Decoded compressed package registry responses correctly.
+- Matched npm scope registries by package scope.
+- Ignored generated release artifact roots and self-scan hygiene findings.
+- Removed coverage findings in projects without coverage reports.
+- Reduced dependency metadata false positives.
+- Refactored large analyzer files into focused helpers (GitHub Actions, dependency inventory, package origin, CLI diff, routes).
+- Updated test framework packages and pinned web manifest versions.
+
 ## v1.7.0 - 2026-06-11
 
 This development milestone adds language-specific API extractors, static import graphs, framework route detection, and enhanced security heuristics.
