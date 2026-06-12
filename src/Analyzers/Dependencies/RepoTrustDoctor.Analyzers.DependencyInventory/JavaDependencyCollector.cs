@@ -62,6 +62,12 @@ internal sealed partial class JavaDependencyCollector : IDependencyInventoryColl
         }
 
         var firstManifest = pomFiles.FirstOrDefault() ?? gradleFiles.First();
+        var relativePath = DependencyInventorySupport.Relative(context, firstManifest);
+        if (DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath))
+        {
+            return;
+        }
+
         state.Findings.Add(new Finding(
             "TRUST-DEP017",
             "Java dependency manifest does not have a recognized lockfile",
@@ -69,7 +75,7 @@ internal sealed partial class JavaDependencyCollector : IDependencyInventoryColl
             Severity.Low,
             Confidence.Medium,
             "Java dependency manifest does not have a recognized lockfile",
-            [new Evidence("package-manifest", "A Maven or Gradle manifest exists but no recognized dependency lockfile was found.", DependencyInventorySupport.Relative(context, firstManifest))],
+            [new Evidence("package-manifest", "A Maven or Gradle manifest exists but no recognized dependency lockfile was found.", relativePath)],
             new Recommendation("Commit Gradle dependency locking output or equivalent dependency lock evidence for repeatable Java builds.")));
     }
 
@@ -84,6 +90,7 @@ internal sealed partial class JavaDependencyCollector : IDependencyInventoryColl
         }
 
         var properties = ReadMavenProperties(document.Root);
+        var hasManagedVersions = HasMavenManagedVersions(document);
         foreach (var dependency in document.Descendants().Where(IsMavenDependencyElement))
         {
             var groupId = dependency.Elements().FirstOrDefault(element => element.Name.LocalName == "groupId")?.Value.Trim();
@@ -97,6 +104,12 @@ internal sealed partial class JavaDependencyCollector : IDependencyInventoryColl
             var resolvedVersion = ResolveMavenVersion(declaredVersion, properties, out var versionSource);
             var scopeText = dependency.Elements().FirstOrDefault(element => element.Name.LocalName == "scope")?.Value.Trim();
             var metadata = BuildMavenMetadata(declaredVersion, versionSource);
+            var suppressUnpinnedFinding = DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath) ||
+                                          string.IsNullOrWhiteSpace(resolvedVersion) && hasManagedVersions;
+            if (suppressUnpinnedFinding && metadata is null && string.IsNullOrWhiteSpace(resolvedVersion))
+            {
+                metadata = new Dictionary<string, string> { ["versionSource"] = "maven-managed" };
+            }
 
             AddJavaPackage(
                 relativePath,
@@ -104,6 +117,7 @@ internal sealed partial class JavaDependencyCollector : IDependencyInventoryColl
                 resolvedVersion,
                 MapMavenScope(scopeText),
                 metadata,
+                suppressUnpinnedFinding,
                 state);
         }
     }
@@ -118,6 +132,7 @@ internal sealed partial class JavaDependencyCollector : IDependencyInventoryColl
             return;
         }
 
+        var hasManagedVersions = HasGradleManagedVersions(content);
         foreach (Match match in GradleDependencyPattern().Matches(content))
         {
             var coordinates = match.Groups["coordinates"].Value.Split(':', StringSplitOptions.TrimEntries);
@@ -126,12 +141,26 @@ internal sealed partial class JavaDependencyCollector : IDependencyInventoryColl
                 continue;
             }
 
+            var version = coordinates.Length > 2 ? coordinates[2] : null;
+            var metadata = new Dictionary<string, string> { ["configuration"] = match.Groups["configuration"].Value };
+            var suppressUnpinnedFinding = DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath) ||
+                                          IsGradleManagedVersion(version, hasManagedVersions);
+            if (suppressUnpinnedFinding && string.IsNullOrWhiteSpace(version))
+            {
+                metadata["versionSource"] = "gradle-managed";
+            }
+            else if (IsGradlePropertyVersion(version))
+            {
+                metadata["versionSource"] = "gradle-property";
+            }
+
             AddJavaPackage(
                 relativePath,
                 $"{coordinates[0]}:{coordinates[1]}",
-                coordinates.Length > 2 ? coordinates[2] : null,
+                version,
                 MapGradleScope(match.Groups["configuration"].Value),
-                new Dictionary<string, string> { ["configuration"] = match.Groups["configuration"].Value },
+                metadata,
+                suppressUnpinnedFinding,
                 state);
         }
     }
@@ -142,6 +171,7 @@ internal sealed partial class JavaDependencyCollector : IDependencyInventoryColl
         string? version,
         DependencyScope scope,
         IReadOnlyDictionary<string, string>? metadata,
+        bool suppressUnpinnedFinding,
         DependencyInventoryState state)
     {
         var normalizedVersion = DependencyInventorySupport.NormalizeVersion(version);
@@ -160,7 +190,7 @@ internal sealed partial class JavaDependencyCollector : IDependencyInventoryColl
             prerelease,
             metadata));
 
-        AddVersionFindings(relativePath, name, normalizedVersion, pinned, prerelease, state);
+        AddVersionFindings(relativePath, name, normalizedVersion, pinned, prerelease, suppressUnpinnedFinding, state);
     }
 
     private static void AddVersionFindings(
@@ -169,9 +199,10 @@ internal sealed partial class JavaDependencyCollector : IDependencyInventoryColl
         string? version,
         bool pinned,
         bool prerelease,
+        bool suppressUnpinnedFinding,
         DependencyInventoryState state)
     {
-        if (!pinned)
+        if (!pinned && !suppressUnpinnedFinding)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP018",
@@ -236,7 +267,8 @@ internal sealed partial class JavaDependencyCollector : IDependencyInventoryColl
         {
             cancellationToken.ThrowIfCancellationRequested();
             var relativePath = DependencyInventorySupport.Relative(context, filePath);
-            if (!DependencyInventorySupport.TryReadText(filePath, out var content, state.Warnings, relativePath) ||
+            if (DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath) ||
+                !DependencyInventorySupport.TryReadText(filePath, out var content, state.Warnings, relativePath) ||
                 !SpringActuatorExposurePattern().IsMatch(content))
             {
                 continue;
@@ -274,6 +306,10 @@ internal sealed partial class JavaDependencyCollector : IDependencyInventoryColl
     private static bool IsMavenDependencyElement(System.Xml.Linq.XElement element) =>
         element.Name.LocalName == "dependency" &&
         !element.Ancestors().Any(ancestor => ancestor.Name.LocalName == "dependencyManagement");
+
+    private static bool HasMavenManagedVersions(System.Xml.Linq.XDocument document) =>
+        document.Descendants().Any(element => element.Name.LocalName == "dependencyManagement") ||
+        document.Root?.Elements().Any(element => element.Name.LocalName == "parent") == true;
 
     private static string? ResolveMavenVersion(string? version, IReadOnlyDictionary<string, string> properties, out string? versionSource)
     {
@@ -323,6 +359,24 @@ internal sealed partial class JavaDependencyCollector : IDependencyInventoryColl
             "runtimeonly" or "implementation" or "api" or "compile" => DependencyScope.Production,
             _ => DependencyScope.Unknown
         };
+
+    private static bool HasGradleManagedVersions(string content) =>
+        content.Contains("io.spring.dependency-management", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("org.springframework.boot", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("dependencyManagement", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("mavenBom", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("platform(", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("enforcedPlatform(", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsGradleManagedVersion(string? version, bool hasManagedVersions) =>
+        string.IsNullOrWhiteSpace(version) && hasManagedVersions ||
+        IsGradlePropertyVersion(version);
+
+    private static bool IsGradlePropertyVersion(string? version) =>
+        !string.IsNullOrWhiteSpace(version) &&
+        (version.Contains("${", StringComparison.Ordinal) ||
+         version.StartsWith("$", StringComparison.Ordinal) ||
+         version.EndsWith("Version", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsPinnedVersion(string? version) =>
         !string.IsNullOrWhiteSpace(version) &&

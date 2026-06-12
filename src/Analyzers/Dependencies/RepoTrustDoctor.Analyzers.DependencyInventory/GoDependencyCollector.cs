@@ -200,7 +200,7 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
         lines.Any(line => line.TrimStart().StartsWith("require ", StringComparison.Ordinal) &&
                           PseudoVersionPattern().IsMatch(line));
 
-    [GeneratedRegex(@"^v\d+\.\d+\.\d+$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$", RegexOptions.CultureInvariant)]
     private static partial Regex ExactGoVersionPattern();
 
     [GeneratedRegex(@"^v\d+\.\d+\.\d+-[0-9]{14}-[0-9a-f]{12}", RegexOptions.CultureInvariant)]

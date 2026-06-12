@@ -41,7 +41,8 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Ruby, relativePath, "Gemfile"));
 
-        if (!HasSiblingLockfile(filePath))
+        var hasSiblingLockfile = HasSiblingLockfile(filePath);
+        if (!hasSiblingLockfile)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP034",
@@ -88,7 +89,7 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
                 continue;
             }
 
-            ParseGemDeclaration(relativePath, line, currentScope, state);
+            ParseGemDeclaration(relativePath, line, currentScope, hasSiblingLockfile, state);
         }
     }
 
@@ -129,11 +130,16 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
             var gemName = match.Groups["name"].Value.Trim('"', '\'');
             var constraint = match.Groups["constraint"].Value.Trim('"', '\'');
 
-            AddRubyPackage(relativePath, gemName, constraint, scope, state);
+            AddRubyPackage(relativePath, gemName, constraint, scope, true, state);
         }
     }
 
-    private static void ParseGemDeclaration(string manifestPath, string line, DependencyScope scope, DependencyInventoryState state)
+    private static void ParseGemDeclaration(
+        string manifestPath,
+        string line,
+        DependencyScope scope,
+        bool hasSiblingLockfile,
+        DependencyInventoryState state)
     {
         var match = GemDeclarationPattern().Match(line);
         if (!match.Success)
@@ -178,7 +184,7 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
                 "Review path-sourced gems because they depend on repository layout and may bypass registry provenance."));
         }
 
-        AddRubyPackage(manifestPath, gemName, constraint, scope, state, metadata);
+        AddRubyPackage(manifestPath, gemName, constraint, scope, !hasSiblingLockfile, state, metadata);
     }
 
     private static void AddRubyPackage(
@@ -186,6 +192,7 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
         string gemName,
         string? constraint,
         DependencyScope scope,
+        bool emitConstraintFinding,
         DependencyInventoryState state,
         Dictionary<string, string>? metadata = null)
     {
@@ -204,7 +211,7 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
             isPrerelease,
             metadata?.Count > 0 ? metadata : null));
 
-        if (!isPinned)
+        if (!isPinned && emitConstraintFinding)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP035",

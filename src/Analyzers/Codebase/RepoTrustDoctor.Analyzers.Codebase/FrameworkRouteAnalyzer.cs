@@ -109,6 +109,11 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 
             foreach (var framework in matchingFrameworks)
             {
+                if (ShouldSkipFrameworkRouteFile(framework, relativePath, text))
+                {
+                    continue;
+                }
+
                 var routeMatches = framework.RoutePattern.Matches(text);
                 if (routeMatches.Count == 0)
                 {
@@ -119,6 +124,11 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 
                 foreach (Match routeMatch in routeMatches)
                 {
+                    if (IsLikelyNonCodeRouteMatch(text, routeMatch.Index))
+                    {
+                        continue;
+                    }
+
                     var lineNumber = CountLineNumber(text, routeMatch.Index);
                     var snippet = ExtractRouteSnippet(text, routeMatch);
                     var hasAuth = HasAuthNearRoute(framework, lines, lineNumber, text, routeMatch);
@@ -313,17 +323,126 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
                statement.Contains("AllowAnonymous", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool ShouldSkipFrameworkRouteFile(FrameworkDefinition framework, string relativePath, string text)
+    {
+        if (framework.Name == "Spring Boot")
+        {
+            return (Path.GetExtension(relativePath).Equals(".java", StringComparison.OrdinalIgnoreCase) &&
+                    text.Contains("@interface", StringComparison.Ordinal)) ||
+                   relativePath.Contains("/endpoint/web/annotation/", StringComparison.OrdinalIgnoreCase) ||
+                   relativePath.Contains("/src/main/java/org/springframework/", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (framework.Name == "Django")
+        {
+            return relativePath.StartsWith("django/contrib/", StringComparison.OrdinalIgnoreCase) ||
+                   relativePath.StartsWith("django/conf/urls/", StringComparison.OrdinalIgnoreCase) ||
+                   !IsDjangoUrlConfigurationPath(relativePath);
+        }
+
+        return false;
+    }
+
+    private static bool IsDjangoUrlConfigurationPath(string relativePath) =>
+        relativePath.EndsWith("urls.py", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("/urls/", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsLikelyNonCodeRouteMatch(string text, int index)
+    {
+        var lineStart = text.LastIndexOf('\n', Math.Max(0, index - 1));
+        lineStart = lineStart < 0 ? 0 : lineStart + 1;
+        var linePrefix = text[lineStart..index];
+
+        if (linePrefix.Contains("//", StringComparison.Ordinal) ||
+            linePrefix.Contains('#', StringComparison.Ordinal) ||
+            IsInsideQuotedText(linePrefix))
+        {
+            return true;
+        }
+
+        var prefix = text[..index];
+        var lastBlockOpen = prefix.LastIndexOf("/*", StringComparison.Ordinal);
+        if (lastBlockOpen >= 0)
+        {
+            var lastBlockClose = prefix.LastIndexOf("*/", StringComparison.Ordinal);
+            return lastBlockClose < lastBlockOpen;
+        }
+
+        return false;
+    }
+
+    private static bool IsInsideQuotedText(string text)
+    {
+        var single = false;
+        var doubleQuote = false;
+        var backtick = false;
+        var escaped = false;
+
+        foreach (var current in text)
+        {
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (current == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (current == '\'' && !doubleQuote && !backtick)
+            {
+                single = !single;
+            }
+            else if (current == '"' && !single && !backtick)
+            {
+                doubleQuote = !doubleQuote;
+            }
+            else if (current == '`' && !single && !doubleQuote)
+            {
+                backtick = !backtick;
+            }
+        }
+
+        return single || doubleQuote || backtick;
+    }
+
     private static bool IsTestSource(string root, string filePath)
     {
         var relativePath = Path.GetRelativePath(root, filePath).Replace('\\', '/');
         var fileName = Path.GetFileNameWithoutExtension(relativePath);
         return relativePath.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("test/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("testing/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/testing/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("integrationtesting", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("integration-test", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("inttest", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("smoke-test", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("dockertest", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("testfixtures", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/testassets/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/testdata/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/analyzers/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/generated/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/gen/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/perf/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("benchmark", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("projecttemplates", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("itemtemplates", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/templates/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("/docs/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("samples/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/samples/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("sample/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/sample/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.StartsWith("playground/", StringComparison.OrdinalIgnoreCase) ||

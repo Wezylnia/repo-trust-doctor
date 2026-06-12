@@ -42,7 +42,7 @@ Recommendation: use a package manager like Poetry, uv, or Pipenv, lock the depen
 - Default severity: Medium
 - Default confidence: High
 
-Detects direct NuGet dependencies whose version is missing, floating, wildcard-based, or range-based.
+Detects direct NuGet dependencies whose version is missing, floating, wildcard-based, or range-based. MSBuild property values from common `.props` and `.targets` files are resolved before this rule is evaluated. Dynamic MSBuild expressions such as `$(...)`, `@(...)`, and `%(...)` are inventoried when possible but are not reported as floating versions unless they can be resolved to an actual floating value.
 
 Why it matters: floating and range-based dependencies can change without a source change, making builds less reproducible and dependency reviews harder.
 
@@ -102,7 +102,7 @@ Recommendation: review install-time scripts and avoid downloading or executing u
 - Default severity: Medium
 - Default confidence: High
 
-Detects Python dependencies that are missing an exact pinned version. For `pyproject.toml`, only `[project].dependencies` and Poetry dependency sections are interpreted as dependencies; classifiers and other metadata arrays are ignored.
+Detects Python dependencies that are missing an exact pinned version. For `pyproject.toml`, only `[project].dependencies` and Poetry dependency sections are interpreted as dependencies; classifiers and other metadata arrays are ignored. Python manifests under common documentation, sample, fixture, and test paths are still inventoried but do not emit version-pinning findings.
 
 Why it matters: unpinned Python requirements can resolve to different packages over time and make repository review less repeatable.
 
@@ -210,7 +210,7 @@ Recommendation: commit Gradle dependency locking output or equivalent dependency
 - Default severity: Medium
 - Default confidence: High
 
-Detects Maven or Gradle dependencies with missing versions, dynamic Gradle versions such as `+`, Maven version ranges, unresolved Maven properties, or legacy `LATEST` / `RELEASE` declarations.
+Detects Maven or Gradle dependencies with missing versions, dynamic Gradle versions such as `+`, Maven version ranges, unresolved Maven properties, or legacy `LATEST` / `RELEASE` declarations. Dependencies whose versions are supplied by Maven parent/dependency-management sections, Spring/Gradle dependency-management plugins, BOM/platform declarations, or Gradle property-style declarations are recorded as managed versions instead of unpinned dependencies.
 
 Why it matters: dynamic Java dependency declarations can resolve to different artifacts over time, making security review and build reproduction harder.
 
@@ -354,7 +354,7 @@ Recommendation: review replace directives because they override resolved module 
 - Default severity: Medium
 - Default confidence: High
 
-Detects Go module dependencies that do not use an exact semver-style version (e.g. `v1.2` instead of `v1.2.3`).
+Detects Go module dependencies that do not use an exact semver-style version (e.g. `v1.2` instead of `v1.2.3`). Go prerelease, build-metadata, and pseudo-version values that include a full `vMAJOR.MINOR.PATCH` prefix are treated as exact module versions; pseudo-versions are reviewed separately by `TRUST-DEP025`.
 
 Why it matters: non-exact Go dependency versions can resolve to different minor or patch versions over time, reducing build reproducibility.
 
@@ -486,7 +486,7 @@ Recommendation: run `bundle install` and commit `Gemfile.lock` for reproducible 
 - Default severity: Medium
 - Default confidence: High
 
-Detects Ruby gems with missing or non-exact version constraints.
+Detects Ruby gems with missing or non-exact version constraints. `Gemfile` constraints are not reported when a sibling `Gemfile.lock` exists, because Bundler's lockfile provides the reproducible resolution. Gemspec constraints still emit this rule because they describe package compatibility rather than an application install lock.
 
 Why it matters: missing or ranged gem constraints can resolve to different versions over time.
 

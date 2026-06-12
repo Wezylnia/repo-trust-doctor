@@ -191,6 +191,86 @@ public sealed class DependencyInventoryAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_NuGetCentralPackageManagement_ResolvesMsBuildPropertyVersions()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "packages.lock.json"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "Versions.props"), """
+        <Project>
+          <PropertyGroup>
+            <XunitVersion>2.9.3</XunitVersion>
+          </PropertyGroup>
+        </Project>
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "Directory.Packages.props"), """
+        <Project>
+          <ItemGroup>
+            <PackageVersion Include="xunit" Version="$(XunitVersion)" />
+          </ItemGroup>
+        </Project>
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "Tests.csproj"), """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <ItemGroup>
+            <PackageReference Include="xunit" />
+          </ItemGroup>
+        </Project>
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var package = Assert.Single(GetInventory(result).Packages, package => package.Name == "xunit");
+        Assert.Equal("2.9.3", package.Version);
+        Assert.True(package.IsVersionPinned);
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DEP004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_NuGetDynamicPackageReferenceNames_AreNotRecordedAsPackages()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "packages.lock.json"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "Template.csproj"), """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <ItemGroup>
+            <PackageReference Include="@(PackageReference)" />
+            <PackageReference Include="Real.Package" Version="1.2.3" />
+          </ItemGroup>
+        </Project>
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.DoesNotContain(inventory.Packages, package => package.Name.Contains("PackageReference", StringComparison.Ordinal));
+        Assert.Contains(inventory.Packages, package => package.Name == "Real.Package");
+        Assert.DoesNotContain(result.Findings, finding => finding.Message.Contains("@(PackageReference)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_NuGetUnresolvedMsBuildVersion_DoesNotReportFloatingVersion()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "packages.lock.json"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "Project.csproj"), """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <ItemGroup>
+            <PackageReference Include="Generated.Package" Version="$(GeneratedPackageVersion)" />
+          </ItemGroup>
+        </Project>
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var package = Assert.Single(GetInventory(result).Packages, package => package.Name == "Generated.Package");
+        Assert.False(package.IsVersionPinned);
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DEP004");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_NuGetTestProjectReferences_AreDevelopmentScope()
     {
         using var fixture = TemporaryRepository.Create();
@@ -402,6 +482,25 @@ public sealed class DependencyInventoryAnalyzerTests
         var inventory = GetInventory(result);
         Assert.Contains(inventory.Packages, package => package.Ecosystem == DependencyEcosystem.Python && package.Name == "requests" && package.IsVersionPinned);
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DEP009" && finding.Message.Contains("flask", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PythonDocsRequirements_AreInventoriedWithoutProductionRiskFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var docsDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "docs"));
+        File.WriteAllText(Path.Combine(docsDirectory.FullName, "requirements.txt"), """
+        Sphinx==4.5.0
+        sphinxcontrib-spelling
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, package => package.Ecosystem == DependencyEcosystem.Python && package.Name == "Sphinx");
+        Assert.Contains(inventory.Packages, package => package.Ecosystem == DependencyEcosystem.Python && package.Name == "sphinxcontrib-spelling");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId is "TRUST-DEP003" or "TRUST-DEP009");
     }
 
     [Fact]

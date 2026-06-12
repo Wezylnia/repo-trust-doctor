@@ -1,5 +1,7 @@
 # Kubernetes Manifest Rules
 
+Kubernetes rules focus on runtime manifests. Common example, sample, fixture, playground, test, testing, and `testdata` paths are ignored so large projects that keep Kubernetes API fixtures in source control do not receive production-risk findings for non-runtime manifests.
+
 ## TRUST-K8S001: Kubernetes container runs in privileged mode
 
 - Category: Containers

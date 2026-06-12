@@ -89,14 +89,24 @@ Recommendation: manually verify the finding, revoke or rotate the webhook URL if
 To avoid noise in automated testing and documentation, the secret scanner ignores internal secret pattern matches and sensitive-looking example filenames (such as `.env`) within files residing in the following paths:
 - `tests/Fixtures/`
 - `tests/`
+- `test/`
+- `src/test/`
 - `__tests__/`
 - `fixtures/`
 - `examples/`
+- `samples/`
 - `playground/`
 - `testdata/`
+- `testassets/`
+- `testcertificates/`
+- `integration-test/`
+- `smoke-test/`
+- `dockerTest/`
+- `testFixtures/`
 - `docs/examples/`
+- `documentation/`
 
-Markdown files under `docs/` also suppress JWT-token examples, because many security tutorials include sample JWTs. Note that files under these paths are still checked for general repository metadata or container settings where appropriate, but secret rules will not fire.
+Markdown files under `docs/` also suppress JWT-token examples, because many security tutorials include sample JWTs. Text documentation files under `docs/` and `documentation/` suppress private-key block examples when they are clearly documentation content. Note that files under these paths are still checked for general repository metadata or container settings where appropriate, but secret rules will not fire.
 
 ## Generic API Key Filtering (TRUST-SECRET012)
 

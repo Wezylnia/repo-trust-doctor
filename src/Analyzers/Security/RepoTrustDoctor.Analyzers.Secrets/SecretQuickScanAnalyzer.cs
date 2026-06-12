@@ -67,7 +67,8 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             }
 
             var content = await File.ReadAllTextAsync(file, cancellationToken);
-            if (PrivateKeyPattern().Match(content) is { Success: true } privateKeyMatch)
+            if (PrivateKeyPattern().Match(content) is { Success: true } privateKeyMatch &&
+                !IsDocumentationTextPath(relativePath))
             {
                 findings.Add(CreateFinding("TRUST-SECRET002", "Possible private key marker found", Severity.Critical, Confidence.High, relativePath, "A private key block marker was found.", GetLineNumber(content, privateKeyMatch.Index), isBlocking: true));
             }
@@ -166,20 +167,49 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
     private static bool IsExampleFixturePath(string relativePath)
     {
         var normalized = relativePath.Replace('\\', '/');
+        var slash = normalized.LastIndexOf('/');
+        var fileName = slash >= 0 ? normalized[(slash + 1)..] : normalized;
+
         return normalized.Contains("tests/Fixtures/", StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("test/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("/__tests__/", StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith("__tests__/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/src/test/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("src/test/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("integration-test", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("smoke-test", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("dockertest", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("testfixtures", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/testassets/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("testassets/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/testcertificates/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("testcertificates/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/testing/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("testing/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("integrationtesting", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("/TestFiles/", StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith("TestFiles/", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/samples/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("samples/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/sample/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("sample/", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("/playground/", StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith("playground/", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("testdata/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("docs/examples/", StringComparison.OrdinalIgnoreCase);
+               normalized.Contains("docs/examples/", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith("_test.go", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith("_test.py", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".test.js", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith(".test.ts", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith("Test.java", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith("Test.cs", StringComparison.OrdinalIgnoreCase) ||
+               fileName.EndsWith("Tests.cs", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsDocumentationMarkdownPath(string relativePath)
@@ -188,6 +218,21 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
         return normalized.EndsWith(".md", StringComparison.OrdinalIgnoreCase) &&
                (normalized.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
                 normalized.Contains("/docs/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsDocumentationTextPath(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/');
+        var isDocumentationFile = normalized.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
+                                  normalized.EndsWith(".adoc", StringComparison.OrdinalIgnoreCase) ||
+                                  normalized.EndsWith(".rst", StringComparison.OrdinalIgnoreCase) ||
+                                  normalized.EndsWith(".txt", StringComparison.OrdinalIgnoreCase);
+
+        return isDocumentationFile &&
+               (normalized.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
+                normalized.Contains("/docs/", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("documentation/", StringComparison.OrdinalIgnoreCase) ||
+                normalized.Contains("/documentation/", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsPlaceholderValue(string value)

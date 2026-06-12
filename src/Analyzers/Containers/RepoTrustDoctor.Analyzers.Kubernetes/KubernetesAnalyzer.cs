@@ -53,8 +53,13 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
+            var relativePath = Path.GetRelativePath(context.RepositoryPath, file).Replace('\\', '/');
+            if (IsExampleFixturePath(relativePath))
+            {
+                continue;
+            }
+
             var content = await File.ReadAllTextAsync(file, cancellationToken);
-            var relativePath = Path.GetRelativePath(context.RepositoryPath, file);
             if (!LooksLikeKubernetesManifest(content))
             {
                 continue;
@@ -178,6 +183,29 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
     private static bool HasPodTemplateOrContainerSpec(string content) =>
         ContainerSpecPattern().IsMatch(content) &&
         WorkloadKindPattern().IsMatch(content);
+
+    private static bool IsExampleFixturePath(string relativePath) =>
+        relativePath.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.StartsWith("test/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.StartsWith("testing/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("/testing/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("integration-test", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("smoke-test", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("dockertest", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("testfixtures", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("testassets", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("/testdata/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.StartsWith("testdata/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.StartsWith("samples/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("/samples/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.StartsWith("playground/", StringComparison.OrdinalIgnoreCase) ||
+        relativePath.Contains("/playground/", StringComparison.OrdinalIgnoreCase);
 
     [GeneratedRegex(@"privileged\s*:\s*true", RegexOptions.IgnoreCase)]
     private static partial Regex PrivilegedPattern();

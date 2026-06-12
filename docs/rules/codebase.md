@@ -51,7 +51,7 @@ A source file appears to contain security-sensitive or operationally critical lo
 
 Static analyzer implementation files suppress rule-vocabulary matches such as `Secret`, `Permission`, or regex helper names so analyzer rule text is not treated as application-critical code. Dangerous APIs such as command execution and unsafe deserialization are still reported.
 
-Source files under common `tests`, `docs`, `examples`, `fixtures`, and `playground` paths are skipped for criticality findings so example and fixture code is not treated as production-critical code.
+Source files under common `tests`, `test`, `testdata`, `testassets`, `docs`, `examples`, `samples`, `fixtures`, `integration-test`, `intTest`, `smoke-test`, `dockerTest`, `testFixtures`, `generated`, `gen`, `perf`, benchmark, project template, item template, and `playground` paths are skipped for criticality findings so example, generated, benchmark, template, and fixture code is not treated as production-critical code. Vendored/static library paths such as `vendor`, `wwwroot/lib`, `node_modules`, and bundled jQuery are also skipped.
 
 Recommendation: prioritize review and tests for these files.
 
@@ -167,7 +167,7 @@ Recommendation: add targeted tests for central files to reduce risk of cascading
 
 An HTTP route handler was detected without a visible authentication or authorization annotation.
 
-Express middleware-only `app.use(middleware)` calls are not treated as endpoints; `app.use('/path', ...)` remains route evidence. Django route detection is line-anchored to URL pattern entries so Python helpers such as `Path(...)` are not treated as Django routes. Source files under common `tests`, `docs`, `examples`, `fixtures`, and `playground` paths are skipped for route findings.
+Express middleware-only `app.use(middleware)` calls are not treated as endpoints; `app.use('/path', ...)` remains route evidence. Route-like text inside string literals or comments is ignored. Django route detection is limited to `urls.py` or `/urls/` configuration paths and line-anchored URL pattern entries, so Python helpers such as `Path(...)` or `url(...)` are not treated as Django routes. Django `admin_view`/permission wrappers count as auth hints, and Django's own `contrib` and `conf/urls` router internals are skipped. Spring annotation declaration files, endpoint annotation internals, and Spring framework source paths under `org/springframework` are not treated as application endpoints. Source files under common test, generated, benchmark, template, documentation, sample, fixture, analyzer implementation, and playground paths are skipped for route findings.
 
 Recommendation: add authentication middleware or auth annotations to HTTP endpoints, or document why public access is intentional.
 

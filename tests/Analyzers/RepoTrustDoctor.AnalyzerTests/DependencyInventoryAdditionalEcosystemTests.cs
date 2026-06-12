@@ -113,6 +113,30 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
         var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP025");
         Assert.Equal(Severity.Low, finding.Severity);
         Assert.Contains("github.com/example/lib", finding.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP024");
+        Assert.Contains(GetInventory(result).Packages, p => p.Name == "github.com/example/lib" && p.IsVersionPinned);
+    }
+
+    [Theory]
+    [InlineData("v1.2.3-rc.1")]
+    [InlineData("v2.5.0+incompatible")]
+    public async Task AnalyzeAsync_GoModSemverPrereleaseAndBuildMetadata_AreExactVersions(string version)
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.sum"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), $$"""
+        module example.com/mymodule
+
+        go 1.22
+
+        require github.com/example/lib {{version}}
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP024");
+        Assert.Contains(GetInventory(result).Packages, p => p.Name == "github.com/example/lib" && p.IsVersionPinned);
     }
 
     [Fact]

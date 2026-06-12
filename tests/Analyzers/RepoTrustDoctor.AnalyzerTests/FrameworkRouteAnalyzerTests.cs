@@ -101,6 +101,31 @@ public sealed class FrameworkRouteAnalyzerTests
     }
 
     [Fact]
+    public async Task FrameworkRouteAnalyzer_IgnoresRouteLikeTextInsideStringsAndComments()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "RouteDocumentation.cs"), """
+        public static class RouteDocumentation
+        {
+            private const string AttributeExample = "[HttpGet]";
+            private const string MinimalApiExample = "app.MapPost(\"/example\", () => Results.Ok())";
+
+            // app.MapGet("/comment", () => Results.Ok());
+            /*
+              [Route("api/comment")]
+            */
+        }
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(routesArtifact.Routes);
+    }
+
+    [Fact]
     public async Task FrameworkRouteAnalyzer_DetectsLineAnchoredDjangoRoutes()
     {
         using var fixture = TemporaryRepository.Create();
@@ -117,6 +142,135 @@ public sealed class FrameworkRouteAnalyzerTests
         var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
         Assert.Equal(2, routesArtifact.Routes.Count);
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-CODE012");
+    }
+
+    [Fact]
+    public async Task FrameworkRouteAnalyzer_DoesNotTreatDjangoUrlHelperCallsAsRoutes()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "views.py"), """
+        def render_link(url):
+            return url("admin:index")
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(routesArtifact.Routes);
+    }
+
+    [Fact]
+    public async Task FrameworkRouteAnalyzer_TreatsDjangoAdminViewAsAuthHint()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "urls.py"), """
+        urlpatterns = [
+            path("secure/", admin_site.admin_view(my_view)),
+        ]
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE012");
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+        var route = Assert.Single(routesArtifact.Routes);
+        Assert.True(route.HasAuthHint);
+    }
+
+    [Fact]
+    public async Task FrameworkRouteAnalyzer_SkipsDjangoContribFrameworkRouter()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var filePath = Path.Combine(fixture.Path, "django", "contrib", "auth", "urls.py");
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, """
+        urlpatterns = [
+            path("login/", views.LoginView.as_view(), name="login"),
+            path("logout/", views.LogoutView.as_view(), name="logout"),
+        ]
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(routesArtifact.Routes);
+    }
+
+    [Fact]
+    public async Task FrameworkRouteAnalyzer_SkipsDjangoConfUrlFrameworkInternals()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var filePath = Path.Combine(fixture.Path, "django", "conf", "urls", "i18n.py");
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, """
+        urlpatterns = [
+            path("setlang/", set_language, name="set_language"),
+        ]
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(routesArtifact.Routes);
+    }
+
+    [Fact]
+    public async Task FrameworkRouteAnalyzer_SkipsSpringFrameworkInternalRouteClasses()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var filePath = Path.Combine(
+            fixture.Path,
+            "module",
+            "spring-boot-webmvc",
+            "src",
+            "main",
+            "java",
+            "org",
+            "springframework",
+            "boot",
+            "webmvc",
+            "autoconfigure",
+            "error",
+            "BasicErrorController.java");
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, """
+        @RequestMapping("${spring.web.error.path:${error.path:/error}}")
+        public class BasicErrorController {
+        }
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(routesArtifact.Routes);
+    }
+
+    [Fact]
+    public async Task FrameworkRouteAnalyzer_SkipsSpringAnnotationDeclarations()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "ControllerEndpoint.java"), """
+        @GetMapping
+        @PostMapping
+        public @interface ControllerEndpoint {
+        }
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(routesArtifact.Routes);
     }
 
     [Fact]
@@ -213,6 +367,18 @@ public sealed class FrameworkRouteAnalyzerTests
     [Theory]
     [InlineData("playground/ssr/server.js")]
     [InlineData("examples/web/server.js")]
+    [InlineData("samples/web/server.js")]
+    [InlineData("integration-test/spring-boot-sni/src/main/java/HelloController.java")]
+    [InlineData("smoke-test/spring-boot-smoke-test/src/main/java/HelloController.java")]
+    [InlineData("module/spring-boot-web-server/src/testFixtures/java/HelloController.java")]
+    [InlineData("module/spring-boot-amqp/src/dockerTest/java/HelloController.java")]
+    [InlineData("module/spring-boot-devtools/src/intTest/java/com/example/ControllerOne.java")]
+    [InlineData("src/Framework/AspNetCoreAnalyzers/src/Analyzers/MvcAnalyzer.cs")]
+    [InlineData("src/Components/Testing/src/Infrastructure/ServerFixture.cs")]
+    [InlineData("src/Identity/testassets/Identity.DefaultUI.WebSite/server.js")]
+    [InlineData("src/Http/Http.Extensions/gen/GeneratedEndpoint.cs")]
+    [InlineData("src/Http/Http/perf/Microbenchmarks/RequestDelegateGeneratorBenchmarks.cs")]
+    [InlineData("src/ProjectTemplates/Web.ProjectTemplates/content/EmptyWeb-CSharp/Program.cs")]
     [InlineData("fixtures/routes/server.js")]
     [InlineData("docs/demo/server.js")]
     public async Task FrameworkRouteAnalyzer_SkipsExampleAndPlaygroundSourceFiles(string relativePath)
@@ -224,6 +390,9 @@ public sealed class FrameworkRouteAnalyzerTests
         app.use('*all', async (req, res) => {
           res.end('demo')
         });
+        app.MapPost("/_ready/{token}", () => Results.Ok());
+        @GetMapping("/hello")
+        public String hello() { return "ok"; }
         """);
 
         var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
