@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Net;
 using System.Text;
 using RepoTrustDoctor.Analysis.Abstractions;
@@ -17,6 +18,27 @@ public sealed class PackageInfrastructureTests
             new StubHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent("{}", Encoding.UTF8, "application/json")
+            }));
+
+        var result = await lookup.GetStringAsync(new Uri("https://registry.example.test/package"), CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal("{}", result.Body);
+    }
+
+    [Fact]
+    public async Task SafeHttpLookup_DecodesGzipResponses()
+    {
+        var lookup = new SafeHttpLookup(
+            ["registry.example.test"],
+            new StubHttpHandler(_ =>
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(Gzip("{}"))
+                };
+                response.Content.Headers.ContentEncoding.Add("gzip");
+                return response;
             }));
 
         var result = await lookup.GetStringAsync(new Uri("https://registry.example.test/package"), CancellationToken.None);
@@ -176,6 +198,17 @@ public sealed class PackageInfrastructureTests
 
     private static DependencyPackageInfo CreatePackage(DependencyEcosystem ecosystem, string name, string version) =>
         new(ecosystem, name, version, DependencyScope.Production, "manifest", null, true, true, false);
+
+    private static byte[] Gzip(string value)
+    {
+        using var output = new MemoryStream();
+        using (var gzip = new GZipStream(output, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            gzip.Write(Encoding.UTF8.GetBytes(value));
+        }
+
+        return output.ToArray();
+    }
 
     private sealed class StubHttpHandler(Func<HttpRequestMessage, HttpResponseMessage> handler) : HttpMessageHandler
     {

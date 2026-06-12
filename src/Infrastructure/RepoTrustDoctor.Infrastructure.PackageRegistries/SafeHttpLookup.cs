@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 
@@ -100,11 +101,12 @@ public sealed class SafeHttpLookup
 
                 response.EnsureSuccessStatusCode();
                 await using var stream = await response.Content.ReadAsStreamAsync(linkedCts.Token);
+                await using var decodedStream = DecodeContentStream(stream, response.Content.Headers.ContentEncoding);
                 using var memory = new MemoryStream();
                 var buffer = new byte[8192];
                 while (true)
                 {
-                    var read = await stream.ReadAsync(buffer, linkedCts.Token);
+                    var read = await decodedStream.ReadAsync(buffer, linkedCts.Token);
                     if (read == 0)
                     {
                         break;
@@ -131,6 +133,26 @@ public sealed class SafeHttpLookup
         }
 
         return SafeLookupResult.Fail(SafeLookupErrorKind.BlockedUrl, "Redirect limit was exceeded.");
+    }
+
+    private static Stream DecodeContentStream(Stream stream, ICollection<string> contentEncodings)
+    {
+        if (contentEncodings.Any(encoding => encoding.Equals("gzip", StringComparison.OrdinalIgnoreCase)))
+        {
+            return new GZipStream(stream, CompressionMode.Decompress);
+        }
+
+        if (contentEncodings.Any(encoding => encoding.Equals("deflate", StringComparison.OrdinalIgnoreCase)))
+        {
+            return new DeflateStream(stream, CompressionMode.Decompress);
+        }
+
+        if (contentEncodings.Any(encoding => encoding.Equals("br", StringComparison.OrdinalIgnoreCase)))
+        {
+            return new BrotliStream(stream, CompressionMode.Decompress);
+        }
+
+        return stream;
     }
 
     private bool IsAllowed(Uri uri, out string error)
