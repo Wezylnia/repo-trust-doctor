@@ -234,9 +234,10 @@ public sealed class SecretQuickScanAnalyzerTests
     public async Task AnalyzeAsync_ReportsGcpServiceAccountKey()
     {
         using var fixture = TemporaryRepository.Create();
-        File.WriteAllText(Path.Combine(fixture.Path, "sa.json"), """
+        var serviceAccountType = "service_" + "account";
+        File.WriteAllText(Path.Combine(fixture.Path, "sa.json"), $$"""
         {
-            "type": "service_account",
+            "type": "{{serviceAccountType}}",
             "project_id": "my-project",
             "private_key_id": "abc123"
         }
@@ -255,7 +256,11 @@ public sealed class SecretQuickScanAnalyzerTests
     public async Task AnalyzeAsync_ReportsJwtToken()
     {
         using var fixture = TemporaryRepository.Create();
-        var fakeJwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+        var fakeJwt = string.Join(
+            ".",
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+            "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0",
+            "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c");
         File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), $"""
         token={fakeJwt}
         """);
@@ -308,8 +313,9 @@ public sealed class SecretQuickScanAnalyzerTests
     public async Task AnalyzeAsync_ReportsGenericApiKey()
     {
         using var fixture = TemporaryRepository.Create();
-        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), """
-        api_key=Abcdefghijk1234567890XYZ
+        var fakeApiKey = "Abcdefghijk" + "1234567890XYZ";
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), $"""
+        api_key={fakeApiKey}
         """);
 
         var analyzer = new SecretQuickScanAnalyzer();
