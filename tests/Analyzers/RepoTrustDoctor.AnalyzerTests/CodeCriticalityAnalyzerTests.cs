@@ -313,6 +313,29 @@ public sealed class CodeCriticalityAnalyzerTests
     }
 
     [Fact]
+    public async Task CodeCriticalityAnalyzer_IgnoresDangerousTermsInsideComments()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "docs");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "CommentOnly.cs"), """
+        public sealed class CommentOnly
+        {
+            // Process.Start, BinaryFormatter, password, secret, and token are mentioned in a comment.
+            /* authorization, payment, database, network, and crypto are also documentation notes. */
+            public string Say() => "hello";
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(artifact.Files);
+    }
+
+    [Fact]
     public async Task CodeCriticalityAnalyzer_SkipsTestSourceFiles()
     {
         using var fixture = TemporaryRepository.Create();

@@ -194,7 +194,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
     {
         var reasons = new HashSet<CodeCriticalityReason>();
         var firstRelevantLine = default(int?);
-        var searchableText = RemoveAnalyzerVocabulary(RemoveQuotedText(text));
+        var searchableText = RemoveAnalyzerVocabulary(RemoveComments(RemoveQuotedText(text)));
         var lower = searchableText.ToLowerInvariant();
         var lines = searchableText.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
 
@@ -307,6 +307,15 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 return newlineCount == 0 ? string.Empty : new string('\n', newlineCount);
             });
 
+    private static string RemoveComments(string text) =>
+        LineCommentRegex().Replace(
+            BlockCommentRegex().Replace(text, match =>
+            {
+                var newlineCount = match.Value.Count(character => character == '\n');
+                return newlineCount == 0 ? string.Empty : new string('\n', newlineCount);
+            }),
+            string.Empty);
+
     private static bool HasBoundedProcessInvocation(string searchableText) =>
         searchableText.Contains("processstartinfo", StringComparison.OrdinalIgnoreCase) &&
         searchableText.Contains("useshellexecute = false", StringComparison.OrdinalIgnoreCase) &&
@@ -356,6 +365,12 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex("\"\"\"[\\s\\S]*?\"\"\"|@\"(?:[^\"]|\"\")*\"|\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|`(?:\\\\.|[^`\\\\])*`", RegexOptions.Multiline)]
     private static partial Regex QuotedTextRegex();
+
+    [GeneratedRegex(@"/\*[\s\S]*?\*/", RegexOptions.Multiline)]
+    private static partial Regex BlockCommentRegex();
+
+    [GeneratedRegex(@"//.*$", RegexOptions.Multiline)]
+    private static partial Regex LineCommentRegex();
 
     [GeneratedRegex(@"CodeCriticalityReason\.\w+", RegexOptions.IgnoreCase)]
     private static partial Regex CodeCriticalityReasonReferenceRegex();
