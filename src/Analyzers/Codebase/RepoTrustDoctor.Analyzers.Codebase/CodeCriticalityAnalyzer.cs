@@ -225,6 +225,8 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             firstRelevantLine ??= firstBroadExceptionLine;
         }
 
+        SuppressStaticAnalyzerVocabulary(repositoryPath, filePath, text, reasons);
+
         var score = Math.Min(100, reasons.Sum(ScoreReason));
         return new CodeCriticalityFile(
             Path.GetRelativePath(repositoryPath, filePath).Replace('\\', '/'),
@@ -289,6 +291,35 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                fileName.EndsWith("Test", StringComparison.OrdinalIgnoreCase) ||
                fileName.EndsWith(".spec", StringComparison.OrdinalIgnoreCase) ||
                fileName.EndsWith(".test", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void SuppressStaticAnalyzerVocabulary(
+        string root,
+        string filePath,
+        string originalText,
+        HashSet<CodeCriticalityReason> reasons)
+    {
+        if (!IsStaticAnalyzerImplementation(root, filePath, originalText))
+        {
+            return;
+        }
+
+        reasons.Remove(CodeCriticalityReason.Authentication);
+        reasons.Remove(CodeCriticalityReason.Authorization);
+        reasons.Remove(CodeCriticalityReason.Payments);
+        reasons.Remove(CodeCriticalityReason.Database);
+        reasons.Remove(CodeCriticalityReason.FileSystem);
+        reasons.Remove(CodeCriticalityReason.Network);
+        reasons.Remove(CodeCriticalityReason.Cryptography);
+        reasons.Remove(CodeCriticalityReason.Secrets);
+    }
+
+    private static bool IsStaticAnalyzerImplementation(string root, string filePath, string originalText)
+    {
+        var relativePath = Path.GetRelativePath(root, filePath).Replace('\\', '/');
+        return relativePath.Contains("/Analyzers/", StringComparison.OrdinalIgnoreCase) ||
+               originalText.Contains("IRepositoryAnalyzer", StringComparison.Ordinal) ||
+               originalText.Contains("IDependencyInventoryCollector", StringComparison.Ordinal);
     }
 
     private static string RemoveQuotedText(string text) =>

@@ -77,6 +77,11 @@ public sealed partial class ImportGraphAnalyzer
 
         if (line.StartsWith("import", StringComparison.Ordinal))
         {
+            if (IsTypeOnlyJavaScriptImport(line))
+            {
+                return;
+            }
+
             match = JsImportFromRegex().Match(line);
             if (!match.Success)
             {
@@ -105,6 +110,10 @@ public sealed partial class ImportGraphAnalyzer
             imports.Add(resolved);
         }
     }
+
+    private static bool IsTypeOnlyJavaScriptImport(string line) =>
+        line.StartsWith("import type ", StringComparison.Ordinal) ||
+        JsTypeOnlyNamedImportRegex().IsMatch(line);
 
     private static void ParsePythonImport(string line, List<string> imports, IReadOnlySet<string> knownFiles)
     {
@@ -268,6 +277,9 @@ public sealed partial class ImportGraphAnalyzer
 
     [GeneratedRegex(@"import\s+.*?\s+from\s+['""](?<path>[^'""]+)['""]", RegexOptions.None)]
     private static partial Regex JsImportFromRegex();
+
+    [GeneratedRegex(@"^import\s*\{\s*(?:type\s+[A-Za-z_$][A-Za-z0-9_$]*\s*,?\s*)+\}\s+from\s+['""][^'""]+['""]", RegexOptions.None)]
+    private static partial Regex JsTypeOnlyNamedImportRegex();
 
     [GeneratedRegex(@"import\s*\(\s*['""](?<path>[^'""]+)['""]\s*\)", RegexOptions.None)]
     private static partial Regex JsDynamicImportRegex();

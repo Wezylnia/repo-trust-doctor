@@ -66,6 +66,33 @@ public sealed class ImportGraphAnalyzerTests
     }
 
     [Fact]
+    public async Task ImportGraphAnalyzer_IgnoresTypeOnlyTypeScriptImports()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Report.ts"), """
+        export interface RepositoryScan {
+            target: string;
+        }
+        """);
+
+        for (var index = 1; index <= 12; index++)
+        {
+            File.WriteAllText(
+                Path.Combine(fixture.Path, $"View{index}.tsx"),
+                "import type { RepositoryScan } from './Report';");
+        }
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new ImportGraphAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE010");
+        var artifact = Assert.Single(result.Artifacts!, art => art.Key == ImportGraphArtifact.ArtifactKey);
+        var graph = Assert.IsType<ImportGraphArtifact>(artifact.Value);
+        Assert.Empty(graph.Edges);
+        Assert.Empty(graph.CentralFiles);
+    }
+
+    [Fact]
     public async Task ImportGraphAnalyzer_DoesNotReportMissingCoverageWhenNoCoverageReportWasImported()
     {
         using var fixture = TemporaryRepository.Create();
