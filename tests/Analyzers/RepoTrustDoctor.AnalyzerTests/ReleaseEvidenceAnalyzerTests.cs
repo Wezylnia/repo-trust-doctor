@@ -39,6 +39,20 @@ public sealed class ReleaseEvidenceAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_GitignoredRootArtifactDirectoryDoesNotReportArtifactRules()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".gitignore"), "artifacts/\n");
+        var publish = Directory.CreateDirectory(Path.Combine(fixture.Path, "artifacts", "publish"));
+        File.WriteAllText(Path.Combine(publish.FullName, "tool.zip"), "synthetic");
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REL002");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REL003");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ArtifactWithChecksumAndSbomDoesNotReportArtifactRules()
     {
         using var fixture = TemporaryRepository.Create();
