@@ -15,13 +15,13 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
     private static readonly IReadOnlyList<KeywordGroup> KeywordGroups =
     [
         new(CodeCriticalityReason.Authentication, ["authenticate", "authentication", "login", "signin", "session", "jwt"]),
-        new(CodeCriticalityReason.Authorization, ["authorize", "authorization", "permission", "role", "policy"]),
-        new(CodeCriticalityReason.Payments, ["payment", "billing", "invoice", "stripe", "checkout", "refund"]),
-        new(CodeCriticalityReason.Database, ["database", "dbcontext", "sql", "migration", "transaction", "repository"]),
+        new(CodeCriticalityReason.Authorization, ["authorize", "authorization", "permission", "requireauthorization", "allowanonymous"]),
+        new(CodeCriticalityReason.Payments, ["payment", "billing", "invoice", "stripe", "refund", "cardnumber", "card_number"]),
+        new(CodeCriticalityReason.Database, ["database", "dbcontext", "sqlconnection", "npgsql", "mysql", "postgres", "migrationbuilder", "transaction"]),
         new(CodeCriticalityReason.FileSystem, ["file.", "filesystem", "readall", "writeall", "upload", "download"]),
-        new(CodeCriticalityReason.Network, ["httpclient", "fetch(", "axios", "request", "socket", "webhook"]),
-        new(CodeCriticalityReason.Cryptography, ["encrypt", "decrypt", "hash", "hmac", "rsa", "aes", "crypto"]),
-        new(CodeCriticalityReason.Secrets, ["secret", "password", "token", "apikey", "api_key", "credential"]),
+        new(CodeCriticalityReason.Network, ["httpclient", "httpcontext", "httpget", "httppost", "fetch(", "axios", "socket", "webhook"]),
+        new(CodeCriticalityReason.Cryptography, ["encrypt", "decrypt", "sha256", "sha512", "hmac", "rsa", "aes", "crypto"]),
+        new(CodeCriticalityReason.Secrets, ["secret", "password", "access_token", "refresh_token", "bearer", "apikey", "api_key", "credential"]),
         new(CodeCriticalityReason.Deserialization, ["binaryformatter", "typenamehandling", "objectinputstream", "pickle.load", "yaml.unsafe_load", "readobject"]),
         new(CodeCriticalityReason.CommandExecution, ["process.start", "runtime.exec", "subprocess.", "os.system", "child_process", "execsync", "spawnsync", "command::new", "eval(", "popen"])
     ];
@@ -217,10 +217,11 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             reasons.Add(CodeCriticalityReason.LargeFile);
         }
 
-        if (BroadExceptionRegex().IsMatch(searchableText))
+        var firstBroadExceptionLine = FindFirstBroadExceptionLine(lines);
+        if (firstBroadExceptionLine is not null)
         {
             reasons.Add(CodeCriticalityReason.BroadExceptionHandling);
-            firstRelevantLine ??= FindFirstBroadExceptionLine(lines);
+            firstRelevantLine ??= firstBroadExceptionLine;
         }
 
         var score = Math.Min(100, reasons.Sum(ScoreReason));
@@ -266,7 +267,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
     {
         for (var index = 0; index < lines.Length; index++)
         {
-            if (BroadExceptionRegex().IsMatch(lines[index]))
+            if (IsBroadExceptionLine(lines[index]))
             {
                 return index + 1;
             }
@@ -299,6 +300,10 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         searchableText.Contains("processstartinfo", StringComparison.OrdinalIgnoreCase) &&
         searchableText.Contains("useshellexecute = false", StringComparison.OrdinalIgnoreCase) &&
         searchableText.Contains("argumentlist.add", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsBroadExceptionLine(string line) =>
+        BroadExceptionRegex().IsMatch(line) &&
+        !line.Contains(" when (", StringComparison.OrdinalIgnoreCase);
 
     private static Finding CreateCriticalityFinding(
         string ruleId,

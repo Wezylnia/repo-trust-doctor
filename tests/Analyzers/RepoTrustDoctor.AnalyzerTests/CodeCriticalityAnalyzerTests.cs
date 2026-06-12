@@ -76,6 +76,56 @@ public sealed class CodeCriticalityAnalyzerTests
     }
 
     [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotReportFilteredExceptionHandlingAsBroad()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "reports");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "CoverageReader.cs"), """
+        public sealed class CoverageReader
+        {
+            public void ReadPasswordReport(string password)
+            {
+                try { File.ReadAllText(password); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE006");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.DoesNotContain(Assert.Single(artifact.Files).Reasons, reason => reason == CodeCriticalityReason.BroadExceptionHandling);
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotTreatInfrastructureTypeNamesAsSecretOrCryptoSignals()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "jobs");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "BackgroundJob.cs"), """
+        public sealed class BackgroundJob
+        {
+            public Task RunAsync(CancellationToken cancellationToken)
+            {
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                return Task.CompletedTask;
+            }
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Empty(artifact.Files);
+    }
+
+    [Fact]
     public async Task CodeCriticalityAnalyzer_IgnoresNonCriticalSmallFiles()
     {
         using var fixture = TemporaryRepository.Create();
