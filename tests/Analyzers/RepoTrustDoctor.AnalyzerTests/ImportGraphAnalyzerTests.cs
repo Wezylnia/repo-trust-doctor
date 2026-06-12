@@ -66,6 +66,27 @@ public sealed class ImportGraphAnalyzerTests
     }
 
     [Fact]
+    public async Task ImportGraphAnalyzer_DoesNotReportMissingCoverageWhenNoCoverageReportWasImported()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Common.ts"), "export class Common {}");
+        for (int i = 1; i <= 10; i++)
+        {
+            File.WriteAllText(
+                Path.Combine(fixture.Path, $"Service{i}.ts"),
+                "import { Common } from './Common';");
+        }
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        context.AddArtifact(new AnalyzerArtifact(CoverageArtifact.ArtifactKey, new CoverageArtifact([], [], new Dictionary<string, string>())));
+
+        var result = await new ImportGraphAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-CODE010");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE011");
+    }
+
+    [Fact]
     public async Task ImportGraphAnalyzer_MatchesCoverageByUnambiguousFileSuffix()
     {
         using var fixture = TemporaryRepository.Create();
