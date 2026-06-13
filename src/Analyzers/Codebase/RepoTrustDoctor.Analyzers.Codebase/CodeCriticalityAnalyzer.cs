@@ -27,7 +27,6 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         new(CodeCriticalityReason.Secrets, ["secret", "password", "access_token", "refresh_token", "bearer", "apikey", "api_key", "credential"]),
         new(CodeCriticalityReason.Deserialization, ["binaryformatter", "typenamehandling", "new objectinputstream", "pickle.load", "yaml.unsafe_load"]),
         new(CodeCriticalityReason.CommandExecution, ["process.start(", "runtime.exec(", "runtime.getruntime().exec(", "new processbuilder(", "subprocess.run(", "subprocess.popen(", "subprocess.call(", "subprocess.check_call(", "subprocess.check_output(", "os.system(", "os.popen(", "child_process.exec", "child_process.spawn", "execsync(", "spawnsync(", "command::new(", "popen("]),
-        new(CodeCriticalityReason.DynamicCodeEvaluation, ["eval(", "new function("]),
         new(CodeCriticalityReason.JavaSerializationHook, ["readobject("])
     ];
 
@@ -294,6 +293,14 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             }
         }
 
+        var dynamicEvaluationLine = FindFirstDynamicEvaluationLine(filePath, lines);
+        if (dynamicEvaluationLine is not null)
+        {
+            reasons.Add(CodeCriticalityReason.DynamicCodeEvaluation);
+            relevantLines[CodeCriticalityReason.DynamicCodeEvaluation] = dynamicEvaluationLine.Value;
+            firstRelevantLine ??= dynamicEvaluationLine;
+        }
+
         if (lines.Length > LargeFileLineThreshold)
         {
             reasons.Add(CodeCriticalityReason.LargeFile);
@@ -357,6 +364,31 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         {
             if (IsBroadExceptionLine(lines[index]) &&
                 !IsBoundedBroadExceptionHandler(lines, index))
+            {
+                return index + 1;
+            }
+        }
+
+        return null;
+    }
+
+    private static int? FindFirstDynamicEvaluationLine(string filePath, string[] lines)
+    {
+        var pattern = Path.GetExtension(filePath).ToLowerInvariant() switch
+        {
+            ".js" or ".jsx" or ".ts" or ".tsx" => JavaScriptDynamicEvaluationPattern(),
+            ".py" or ".rb" => PythonRubyDynamicEvaluationPattern(),
+            _ => null
+        };
+
+        if (pattern is null)
+        {
+            return null;
+        }
+
+        for (var index = 0; index < lines.Length; index++)
+        {
+            if (pattern.IsMatch(lines[index]))
             {
                 return index + 1;
             }
@@ -503,6 +535,12 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"//.*$", RegexOptions.Multiline)]
     private static partial Regex LineCommentRegex();
+
+    [GeneratedRegex(@"(?<![\w$])eval\s*\(|new\s+function\s*\(", RegexOptions.IgnoreCase)]
+    private static partial Regex JavaScriptDynamicEvaluationPattern();
+
+    [GeneratedRegex(@"(?<![\w.])eval\s*\(", RegexOptions.IgnoreCase)]
+    private static partial Regex PythonRubyDynamicEvaluationPattern();
 
     [GeneratedRegex(@"CodeCriticalityReason\.\w+", RegexOptions.IgnoreCase)]
     private static partial Regex CodeCriticalityReasonReferenceRegex();

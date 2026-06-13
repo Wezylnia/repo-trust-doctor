@@ -115,7 +115,7 @@ Recommendation: avoid shell execution for untrusted input. Prefer purpose-built 
 - Default severity: `Medium`
 - Default confidence: `Medium`
 
-A critical source file dynamically evaluates code at runtime, for example with JavaScript `eval(...)` or `new Function(...)`. This is separate from `TRUST-CODE015`: dynamic code evaluation is risky, but it is not reported as operating-system command execution.
+A critical source file dynamically evaluates code at runtime, for example with JavaScript/TypeScript `eval(...)` or `new Function(...)`, or Python/Ruby `eval(...)`. This is separate from `TRUST-CODE015`: dynamic code evaluation is risky, but it is not reported as operating-system command execution. Domain-specific method names such as Go `Eval(...)` and safe helpers such as Python `ast.literal_eval(...)` are not enough to trigger this rule.
 
 Recommendation: avoid eval-style APIs for untrusted input and keep any intentional dynamic module loading tightly bounded.
 

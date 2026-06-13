@@ -465,6 +465,49 @@ public sealed class CodeCriticalityAnalyzerTests
     }
 
     [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotReportGoEvalDomainMethodsAsDynamicEvaluation()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "internal", "terraform");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "evaluate.go"), """
+        package terraform
+
+        func BuildScope(core Core, opts EvalOpts) (Scope, Diagnostics) {
+            return core.Eval(opts)
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE016");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.DoesNotContain(artifact.Files, file => file.Reasons.Contains(CodeCriticalityReason.DynamicCodeEvaluation));
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotReportPythonLiteralEvalAsDynamicEvaluation()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "parsing");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "safe_parse.py"), """
+        import ast
+
+        def parse(value):
+            return ast.literal_eval(value)
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE016");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.DoesNotContain(artifact.Files, file => file.Reasons.Contains(CodeCriticalityReason.DynamicCodeEvaluation));
+    }
+
+    [Fact]
     public async Task CodeCriticalityAnalyzer_DoesNotReportBoundedProcessStartInfoAsCommandExecution()
     {
         using var fixture = TemporaryRepository.Create();
