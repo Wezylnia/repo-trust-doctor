@@ -538,6 +538,49 @@ public sealed class CodeCriticalityAnalyzerTests
     }
 
     [Fact]
+    public async Task CodeCriticalityAnalyzer_ReportsPythonSubprocessWithoutShellAsBoundedMediumRisk()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "database");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "client.py"), """
+        import subprocess
+
+        def run(args):
+            subprocess.run(args, check=True)
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
+        Assert.Equal(Severity.Medium, finding.Severity);
+        Assert.Equal("Bounded subprocess execution in critical code", finding.Title);
+        Assert.Contains("without shell=True", finding.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_ReportsPythonSubprocessWithShellAsHighRisk()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "database");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "client.py"), """
+        import subprocess
+
+        def run(command):
+            subprocess.run(command, shell=True, check=True)
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
+        Assert.Equal(Severity.High, finding.Severity);
+        Assert.Equal("Command execution in critical code", finding.Title);
+    }
+
+    [Fact]
     public async Task CodeCriticalityAnalyzer_ReportsEvalAsDynamicEvaluationNotCommandExecution()
     {
         using var fixture = TemporaryRepository.Create();

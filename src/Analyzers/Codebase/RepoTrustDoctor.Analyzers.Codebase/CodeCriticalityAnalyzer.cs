@@ -188,7 +188,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         findings.AddRange(ordered
             .Where(file => file.Reasons.Contains(CodeCriticalityReason.CommandExecution))
             .Take(FindingLimit)
-            .Select(CreateCommandExecutionFinding));
+            .Select(file => CreateCommandExecutionFinding(context.RepositoryPath, file)));
 
         findings.AddRange(ordered
             .Where(file => file.Reasons.Contains(CodeCriticalityReason.DynamicCodeEvaluation))
@@ -499,21 +499,93 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             new Recommendation(recommendation),
             Tags: ["codebase", "criticality"]);
 
-    private static Finding CreateCommandExecutionFinding(CodeCriticalityFile file)
+    private static Finding CreateCommandExecutionFinding(string repositoryPath, CodeCriticalityFile file)
     {
         var isTooling = IsToolingOrAnalyzerPath(file.FilePath);
+        var isBoundedPythonSubprocess = IsBoundedPythonSubprocessInvocation(repositoryPath, file);
         return CreateCriticalityFinding(
             "TRUST-CODE015",
-            isTooling ? Severity.Medium : Severity.High,
-            isTooling ? "Command execution in build or tooling code" : "Command execution in critical code",
+            isTooling || isBoundedPythonSubprocess ? Severity.Medium : Severity.High,
+            isTooling
+                ? "Command execution in build or tooling code"
+                : isBoundedPythonSubprocess
+                    ? "Bounded subprocess execution in critical code"
+                    : "Command execution in critical code",
             isTooling
                 ? $"{file.FilePath} invokes command execution APIs in build or tooling code."
+                : isBoundedPythonSubprocess
+                    ? $"{file.FilePath} invokes Python subprocess APIs without shell=True; review argument construction and caller-controlled values."
                 : $"{file.FilePath} invokes command execution APIs that can run operating-system commands.",
             "code.command_execution",
             file,
             isTooling
                 ? "Review build and tooling command execution for fixed commands, explicit arguments, and untrusted input boundaries."
+                : isBoundedPythonSubprocess
+                    ? "Keep shell execution disabled, pass arguments as explicit arrays where possible, and validate or allowlist caller-controlled command parts."
                 : "Avoid shell execution for untrusted input; use safe APIs, allowlists, and explicit argument boundaries.");
+    }
+
+    private static bool IsBoundedPythonSubprocessInvocation(string repositoryPath, CodeCriticalityFile file)
+    {
+        if (!file.FilePath.EndsWith(".py", StringComparison.OrdinalIgnoreCase) ||
+            file.RelevantLines?.TryGetValue(CodeCriticalityReason.CommandExecution, out var lineNumber) != true)
+        {
+            return false;
+        }
+
+        var fullPath = Path.Combine(repositoryPath, file.FilePath.Replace('/', Path.DirectorySeparatorChar));
+        if (!RepositoryFileSystem.CanReadAsText(fullPath))
+        {
+            return false;
+        }
+
+        string[] lines;
+        try
+        {
+            lines = File.ReadAllLines(fullPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        var block = ExtractCallBlock(lines, lineNumber - 1);
+        if (!block.Contains("subprocess.", StringComparison.Ordinal) ||
+            block.Contains("shell=True", StringComparison.OrdinalIgnoreCase) ||
+            block.Contains("shell = True", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return block.Contains("subprocess.run(", StringComparison.Ordinal) ||
+               block.Contains("subprocess.Popen(", StringComparison.Ordinal) ||
+               block.Contains("subprocess.call(", StringComparison.Ordinal) ||
+               block.Contains("subprocess.check_call(", StringComparison.Ordinal) ||
+               block.Contains("subprocess.check_output(", StringComparison.Ordinal);
+    }
+
+    private static string ExtractCallBlock(string[] lines, int startIndex)
+    {
+        if (startIndex < 0 || startIndex >= lines.Length)
+        {
+            return string.Empty;
+        }
+
+        var selected = new List<string>(capacity: 8);
+        var balance = 0;
+        for (var index = startIndex; index < lines.Length && index < startIndex + 12; index++)
+        {
+            var line = lines[index];
+            selected.Add(line);
+            balance += line.Count(character => character == '(');
+            balance -= line.Count(character => character == ')');
+            if (selected.Count > 1 && balance <= 0)
+            {
+                break;
+            }
+        }
+
+        return string.Join('\n', selected);
     }
 
     private static int? GetRelevantLine(CodeCriticalityFile file, string evidenceKind)

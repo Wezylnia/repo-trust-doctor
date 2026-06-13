@@ -111,6 +111,8 @@ A critical source file invokes operating-system command execution APIs such as `
 
 When the same signal appears under build, CI, scripts, or other tooling paths, the finding is still reported because tooling often runs with repository or release credentials, but the title and severity are softened to `Command execution in build or tooling code` with `Medium` severity.
 
+Python `subprocess.*` calls in critical source are also softened to `Bounded subprocess execution in critical code` with `Medium` severity when the call block does not enable `shell=True`. These calls still deserve review for argument construction and caller-controlled values, but they are lower risk than shell-enabled command execution or APIs such as `os.system(...)`.
+
 Recommendation: avoid shell execution for untrusted input. Prefer purpose-built APIs, strict allowlists, and explicit argument passing that does not interpolate user-controlled strings into a shell command.
 
 ### `TRUST-CODE016` - Dynamic code evaluation in critical code
