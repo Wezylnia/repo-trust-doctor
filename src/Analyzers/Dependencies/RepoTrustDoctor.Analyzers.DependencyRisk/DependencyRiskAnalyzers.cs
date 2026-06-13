@@ -93,33 +93,7 @@ internal static class DependencyRiskPathFilters
 {
     public static bool IsLikelyExampleOrTestManifest(string manifestPath)
     {
-        var normalized = manifestPath.Replace('\\', '/');
-        return normalized.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("test/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("__tests__/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/__tests__/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("integration-test", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("integrationtesting", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("inttest", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("smoke-test", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("dockertest", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("testfixtures", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/docs/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("documentation/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/documentation/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("samples/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/samples/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("playground/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/playground/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("testdata/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/testdata/", StringComparison.OrdinalIgnoreCase);
+        return RepositoryPathClassifier.IsTestFixtureExampleOrDocumentationPath(manifestPath);
     }
 }
 

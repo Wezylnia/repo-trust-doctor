@@ -285,21 +285,7 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
     }
 
     private static bool IsLikelyTerraformFixturePath(string normalizedPath) =>
-        normalizedPath.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.StartsWith("test/", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.StartsWith("samples/", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.Contains("/samples/", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.StartsWith("testdata/", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.Contains("/testdata/", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.Contains("e2etest", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.Contains("integration-test", StringComparison.OrdinalIgnoreCase) ||
-        normalizedPath.Contains("smoke-test", StringComparison.OrdinalIgnoreCase);
+        RepositoryPathClassifier.IsTestFixtureExampleOrDocumentationPath(normalizedPath);
 
     // ── Patterns ──────────────────────────────────────────────────────
 

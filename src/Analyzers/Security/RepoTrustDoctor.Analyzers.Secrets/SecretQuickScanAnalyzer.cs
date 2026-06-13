@@ -180,92 +180,34 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 
     private static bool IsExampleFixturePath(string relativePath)
     {
-        var normalized = relativePath.Replace('\\', '/');
-        var slash = normalized.LastIndexOf('/');
-        var fileName = slash >= 0 ? normalized[(slash + 1)..] : normalized;
-
-        return normalized.Contains("tests/Fixtures/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("test/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/__tests__/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("__tests__/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/src/test/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("src/test/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("integration-test", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("smoke-test", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("dockertest", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("testfixtures", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/src/javaresttest/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("src/javaresttest/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/src/yamlresttest/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("src/yamlresttest/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("rest-tests", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("resttests", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/testassets/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("testassets/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/testcertificates/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("testcertificates/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/testing/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("testing/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("integrationtesting", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/TestFiles/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("TestFiles/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/samples/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("samples/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/sample/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("sample/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("/playground/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("playground/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("testdata/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.Contains("docs/examples/", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith("_test.go", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith("_test.py", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith(".test.js", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith(".test.ts", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith("Test.java", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith("Test.cs", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith("Tests.cs", StringComparison.OrdinalIgnoreCase);
+        return RepositoryPathClassifier.IsTestFixtureExampleOrDocumentationPath(relativePath);
     }
 
     private static bool IsDocumentationMarkdownPath(string relativePath)
     {
-        var normalized = relativePath.Replace('\\', '/');
+        var normalized = RepositoryPathClassifier.Normalize(relativePath);
         return normalized.EndsWith(".md", StringComparison.OrdinalIgnoreCase) &&
-               (normalized.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.Contains("/docs/", StringComparison.OrdinalIgnoreCase));
+               RepositoryPathClassifier.IsDocumentationPath(normalized);
     }
 
     private static bool IsDocumentationTextPath(string relativePath)
     {
-        var normalized = relativePath.Replace('\\', '/');
+        var normalized = RepositoryPathClassifier.Normalize(relativePath);
         var isDocumentationFile = normalized.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
                                   normalized.EndsWith(".adoc", StringComparison.OrdinalIgnoreCase) ||
                                   normalized.EndsWith(".rst", StringComparison.OrdinalIgnoreCase) ||
                                   normalized.EndsWith(".txt", StringComparison.OrdinalIgnoreCase);
 
-        return isDocumentationFile &&
-               (normalized.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.Contains("/docs/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.StartsWith("documentation/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.Contains("/documentation/", StringComparison.OrdinalIgnoreCase));
+        return isDocumentationFile && RepositoryPathClassifier.IsDocumentationPath(normalized);
     }
 
     private static bool IsDocumentationSensitiveFilePath(string relativePath)
     {
-        var normalized = relativePath.Replace('\\', '/');
+        var normalized = RepositoryPathClassifier.Normalize(relativePath);
         var fileName = Path.GetFileName(normalized);
         var extension = Path.GetExtension(normalized);
-        var isDocumentationPath = normalized.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
-                                  normalized.Contains("/docs/", StringComparison.OrdinalIgnoreCase) ||
-                                  normalized.StartsWith("documentation/", StringComparison.OrdinalIgnoreCase) ||
-                                  normalized.Contains("/documentation/", StringComparison.OrdinalIgnoreCase);
 
-        return isDocumentationPath &&
+        return RepositoryPathClassifier.IsDocumentationPath(normalized) &&
                (SensitiveFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) ||
                 SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase));
     }

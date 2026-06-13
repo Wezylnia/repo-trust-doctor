@@ -412,45 +412,16 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
     private static bool IsTestSource(string root, string filePath)
     {
         var relativePath = Path.GetRelativePath(root, filePath).Replace('\\', '/');
-        var fileName = Path.GetFileNameWithoutExtension(relativePath);
-        return relativePath.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.StartsWith("test/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.StartsWith("testing/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/testing/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("integrationtesting", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("integration-test", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("inttest", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("smoke-test", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("dockertest", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("testfixtures", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/testassets/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/testdata/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/analyzers/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/generated/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/gen/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/perf/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("benchmark", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("projecttemplates", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("itemtemplates", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/templates/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/docs/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.StartsWith("samples/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/samples/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.StartsWith("sample/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/sample/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.StartsWith("playground/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/playground/", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith("Tests", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith("Test", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith(".spec", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith(".test", StringComparison.OrdinalIgnoreCase);
+        var classification = RepositoryPathClassifier.Classify(relativePath);
+        return classification.HasAny(
+            RepositoryPathClassification.Test |
+            RepositoryPathClassification.Fixture |
+            RepositoryPathClassification.Example |
+            RepositoryPathClassification.Documentation |
+            RepositoryPathClassification.Generated |
+            RepositoryPathClassification.Template |
+            RepositoryPathClassification.Benchmark |
+            RepositoryPathClassification.AnalyzerImplementation);
     }
 
     private static string GetRouteStatement(string text, Match routeMatch)
