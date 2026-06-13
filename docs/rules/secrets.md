@@ -90,6 +90,8 @@ Recommendation: manually verify the finding, revoke or rotate the webhook URL if
 
 The secret scanner reads likely text/config/source candidates rather than every repository file. It always considers sensitive filenames and key/certificate extensions, plus common source and configuration formats such as `.cs`, `.js`, `.ts`, `.py`, `.go`, `.java`, `.php`, `.rb`, `.yml`, `.yaml`, `.json`, `.toml`, `.properties`, `.tf`, `.sh`, `.ps1`, `.cmd`, `.gradle`, and `.txt`.
 
+Large repositories are scanned in priority order. Sensitive filenames and configuration files are analyzed before general source files. Source-file content scanning is bounded for the quick scan; if the budget is reached, the analyzer returns `CompletedWithWarnings` with `secret.source.content.scanned.count` and `secret.source.content.skipped.count` metrics. This keeps broad repository scans responsive while preserving the highest-signal secret locations.
+
 To avoid noise in automated testing, vendored code, generated files, and documentation, the secret scanner ignores internal secret pattern matches and sensitive-looking example filenames (such as `.env`) within files residing in low-signal paths including:
 - `tests/Fixtures/`
 - `tests/`

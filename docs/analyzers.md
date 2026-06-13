@@ -34,6 +34,8 @@ Searches candidate text/config/source files for high-signal secret-like patterns
 
 The scanner avoids binary files, oversized text files, and common generated, vendored, fixture, example, test, and documentation paths. Sensitive files such as `.env`, `.npmrc`, `.pypirc`, private-key extensions, and credential files are still surfaced when they appear in production paths.
 
+For very large repositories, the quick scan prioritizes sensitive filenames and configuration files, then scans a bounded number of lower-priority source files. When that source budget is reached, the module completes with a warning and metrics instead of timing out.
+
 ## Docker And Containers
 
 Reviews Dockerfiles and common container files for build and runtime hygiene:

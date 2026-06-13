@@ -372,6 +372,35 @@ public sealed class SecretQuickScanAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_BudgetsSourceFilesButKeepsConfigurationCoverage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var sourceToken = "ghp_" + "abcdefghijklmnopqrstuvwxyz123456";
+        var configToken = "ghp_" + "abcdefghijklmnopqrstuvwxyz654321";
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "src"));
+        File.WriteAllText(Path.Combine(fixture.Path, "settings.json"), $$"""
+        { "token": "{{configToken}}" }
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "src", "a.cs"), """
+        public sealed class A { }
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "src", "b.cs"), $$"""
+        public sealed class B { private const string Token = "{{sourceToken}}"; }
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer(maxSourceContentScanFiles: 1);
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-SECRET003");
+        Assert.Equal("settings.json", Assert.Single(finding.Evidence).FilePath);
+        Assert.NotNull(result.Warnings);
+        Assert.Contains(result.Warnings, warning => warning.Contains("skipped 1 lower-priority source files", StringComparison.Ordinal));
+        Assert.NotNull(result.Metrics);
+        Assert.Equal("1", result.Metrics["secret.source.content.scanned.count"]);
+        Assert.Equal("1", result.Metrics["secret.source.content.skipped.count"]);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_HandlesDeletedOrUnreadableFilesGracefully()
     {
         using var fixture = TemporaryRepository.Create();

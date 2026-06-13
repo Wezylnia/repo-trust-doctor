@@ -6,19 +6,37 @@ namespace RepoTrustDoctor.Analyzers.Secrets;
 
 public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 {
+    private const int DefaultMaxSourceContentScanFiles = 2500;
     private static readonly string[] SensitiveFileNames = [".env", ".env.local", ".env.production", ".env.development", ".npmrc", ".pypirc", "id_rsa", ".git-credentials", ".netrc"];
     private static readonly string[] SensitiveExtensions = [".pem", ".key", ".ppk", ".p12", ".pfx"];
-    private static readonly string[] CandidateTextExtensions =
+    private static readonly string[] SourceCodeExtensions =
     [
         ".cs", ".fs", ".vb",
         ".js", ".jsx", ".ts", ".tsx",
-        ".py", ".go", ".java", ".kt", ".rs", ".rb", ".php", ".swift",
+        ".py", ".go", ".java", ".kt", ".rs", ".rb", ".php", ".swift"
+    ];
+
+    private static readonly string[] CandidateTextExtensions =
+    [
+        .. SourceCodeExtensions,
         ".yml", ".yaml", ".json", ".toml", ".xml", ".props", ".targets",
         ".properties", ".ini", ".conf", ".config", ".cfg", ".txt",
         ".tf", ".tfvars", ".hcl",
         ".sh", ".bash", ".zsh", ".ps1", ".cmd", ".bat",
         ".gradle", ".kts"
     ];
+
+    private readonly int maxSourceContentScanFiles;
+
+    public SecretQuickScanAnalyzer()
+        : this(DefaultMaxSourceContentScanFiles)
+    {
+    }
+
+    public SecretQuickScanAnalyzer(int maxSourceContentScanFiles)
+    {
+        this.maxSourceContentScanFiles = Math.Max(0, maxSourceContentScanFiles);
+    }
 
     public string Id => "secret-quick-scan";
 
@@ -53,93 +71,126 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var findings = new List<Finding>();
+        var sourceContentScanned = 0;
+        var sourceContentSkipped = 0;
+        var contentScanned = 0;
+        var prefilterSkipped = 0;
+        var candidateCount = 0;
+        var sensitiveCandidateCount = 0;
 
-        foreach (var file in EnumerateCandidateFiles(context.RepositoryPath))
+        foreach (var candidate in EnumerateCandidateFiles(context.RepositoryPath)
+                     .OrderBy(candidate => candidate.Kind)
+                     .ThenBy(candidate => candidate.RelativePath, StringComparer.OrdinalIgnoreCase))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var relativePath = Path.GetRelativePath(context.RepositoryPath, file);
-            var fileName = Path.GetFileName(file);
-            var extension = Path.GetExtension(file);
+            candidateCount++;
+            if (candidate.Kind == SecretCandidateKind.Sensitive)
+            {
+                sensitiveCandidateCount++;
+            }
 
-            if (IsExampleFixturePath(relativePath))
+            if (IsExampleFixturePath(candidate.RelativePath))
             {
                 continue;
             }
 
-            if ((SensitiveFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) ||
-                 SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase)) &&
-                !IsDocumentationSensitiveFilePath(relativePath))
+            if (candidate.Kind == SecretCandidateKind.Sensitive &&
+                !IsDocumentationSensitiveFilePath(candidate.RelativePath))
             {
-                if (IsPublicCertificatePem(file, extension))
+                if (IsPublicCertificatePem(candidate.Path, candidate.Extension))
                 {
                     continue;
                 }
 
-                findings.Add(CreateFinding("TRUST-SECRET001", "Sensitive-looking file is committed", Severity.High, Confidence.High, relativePath, $"Sensitive-looking file '{fileName}' exists."));
+                findings.Add(CreateFinding("TRUST-SECRET001", "Sensitive-looking file is committed", Severity.High, Confidence.High, candidate.RelativePath, $"Sensitive-looking file '{candidate.FileName}' exists."));
             }
 
-            if (!RepositoryFileSystem.CanReadAsText(file))
+            if (!RepositoryFileSystem.CanReadAsText(candidate.Path))
             {
                 continue;
             }
 
-            var content = await File.ReadAllTextAsync(file, cancellationToken);
+            if (candidate.Kind == SecretCandidateKind.Source &&
+                sourceContentScanned >= maxSourceContentScanFiles)
+            {
+                sourceContentSkipped++;
+                continue;
+            }
+
+            if (candidate.Kind == SecretCandidateKind.Source)
+            {
+                sourceContentScanned++;
+            }
+
+            var content = await TryReadTextAsync(candidate.Path, cancellationToken);
+            if (content is null)
+            {
+                continue;
+            }
+
+            contentScanned++;
+            if (!HasPotentialSecretSignal(content))
+            {
+                prefilterSkipped++;
+                continue;
+            }
+
             var privateKeyBlockMatch = PrivateKeyBlockPattern().Match(content);
             var privateKeyMarkerMatch = privateKeyBlockMatch.Success
                 ? privateKeyBlockMatch
                 : PrivateKeyMarkerPattern().Match(content);
             if (privateKeyMarkerMatch.Success &&
-                !IsDocumentationTextPath(relativePath) &&
+                !IsDocumentationTextPath(candidate.RelativePath) &&
                 (privateKeyBlockMatch.Success
-                    ? !IsLikelySourceCodePrivateKeyPattern(relativePath, content, privateKeyBlockMatch)
-                    : !IsLikelySourceCodeMarker(relativePath, content, privateKeyMarkerMatch.Index)))
+                    ? !IsLikelySourceCodePrivateKeyPattern(candidate.RelativePath, content, privateKeyBlockMatch)
+                    : !IsLikelySourceCodeMarker(candidate.RelativePath, content, privateKeyMarkerMatch.Index)))
             {
-                findings.Add(CreateFinding("TRUST-SECRET002", "Possible private key marker found", Severity.Critical, Confidence.High, relativePath, "A private key block marker was found.", GetLineNumber(content, privateKeyMarkerMatch.Index), isBlocking: true));
+                findings.Add(CreateFinding("TRUST-SECRET002", "Possible private key marker found", Severity.Critical, Confidence.High, candidate.RelativePath, "A private key block marker was found.", GetLineNumber(content, privateKeyMarkerMatch.Index), isBlocking: true));
             }
 
             if (GitHubTokenPattern().Match(content) is { Success: true } gitHubTokenMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET003", "Possible GitHub token found", Severity.High, Confidence.Medium, relativePath, "A GitHub token-like value was found and redacted.", GetLineNumber(content, gitHubTokenMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(gitHubTokenMatch.Value)));
+                findings.Add(CreateFinding("TRUST-SECRET003", "Possible GitHub token found", Severity.High, Confidence.Medium, candidate.RelativePath, "A GitHub token-like value was found and redacted.", GetLineNumber(content, gitHubTokenMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(gitHubTokenMatch.Value)));
             }
 
             if (AwsAccessKeyPattern().Match(content) is { Success: true } awsAccessKeyMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET004", "Possible AWS access key found", Severity.High, Confidence.Medium, relativePath, "An AWS access key-like value was found and redacted.", GetLineNumber(content, awsAccessKeyMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(awsAccessKeyMatch.Value)));
+                findings.Add(CreateFinding("TRUST-SECRET004", "Possible AWS access key found", Severity.High, Confidence.Medium, candidate.RelativePath, "An AWS access key-like value was found and redacted.", GetLineNumber(content, awsAccessKeyMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(awsAccessKeyMatch.Value)));
             }
 
             if (ConnectionStringPattern().Match(content) is { Success: true } connectionStringMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET005", "Possible database connection string found", Severity.High, Confidence.Medium, relativePath, "A connection string-like value was found and redacted.", GetLineNumber(content, connectionStringMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(connectionStringMatch.Value)));
+                findings.Add(CreateFinding("TRUST-SECRET005", "Possible database connection string found", Severity.High, Confidence.Medium, candidate.RelativePath, "A connection string-like value was found and redacted.", GetLineNumber(content, connectionStringMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(connectionStringMatch.Value)));
             }
 
             if (SlackWebhookPattern().Match(content) is { Success: true } slackWebhookMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET006", "Possible Slack webhook found", Severity.High, Confidence.Medium, relativePath, "A Slack webhook-like URL was found.", GetLineNumber(content, slackWebhookMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(slackWebhookMatch.Value)));
+                findings.Add(CreateFinding("TRUST-SECRET006", "Possible Slack webhook found", Severity.High, Confidence.Medium, candidate.RelativePath, "A Slack webhook-like URL was found.", GetLineNumber(content, slackWebhookMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(slackWebhookMatch.Value)));
             }
 
             if (DiscordWebhookPattern().Match(content) is { Success: true } discordWebhookMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET007", "Possible Discord webhook found", Severity.High, Confidence.Medium, relativePath, "A Discord webhook-like URL was found.", GetLineNumber(content, discordWebhookMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(discordWebhookMatch.Value)));
+                findings.Add(CreateFinding("TRUST-SECRET007", "Possible Discord webhook found", Severity.High, Confidence.Medium, candidate.RelativePath, "A Discord webhook-like URL was found.", GetLineNumber(content, discordWebhookMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(discordWebhookMatch.Value)));
             }
 
             if (AzureConnectionStringPattern().Match(content) is { Success: true } azureMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET008", "Possible Azure connection string or storage key found", Severity.High, Confidence.Medium, relativePath, "An Azure connection string or storage account key was found and redacted.", GetLineNumber(content, azureMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(azureMatch.Value)));
+                findings.Add(CreateFinding("TRUST-SECRET008", "Possible Azure connection string or storage key found", Severity.High, Confidence.Medium, candidate.RelativePath, "An Azure connection string or storage account key was found and redacted.", GetLineNumber(content, azureMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(azureMatch.Value)));
             }
 
             if (GcpServiceAccountPattern().Match(content) is { Success: true } gcpMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET009", "Possible GCP service account key found", Severity.High, Confidence.Medium, relativePath, "A Google Cloud service account JSON key was found.", GetLineNumber(content, gcpMatch.Index), isBlocking: true));
+                findings.Add(CreateFinding("TRUST-SECRET009", "Possible GCP service account key found", Severity.High, Confidence.Medium, candidate.RelativePath, "A Google Cloud service account JSON key was found.", GetLineNumber(content, gcpMatch.Index), isBlocking: true));
             }
 
-            if (JwtTokenPattern().Match(content) is { Success: true } jwtMatch && !IsDocumentationMarkdownPath(relativePath))
+            if (JwtTokenPattern().Match(content) is { Success: true } jwtMatch && !IsDocumentationMarkdownPath(candidate.RelativePath))
             {
-                findings.Add(CreateFinding("TRUST-SECRET010", "Possible JWT token found", Severity.Medium, Confidence.Medium, relativePath, "A JWT-like token was found and redacted.", GetLineNumber(content, jwtMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(jwtMatch.Value)));
+                findings.Add(CreateFinding("TRUST-SECRET010", "Possible JWT token found", Severity.Medium, Confidence.Medium, candidate.RelativePath, "A JWT-like token was found and redacted.", GetLineNumber(content, jwtMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(jwtMatch.Value)));
             }
 
             if (RegistryTokenPattern().Match(content) is { Success: true } registryMatch)
             {
-                findings.Add(CreateFinding("TRUST-SECRET011", "Possible registry token found", Severity.High, Confidence.Medium, relativePath, "An npm or PyPI registry token was found and redacted.", GetLineNumber(content, registryMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(registryMatch.Value)));
+                findings.Add(CreateFinding("TRUST-SECRET011", "Possible registry token found", Severity.High, Confidence.Medium, candidate.RelativePath, "An npm or PyPI registry token was found and redacted.", GetLineNumber(content, registryMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(registryMatch.Value)));
             }
 
             if (GenericApiKeyPattern().Match(content) is { Success: true } apiKeyMatch)
@@ -147,12 +198,28 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
                 var matchedValue = apiKeyMatch.Value;
                 if (!IsPlaceholderValue(matchedValue) && IsGenericApiKeyStrength(matchedValue))
                 {
-                    findings.Add(CreateFinding("TRUST-SECRET012", "Possible generic API key found", Severity.Medium, Confidence.Low, relativePath, "A value matching a generic API key pattern was found and redacted.", GetLineNumber(content, apiKeyMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(matchedValue)));
+                    findings.Add(CreateFinding("TRUST-SECRET012", "Possible generic API key found", Severity.Medium, Confidence.Low, candidate.RelativePath, "A value matching a generic API key pattern was found and redacted.", GetLineNumber(content, apiKeyMatch.Index), redactedValue: SecretEvidenceRedactor.Redact(matchedValue)));
                 }
             }
         }
 
-        return AnalyzerResult.Completed(findings);
+        var metrics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["secret.candidate.count"] = candidateCount.ToString(),
+            ["secret.sensitive.candidate.count"] = sensitiveCandidateCount.ToString(),
+            ["secret.content.scanned.count"] = contentScanned.ToString(),
+            ["secret.source.content.scanned.count"] = sourceContentScanned.ToString(),
+            ["secret.source.content.skipped.count"] = sourceContentSkipped.ToString(),
+            ["secret.prefilter.skipped.count"] = prefilterSkipped.ToString()
+        };
+        var warnings = sourceContentSkipped > 0
+            ? new[]
+            {
+                $"Secret quick scan skipped {sourceContentSkipped} lower-priority source files after scanning {sourceContentScanned} source files; sensitive filenames and configuration files were still analyzed."
+            }
+            : null;
+
+        return AnalyzerResult.Completed(findings, metrics: metrics, warnings: warnings);
     }
 
     private static Finding CreateFinding(string ruleId, string title, Severity severity, Confidence confidence, string filePath, string evidence, int? lineNumber = null, bool isBlocking = false, string redactedValue = "[redacted]")
@@ -169,7 +236,7 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             isBlocking);
     }
 
-    private static IEnumerable<string> EnumerateCandidateFiles(string root)
+    private static IEnumerable<SecretCandidateFile> EnumerateCandidateFiles(string root)
     {
         foreach (var file in RepositoryFileSystem.EnumerateFiles(root))
         {
@@ -181,14 +248,73 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 
             var fileName = Path.GetFileName(file);
             var extension = Path.GetExtension(file);
-            if (SensitiveFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) ||
-                SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase) ||
-                CandidateTextExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            var isSensitive = SensitiveFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) ||
+                              SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase);
+            if (isSensitive)
             {
-                yield return file;
+                yield return new SecretCandidateFile(file, relativePath, fileName, extension, SecretCandidateKind.Sensitive);
+            }
+            else if (CandidateTextExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            {
+                yield return new SecretCandidateFile(
+                    file,
+                    relativePath,
+                    fileName,
+                    extension,
+                    SourceCodeExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase)
+                        ? SecretCandidateKind.Source
+                        : SecretCandidateKind.Configuration);
             }
         }
     }
+
+    private static async Task<string?> TryReadTextAsync(string file, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await File.ReadAllTextAsync(file, cancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static bool HasPotentialSecretSignal(string content) =>
+        content.Contains("PRIVATE KEY", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("ghp_", StringComparison.Ordinal) ||
+        content.Contains("gho_", StringComparison.Ordinal) ||
+        content.Contains("ghu_", StringComparison.Ordinal) ||
+        content.Contains("ghs_", StringComparison.Ordinal) ||
+        content.Contains("ghr_", StringComparison.Ordinal) ||
+        content.Contains("AKIA", StringComparison.Ordinal) ||
+        content.Contains("hooks.slack.com/services/", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("discord.com/api/webhooks/", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("discordapp.com/api/webhooks/", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("DefaultEndpointsProtocol=https", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("service_account", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("eyJ", StringComparison.Ordinal) ||
+        content.Contains("npm_", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("pypi-", StringComparison.OrdinalIgnoreCase) ||
+        HasConnectionStringSignal(content) ||
+        HasGenericApiKeySignal(content);
+
+    private static bool HasConnectionStringSignal(string content) =>
+        content.Contains("password", StringComparison.OrdinalIgnoreCase) &&
+        (content.Contains("server", StringComparison.OrdinalIgnoreCase) ||
+         content.Contains("host", StringComparison.OrdinalIgnoreCase) ||
+         content.Contains("data source", StringComparison.OrdinalIgnoreCase) ||
+         content.Contains("user id", StringComparison.OrdinalIgnoreCase) ||
+         content.Contains("username", StringComparison.OrdinalIgnoreCase) ||
+         content.Contains("uid", StringComparison.OrdinalIgnoreCase));
+
+    private static bool HasGenericApiKeySignal(string content) =>
+        content.Contains("api_key", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("api-key", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("apiSecret", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("api_secret", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("api-secret", StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("apikey", StringComparison.OrdinalIgnoreCase);
 
     private static int GetLineNumber(string content, int matchIndex)
     {
@@ -369,6 +495,20 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
         }
 
         return false;
+    }
+
+    private sealed record SecretCandidateFile(
+        string Path,
+        string RelativePath,
+        string FileName,
+        string Extension,
+        SecretCandidateKind Kind);
+
+    private enum SecretCandidateKind
+    {
+        Sensitive = 0,
+        Configuration = 1,
+        Source = 2
     }
 
     [GeneratedRegex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----")]
