@@ -6,7 +6,7 @@
 - Default severity: Medium
 - Default confidence: High
 
-Detects repositories without a root `README.md` or `README` file.
+Detects repositories without a root README file. Recognized root names are `README.md`, `README.rst`, `README.adoc`, `README.txt`, and `README`.
 
 Why it matters: users may not understand the project purpose, installation steps, or basic usage.
 
@@ -102,7 +102,7 @@ Recommendation: add `.github/PULL_REQUEST_TEMPLATE.md`.
 - Default severity: Info
 - Default confidence: High
 
-Detects repositories without `CHANGELOG.md`, `CHANGELOG`, `HISTORY.md`, or `RELEASES.md` at the root.
+Detects repositories without a root changelog/history file. Recognized names include `CHANGELOG.md`, `CHANGELOG.rst`, `CHANGES.md`, `CHANGES.rst`, `CHANGELOG`, `HISTORY.md`, `HISTORY.rst`, and `RELEASES.md`.
 
 Why it matters: users and consumers need a clear log of release-to-release changes, fixes, and deprecations to safely perform updates.
 
@@ -150,11 +150,11 @@ Recommendation: add a short quick start section with the minimum steps required 
 - Default severity: Info
 - Default confidence: High
 
-Detects repositories without a root `docs` directory.
+Detects repositories without a root documentation directory. Recognized root directories are `docs`, `doc`, `documentation`, and `guides`.
 
 Why it matters: growing projects need a predictable place for architecture, configuration, operations, and contributor documentation.
 
-Recommendation: add a `docs` folder as documentation grows beyond the README.
+Recommendation: add a `docs`, `doc`, `documentation`, or `guides` folder as documentation grows beyond the README.
 
 ## TRUST-REPO014: README Contains Broken-Looking Local Link
 

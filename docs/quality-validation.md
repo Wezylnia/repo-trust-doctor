@@ -38,6 +38,28 @@ dotnet $cli scan https://github.com/flutter/flutter --depth deep --profile perso
 
 The CLI may return exit code `3` when a repository is classified as `AvoidAsProductionDependency`. Treat that as a completed scan when the JSON report exists.
 
+For repeated false-positive and performance work, keep shallow local clones under the ignored `.repo-trust/corpus` directory and scan those local paths instead of cloning from GitHub every run:
+
+```powershell
+$corpus = ".repo-trust\corpus"
+New-Item -ItemType Directory -Force -Path $corpus | Out-Null
+
+git clone --depth 1 https://github.com/django/django.git "$corpus\django"
+git clone --depth 1 https://github.com/rails/rails.git "$corpus\rails"
+git clone --depth 1 https://github.com/spring-projects/spring-framework.git "$corpus\spring-framework"
+git clone --depth 1 https://github.com/hashicorp/terraform.git "$corpus\terraform"
+git clone --depth 1 https://github.com/kubernetes/kubernetes.git "$corpus\kubernetes"
+git clone --depth 1 https://github.com/laravel/framework.git "$corpus\laravel-framework"
+git clone --depth 1 https://github.com/flutter/flutter.git "$corpus\flutter"
+git clone --depth 1 https://github.com/ansible/ansible.git "$corpus\ansible"
+
+dotnet $cli scan "$corpus\terraform" --depth deep --profile production --format json --output "$out\terraform.json" --force
+```
+
+Local corpus scans should still use multiple ecosystems and profiles. The scanner prunes repository metadata, dependency cache directories, vendored code directories, and private ignored workspaces during enumeration. Deep scans build a per-scan file index so repeated analyzer file searches do not repeatedly walk the same large repository tree.
+
+For very large repositories, codebase analyzers should prefer `CompletedWithWarnings` plus explicit truncation metrics over hard timeouts. Review `*.modules[*].status`, `*.modules[*].errorMessage`, and analyzer metrics after each corpus run; a timeout is usually a product issue, while a warning with source/analyzed counts is an explainable scope limit.
+
 ## Rule Distribution Diffs
 
 Summarize a current report directory:

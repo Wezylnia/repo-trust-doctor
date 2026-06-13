@@ -342,7 +342,7 @@ Recommendation: run `go mod tidy` and commit `go.sum` to the repository for repr
 - Default severity: Low
 - Default confidence: High
 
-Detects `replace` directives in `go.mod`.
+Detects `replace` directives in `go.mod`. Multiple `replace` directives in the same manifest are aggregated into one finding with sample evidence so large Go workspaces do not flood reports with one finding per line.
 
 Why it matters: replace directives override resolved module versions and can point to forks, local paths, or different module paths. They bypass normal module resolution and deserve manual review.
 
@@ -366,7 +366,7 @@ Recommendation: use exact versions with a committed `go.sum` for reproducible Go
 - Default severity: Low
 - Default confidence: High
 
-Detects direct Go module dependencies that reference a pseudo-version (e.g. `v0.0.0-20240115120000-abcdef123456`). Indirect pseudo-version dependencies are still recorded in the dependency inventory, but they do not emit this finding because they are transitive resolution evidence rather than direct dependency choices.
+Detects direct Go module dependencies that reference a pseudo-version (e.g. `v0.0.0-20240115120000-abcdef123456`). Multiple direct pseudo-version dependencies in the same manifest are aggregated into one finding with sample evidence. Indirect pseudo-version dependencies are still recorded in the dependency inventory, but they do not emit this finding because they are transitive resolution evidence rather than direct dependency choices.
 
 Why it matters: direct pseudo-versions point to unreleased commits and can be less stable or intentionally temporary. They may also bypass normal release review processes.
 
@@ -432,29 +432,29 @@ Why it matters: prerelease dependencies may be unstable or intentionally experim
 
 Recommendation: review whether the prerelease dependency is intentional before production use.
 
-## TRUST-DEP031: Composer Project Does Not Have a composer.lock File
+## TRUST-DEP031: Composer Application Does Not Have a composer.lock File
 
 - Category: Dependencies
 - Default severity: Medium
 - Default confidence: High
 
-Detects PHP repositories with `composer.json` but no `composer.lock` alongside it.
+Detects Composer application manifests with no sibling `composer.lock`.
 
-Why it matters: without `composer.lock`, dependency resolution is non-deterministic and builds are not reproducible.
+Why it matters: applications should commit `composer.lock` so production installs are reproducible. Reusable Composer libraries commonly publish version constraints without a lockfile, so library package manifests are not reported by this rule.
 
-Recommendation: run `composer install` and commit `composer.lock` to the repository for reproducible builds.
+Recommendation: run `composer install` and commit `composer.lock` for application repositories.
 
-## TRUST-DEP032: Composer Dependency Uses a Non-Exact Version Constraint
+## TRUST-DEP032: Composer Application Has Unlocked Version Constraints
 
 - Category: Dependencies
 - Default severity: Medium
 - Default confidence: High
 
-Detects Composer dependencies that use version constraints (`^`, `~`, `>`, `<`, `*`, `||`) instead of exact versions.
+Detects Composer application manifests that use version constraints (`^`, `~`, `>`, `<`, `*`, `||`) while no sibling `composer.lock` is present. Findings are aggregated per manifest with sample packages instead of reporting every dependency individually.
 
-Why it matters: version constraints can resolve to different package versions over time, making builds less reproducible.
+Why it matters: version constraints are normal for reusable Composer libraries, but application installs without `composer.lock` can resolve to different package versions over time.
 
-Recommendation: use exact version constraints or commit `composer.lock` for reproducible installs.
+Recommendation: commit `composer.lock` for applications. Do not pin every dependency exactly in reusable libraries unless that is an intentional compatibility decision.
 
 ## TRUST-DEP033: Composer Dependency Uses a Prerelease Version
 

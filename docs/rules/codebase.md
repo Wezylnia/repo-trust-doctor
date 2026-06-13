@@ -53,7 +53,9 @@ Static analyzer implementation files suppress rule-vocabulary matches such as `S
 
 Tooling and automation paths such as `.github/`, `build/`, `scripts/`, and `tools/` are retained in the criticality artifact, but they are not allowed to fill the general security-sensitive, large-critical-file, or broad-exception finding lists. Dangerous API findings such as command execution and unsafe deserialization still apply to those files.
 
-Source files under common `tests`, `test`, `testdata`, `testassets`, `docs`, `examples`, `samples`, `fixtures`, `integration-test`, `intTest`, `smoke-test`, `dockerTest`, `testFixtures`, `generated`, `gen`, `perf`, benchmark, project template, item template, and `playground` paths are skipped for criticality findings so example, generated, benchmark, template, and fixture code is not treated as production-critical code. Vendored/static library paths such as `vendor`, `wwwroot/lib`, `node_modules`, and bundled jQuery are also skipped.
+Source files under common `tests`, `test`, `testdata`, `testassets`, `docs`, `doc`, `documentation`, `guides`, `changelogs`, `examples`, `samples`, `fixtures`, `mock`, `mocks`, `_mock`, `artifacts`, `integration-test`, `intTest`, `smoke-test`, `dockerTest`, `testFixtures`, `generated`, `gen`, `perf`, benchmark, project template, item template, and `playground` paths are skipped for criticality findings so example, generated, benchmark, template, and fixture code is not treated as production-critical code. Vendored/static library paths such as `vendor`, `third_party`, `external`, `wwwroot/lib`, `node_modules`, and bundled jQuery are also skipped.
+
+On very large repositories, criticality analysis processes a deterministic subset after low-signal filtering and returns `CompletedWithWarnings` instead of timing out. The report metrics include source-file count, analyzed-file count, and whether the analyzer was truncated.
 
 Recommendation: prioritize review and tests for these files.
 
@@ -93,7 +95,7 @@ Recommendation: add targeted unit or integration tests for the critical code pat
 - Default severity: `High`
 - Default confidence: `Medium`
 
-A critical source file uses deserialization APIs (like BinaryFormatter, pickle, yaml, xmlserializer) that are known vectors for remote code execution.
+A critical source file uses high-risk deserialization APIs or hooks such as `BinaryFormatter`, `TypeNameHandling`, Java `readObject(...)`, Python `pickle.load`, or `yaml.unsafe_load`. Simple Java serialization imports or `Serializable` marker interfaces are not enough to trigger this rule.
 
 Recommendation: use safe deserialization methods, restrict allowed types, and validate deserialized input.
 
@@ -103,9 +105,19 @@ Recommendation: use safe deserialization methods, restrict allowed types, and va
 - Default severity: `High`
 - Default confidence: `Medium`
 
-A critical source file invokes operating-system command execution APIs such as `Process.Start`, `Runtime.exec`, `subprocess`, `os.system`, `exec`, or `popen`.
+A critical source file invokes operating-system command execution APIs such as `Process.Start(...)`, `Runtime.exec(...)`, `ProcessBuilder(...)`, Python `subprocess.run(...)`/`Popen(...)`, `os.system(...)`, Node `child_process.exec(...)`/`spawn(...)`, `execSync(...)`, `spawnSync(...)`, Rust `Command::new(...)`, or `popen(...)`. Imports, comments, and generic “command line” wording are not enough to trigger this rule.
 
 Recommendation: avoid shell execution for untrusted input. Prefer purpose-built APIs, strict allowlists, and explicit argument passing that does not interpolate user-controlled strings into a shell command.
+
+### `TRUST-CODE016` - Dynamic code evaluation in critical code
+
+- Category: `Codebase`
+- Default severity: `Medium`
+- Default confidence: `Medium`
+
+A critical source file dynamically evaluates code at runtime, for example with JavaScript `eval(...)` or `new Function(...)`. This is separate from `TRUST-CODE015`: dynamic code evaluation is risky, but it is not reported as operating-system command execution.
+
+Recommendation: avoid eval-style APIs for untrusted input and keep any intentional dynamic module loading tightly bounded.
 
 ## Public API
 
@@ -116,6 +128,8 @@ Recommendation: avoid shell execution for untrusted input. Prefer purpose-built 
 - Default confidence: `Medium`
 
 Public API symbols were detected, but no baseline file was found for compatibility comparison.
+
+The analyzer extracts a conservative multi-language public API surface from C#, TypeScript/JavaScript, Python, Java, Go, and Rust source files. On very large repositories, it processes a deterministic subset after low-signal filtering and reports truncation in metrics and warnings instead of timing out.
 
 Baseline paths checked:
 
@@ -147,6 +161,8 @@ A source file is imported by many other files, making it a high-impact change ta
 
 Type-only TypeScript imports such as `import type { Foo } from './types'` are ignored because they do not create runtime coupling.
 
+On very large repositories, import graph analysis processes a deterministic subset after low-signal filtering and returns `CompletedWithWarnings` instead of timing out. The report metrics include total candidate files, analyzed files, and truncation status.
+
 Recommendation: ensure highly central files have thorough tests and careful review gates.
 
 ### `TRUST-CODE011` - Central file has low or missing coverage
@@ -168,6 +184,8 @@ Recommendation: add targeted tests for central files to reduce risk of cascading
 - Default confidence: `Low`
 
 An HTTP route handler was detected without a visible authentication or authorization annotation.
+
+On very large repositories, route detection processes a deterministic subset of candidate framework files after low-signal filtering and returns `CompletedWithWarnings` instead of timing out.
 
 Express middleware-only `app.use(middleware)` calls are not treated as endpoints; `app.use('/path', ...)` remains route evidence. Route-like text inside string literals or comments is ignored. Django route detection is limited to `urls.py` or `/urls/` configuration paths and line-anchored URL pattern entries, so Python helpers such as `Path(...)` or `url(...)` are not treated as Django routes. Django `admin_view`/permission wrappers count as auth hints, and Django's own `contrib` and `conf/urls` router internals are skipped. Spring annotation declaration files, endpoint annotation internals, and Spring framework source paths under `org/springframework` are not treated as application endpoints. Source files under common test, generated, benchmark, template, documentation, sample, fixture, analyzer implementation, and playground paths are skipped for route findings.
 

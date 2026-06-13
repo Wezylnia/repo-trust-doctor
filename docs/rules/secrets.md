@@ -6,11 +6,11 @@
 - Default severity: High
 - Default confidence: High
 
-Detects committed files such as `.env`, `.env.production`, `id_rsa`, private-key-like `.pem`, and `.key`.
+Detects committed files such as `.env`, `.env.local`, `.env.production`, `.npmrc`, `.pypirc`, `id_rsa`, private-key-like `.pem`, and `.key`.
 
 Why it matters: these files often contain secrets, credentials, or private keys.
 
-Plain public certificate `.pem` files containing `-----BEGIN CERTIFICATE-----` without a private-key marker are not reported as sensitive files.
+Plain public certificate `.pem` files containing `-----BEGIN CERTIFICATE-----` without a private-key marker are not reported as sensitive files. Readable sensitive files are still scanned for concrete token evidence after the file-level finding is created, so reports can include redacted registry tokens from files such as `.npmrc` or `.pypirc`.
 
 Recommendation: manually verify the file, rotate exposed secrets if confirmed, and remove the secret from repository history.
 
@@ -86,15 +86,20 @@ Why it matters: exposed Discord webhooks allow posting messages or executing act
 
 Recommendation: manually verify the finding, revoke or rotate the webhook URL if confirmed, and remove it from repository history.
 
-## False-Positive Suppression
+## Candidate Files And False-Positive Suppression
 
-To avoid noise in automated testing and documentation, the secret scanner ignores internal secret pattern matches and sensitive-looking example filenames (such as `.env`) within files residing in the following paths:
+The secret scanner reads likely text/config/source candidates rather than every repository file. It always considers sensitive filenames and key/certificate extensions, plus common source and configuration formats such as `.cs`, `.js`, `.ts`, `.py`, `.go`, `.java`, `.php`, `.rb`, `.yml`, `.yaml`, `.json`, `.toml`, `.properties`, `.tf`, `.sh`, `.ps1`, `.cmd`, `.gradle`, and `.txt`.
+
+To avoid noise in automated testing, vendored code, generated files, and documentation, the secret scanner ignores internal secret pattern matches and sensitive-looking example filenames (such as `.env`) within files residing in low-signal paths including:
 - `tests/Fixtures/`
 - `tests/`
 - `test/`
 - `src/test/`
 - `__tests__/`
 - `fixtures/`
+- `mock/`
+- `mocks/`
+- `_mock/`
 - `examples/`
 - `samples/`
 - `playground/`
@@ -109,7 +114,16 @@ To avoid noise in automated testing and documentation, the secret scanner ignore
 - `src/yamlRestTest/`
 - `rest-tests/`
 - `docs/examples/`
+- `doc/`
 - `documentation/`
+- `guides/`
+- `changelogs/`
+- `generated/`
+- `artifacts/`
+- `vendor/`
+- `third_party/`
+- `external/`
+- `node_modules/`
 
 Markdown files under `docs/` also suppress JWT-token examples, because many security tutorials include sample JWTs. Text documentation files under `docs/` and `documentation/` suppress private-key block examples when they are clearly documentation content. Sensitive-looking certificate or environment filenames under documentation paths are also suppressed to avoid flagging committed tutorial artifacts such as sample `.p12` files. Note that files under these paths are still checked for general repository metadata or container settings where appropriate, but secret rules will not fire.
 

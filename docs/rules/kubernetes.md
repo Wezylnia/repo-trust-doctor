@@ -1,6 +1,6 @@
 # Kubernetes Manifest Rules
 
-Kubernetes rules focus on runtime manifests. Common example, sample, fixture, playground, test, testing, and `testdata` paths are ignored so large projects that keep Kubernetes API fixtures in source control do not receive production-risk findings for non-runtime manifests.
+Kubernetes rules focus on runtime manifests. Common example, sample, fixture, mock, generated `artifacts`, playground, test, testing, vendored, and `testdata` paths are ignored so large projects that keep Kubernetes API fixtures in source control do not receive production-risk findings for non-runtime manifests. Kubernetes API fixture paths such as managed-fields and field-manager YAML fixtures are also skipped.
 
 ## TRUST-K8S001: Kubernetes container runs in privileged mode
 
@@ -68,7 +68,7 @@ Recommendation: use external secret management (Sealed Secrets, External Secrets
 - Default severity: High
 - Default confidence: High
 
-Detects `hostPath:` volume mounts in workload manifests.
+Detects `hostPath:` volume mounts in workload manifests. Multiple `hostPath` volumes in the same manifest are reported as one finding with a count, rather than one finding per volume.
 
 Why it matters: hostPath volumes can expose host directories to containers, breaking isolation.
 

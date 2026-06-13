@@ -8,9 +8,9 @@ Default scans do not execute repository code, install packages, run tests, run b
 
 Checks adoption and maintenance signals that users expect before trusting a repository:
 
-- README presence and useful sections such as installation, quick start, and usage,
+- README presence, including common root formats such as Markdown, reStructuredText, AsciiDoc, plain text, and extensionless README files,
 - LICENSE, SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md, CODEOWNERS, issue and pull request templates,
-- changelog and docs folder presence,
+- changelog and documentation directory presence, including `docs`, `doc`, `documentation`, and `guides`,
 - broken-looking local links in README files.
 
 ## GitHub Actions
@@ -30,9 +30,9 @@ The analyzer is static-only and does not run workflow jobs.
 
 ## Secret Quick Scan
 
-Searches readable text files for high-signal secret-like patterns and sensitive files. Evidence is redacted so reports do not become a new secret exposure path.
+Searches candidate text/config/source files for high-signal secret-like patterns and sensitive files. Evidence is redacted so reports do not become a new secret exposure path.
 
-The scanner avoids binary files, oversized text files, and common generated directories.
+The scanner avoids binary files, oversized text files, and common generated, vendored, fixture, example, test, and documentation paths. Sensitive files such as `.env`, `.npmrc`, `.pypirc`, private-key extensions, and credential files are still surfaced when they appear in production paths.
 
 ## Docker And Containers
 
@@ -102,7 +102,7 @@ Deep scan analyzers import or infer code quality and change-risk signals:
 - static import graph centrality analysis,
 - framework route detection for common web stacks.
 
-Deep code intelligence remains conservative. It does not run tests or build projects to generate coverage, and it skips common sample, fixture, analyzer implementation, test, and vendored static-library paths for route and criticality heuristics.
+Deep code intelligence remains conservative. It does not run tests or build projects to generate coverage, and it skips common sample, fixture, analyzer implementation, test, generated, third-party, and vendored static-library paths for route and criticality heuristics. On very large repositories, expensive codebase analyzers complete with warnings and truncation metrics rather than timing out.
 
 ## Policy, Scoring, And Reports
 

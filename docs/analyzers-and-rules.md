@@ -250,8 +250,8 @@ Collects structured dependency manifests across 12 ecosystems: npm, NuGet, Pytho
 | TRUST-DEP028 | Cargo dependency uses path source | Low | High |
 | TRUST-DEP029 | Cargo dependency uses non-exact version without lockfile | Medium | High |
 | TRUST-DEP030 | Cargo dependency uses prerelease version | Low | High |
-| TRUST-DEP031 | Composer has no composer.lock | Medium | High |
-| TRUST-DEP032 | Composer dependency uses non-exact version | Medium | High |
+| TRUST-DEP031 | Composer application has no composer.lock | Medium | High |
+| TRUST-DEP032 | Composer application has unlocked version constraints | Medium | High |
 | TRUST-DEP033 | Composer dependency uses prerelease version | Low | High |
 | TRUST-DEP034 | Ruby has no Gemfile.lock | Medium | High |
 | TRUST-DEP035 | Ruby gem uses non-exact version | Medium | High |
@@ -358,7 +358,7 @@ Collects structured dependency manifests across 12 ecosystems: npm, NuGet, Pytho
 | TRUST-REL001 | Changelog does not mention detected package version | Low | Medium |
 | TRUST-REL002 | Release artifact lacks checksum evidence | Medium | Medium |
 | TRUST-REL003 | Release artifact lacks SBOM/provenance evidence | Low | Medium |
-| TRUST-REL005 | Release workflow lacks integrity evidence steps | Medium | Medium |
+| TRUST-REL004 | Package version does not match latest changelog version | Medium | Medium |
 | TRUST-REL005 | Release workflow lacks integrity evidence steps | Medium | Medium |
 
 ### Evidence Import
@@ -401,6 +401,7 @@ Collects structured dependency manifests across 12 ecosystems: npm, NuGet, Pytho
 | TRUST-CODE006 | Broad exception handling in critical code | Medium | Medium |
 | TRUST-CODE014 | Deserialization in critical code | High | Medium |
 | TRUST-CODE015 | Command execution in critical code | High | Medium |
+| TRUST-CODE016 | Dynamic code evaluation in critical code | Medium | Medium |
 
 ### Coverage Criticality
 
@@ -416,8 +417,8 @@ Collects structured dependency manifests across 12 ecosystems: npm, NuGet, Pytho
 
 | Rule ID | Title | Severity | Confidence |
 |---------|-------|----------|------------|
-| TRUST-CODE008 | Public API surface has changed | Medium | Medium |
-| TRUST-CODE009 | New public API member is not documented | Low | Medium |
+| TRUST-CODE008 | Public API baseline is missing | Info | Medium |
+| TRUST-CODE009 | Public API differs from baseline | Medium | Medium |
 
 ### Import Graph
 
