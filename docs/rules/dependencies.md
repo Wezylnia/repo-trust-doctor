@@ -378,7 +378,7 @@ Recommendation: prefer tagged releases over direct pseudo-version dependencies a
 - Default severity: Medium
 - Default confidence: High
 
-Detects Rust repositories with `Cargo.toml` but no `Cargo.lock` alongside it.
+Detects Rust repositories with `Cargo.toml` but no covering `Cargo.lock`. A lockfile in the same directory counts, and a lockfile at an ancestor Cargo workspace root also covers member manifests.
 
 Why it matters: without `Cargo.lock`, dependency resolution is non-deterministic and builds are not reproducible, exposing the repository to dependency drift.
 
@@ -402,11 +402,11 @@ Recommendation: review Git-sourced dependencies and prefer crates.io packages wi
 - Default severity: Low
 - Default confidence: High
 
-Detects Cargo dependencies that reference a local filesystem path instead of a registry version.
+Detects Cargo dependencies that reference a filesystem path outside the scanned repository instead of a registry version. Repository-local path dependencies are recorded in the dependency inventory without emitting this finding because they are normal Cargo workspace/internal crate evidence.
 
-Why it matters: path-sourced dependencies depend on repository layout and may bypass registry provenance. They can be legitimate in workspaces but deserve review.
+Why it matters: path-sourced dependencies outside the repository depend on local filesystem state and may bypass registry provenance. Repository-internal path dependencies are common in Cargo workspaces and are treated as lower-risk inventory evidence.
 
-Recommendation: review path-sourced dependencies and document whether they are workspace-internal or development-only.
+Recommendation: review path-sourced dependencies that leave the repository and prefer workspace-local crates or registry packages when possible.
 
 ## TRUST-DEP029: Cargo Dependency Uses a Non-Exact Version Without Lockfile
 
@@ -414,7 +414,7 @@ Recommendation: review path-sourced dependencies and document whether they are w
 - Default severity: Medium
 - Default confidence: High
 
-Detects Cargo dependencies that do not use an exact requirement (e.g. `"1"`, `"1.2"`, or `"1.2.3"` instead of `"=1.2.3"`) when no adjacent `Cargo.lock` is present. The collector still records non-exact requirements in the dependency inventory when a lockfile exists, but it does not emit this finding because the lockfile provides the reproducibility signal for normal Cargo projects. The collector reads normal dependency sections, target-specific dependency sections, and dependency subtables such as `[dependencies.serde]` without treating metadata keys like `features` as packages.
+Detects Cargo dependencies that do not use an exact requirement (e.g. `"1"`, `"1.2"`, or `"1.2.3"` instead of `"=1.2.3"`) when no covering `Cargo.lock` is present. The collector still records non-exact requirements in the dependency inventory when a same-directory or workspace-root lockfile exists, but it does not emit this finding because the lockfile provides the reproducibility signal for normal Cargo projects. The collector reads normal dependency sections, target-specific dependency sections, and dependency subtables such as `[dependencies.serde]` without treating metadata keys like `features` as packages.
 
 Why it matters: non-exact Cargo dependency versions can resolve to different minor or patch versions over time when a lockfile is not committed.
 

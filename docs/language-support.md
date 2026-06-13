@@ -11,7 +11,7 @@ Repository Trust Doctor is strongest when a repository exposes dependency manife
 | Python | `requirements.txt`, `pyproject.toml`, `Pipfile`, common Python lockfiles, pinned requirement checks, documentation/test manifest suppression, PyPI metadata, OSV advisories |
 | Java / Spring Boot | Maven `pom.xml`, Gradle `build.gradle` and `build.gradle.kts`, Gradle version catalogs (`libs.versions.toml`), Maven Central metadata, OSV advisories, BOM/dependency-management version signals, Gradle wrapper checks, dynamic/SNAPSHOT version checks, Spring Boot Actuator exposure checks |
 | Go | `go.mod`, `go.sum` detection, replace directives, pseudo-version detection, prerelease/build metadata handling, version pinning |
-| Rust / Cargo | `Cargo.toml` (direct sections, target-specific sections, dependency subtables), `Cargo.lock` detection, Git/path source detection, version pinning, prerelease checks |
+| Rust / Cargo | `Cargo.toml` (direct sections, target-specific sections, dependency subtables), same-directory and workspace-root `Cargo.lock` detection, Git source detection, repository-external path source detection, version pinning, prerelease checks |
 | PHP / Composer | `composer.json` (require/require-dev), `composer.lock` detection, version constraint analysis |
 | Ruby / Bundler | `Gemfile`, `.gemspec`, `Gemfile.lock` detection, lockfile-aware version constraint analysis, Git/path source detection |
 | Dart / Flutter | `pubspec.yaml` (dependencies/dev_dependencies with nested `sdk`, `path`, and `git` metadata handling), `pubspec.lock` detection, version constraint analysis |
@@ -26,7 +26,7 @@ The dependency inventory architecture now uses per-ecosystem collectors. Future 
 | Ecosystem | Candidate files | Useful trust signals |
 | --- | --- | --- |
 | Go | `go.mod`, `go.sum` | module pinning, missing `go.sum`, replace directives, pseudo-versions, OSV Go advisories |
-| Rust | `Cargo.toml`, `Cargo.lock` | lockfile coverage, path/git dependencies, yanked crates, crates.io metadata, RustSec or OSV advisories |
+| Rust | `Cargo.toml`, `Cargo.lock` | workspace lockfile coverage, external path/git dependencies, yanked crates, crates.io metadata, RustSec or OSV advisories |
 | PHP | `composer.json`, `composer.lock` | lockfile coverage, Packagist metadata, abandoned packages, platform constraints |
 | Ruby | `Gemfile`, `Gemfile.lock`, `.gemspec` | lockfile coverage, Git/path gems, RubyGems metadata, yanked gems |
 | Swift | `Package.swift`, `Package.resolved` | resolved package evidence, branch/revision dependencies, package URL provenance |

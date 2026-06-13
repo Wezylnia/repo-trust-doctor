@@ -61,6 +61,7 @@ Current ecosystem collectors:
 - Python: `requirements.txt`, `pyproject.toml`, `Pipfile`, `poetry.lock`, `uv.lock`, `Pipfile.lock`, pinned requirement checks, documentation/test manifest suppression.
 - Maven and Gradle: `pom.xml`, `build.gradle`, `build.gradle.kts`, Java lock evidence, BOM and dependency-management version signals, dynamic versions, snapshots/prereleases, Gradle wrapper evidence.
 - Spring Boot: static configuration checks for broad Actuator endpoint exposure.
+- Cargo: `Cargo.toml`, same-directory and workspace-root `Cargo.lock` coverage, direct dependencies, target-specific dependencies, dependency subtables, Git sources, repository-external path sources, prerelease checks.
 
 The inventory analyzer is split into per-ecosystem collectors so future language support can be added without growing one large analyzer class.
 

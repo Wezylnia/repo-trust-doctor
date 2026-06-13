@@ -334,6 +334,31 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_CargoWorkspaceLock_CoversMemberManifests()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "crates", "app"));
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
+        [workspace]
+        members = ["crates/app"]
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "crates", "app", "Cargo.toml"), """
+        [package]
+        name = "app"
+
+        [dependencies]
+        serde = "1"
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId is "TRUST-DEP026" or "TRUST-DEP029");
+        Assert.Contains(GetInventory(result).Packages, p => p.Ecosystem == DependencyEcosystem.Cargo && p.Name == "serde");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_CargoExactVersions_AreRecorded()
     {
         using var fixture = TemporaryRepository.Create();
@@ -484,6 +509,28 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP028" && f.Message.Contains("mylib", StringComparison.Ordinal));
         var inventory = GetInventory(result);
         var package = Assert.Single(inventory.Packages, p => p.Name == "mylib");
+        Assert.Equal("path", package.Metadata?["sourceKind"]);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CargoRepositoryLocalPathDependency_DoesNotReportDep028()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "crates", "mylib"));
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
+        [package]
+        name = "mycrate"
+
+        [dependencies]
+        mylib = { path = "crates/mylib" }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP028");
+        var package = Assert.Single(GetInventory(result).Packages, p => p.Name == "mylib");
         Assert.Equal("path", package.Metadata?["sourceKind"]);
     }
 

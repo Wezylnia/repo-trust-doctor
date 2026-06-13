@@ -10,7 +10,17 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
 
     public void Collect(AnalysisContext context, DependencyInventoryState state, CancellationToken cancellationToken)
     {
-        foreach (var lockfile in LockfileNames.SelectMany(name => RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, name)))
+        var lockfiles = LockfileNames
+            .SelectMany(name => RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, name))
+            .ToArray();
+        var workspaceLockRoots = lockfiles
+            .Select(Path.GetDirectoryName)
+            .Where(directory => !string.IsNullOrWhiteSpace(directory))
+            .Select(directory => directory!)
+            .Where(IsCargoWorkspaceRoot)
+            .ToArray();
+
+        foreach (var lockfile in lockfiles)
         {
             state.Lockfiles.Add(new DependencyLockfileInfo(
                 DependencyEcosystem.Cargo,
@@ -21,16 +31,20 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         foreach (var cargoToml in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "Cargo.toml"))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            AnalyzeCargoToml(context, cargoToml, state);
+            AnalyzeCargoToml(context, cargoToml, workspaceLockRoots, state);
         }
     }
 
-    private void AnalyzeCargoToml(AnalysisContext context, string filePath, DependencyInventoryState state)
+    private void AnalyzeCargoToml(
+        AnalysisContext context,
+        string filePath,
+        IReadOnlyCollection<string> workspaceLockRoots,
+        DependencyInventoryState state)
     {
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Cargo, relativePath, "Cargo.toml"));
 
-        var hasCargoLock = HasCargoLock(context, filePath);
+        var hasCargoLock = HasCargoLock(filePath, workspaceLockRoots);
         if (!hasCargoLock)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
@@ -64,7 +78,7 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
 
             if (line.StartsWith('[') && line.EndsWith(']'))
             {
-                FlushCargoTableDependency(ref tableDependency, relativePath, hasCargoLock, state);
+                FlushCargoTableDependency(ref tableDependency, context.RepositoryPath, relativePath, hasCargoLock, state);
 
                 if (TryParseCargoDependencyTable(line, out var tableCrateName, out var tableScope))
                 {
@@ -115,7 +129,7 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
 
             if (valuePart.StartsWith('{'))
             {
-                ParseCargoInlineTable(relativePath, crateName, valuePart, scope, hasCargoLock, state);
+                ParseCargoInlineTable(context.RepositoryPath, relativePath, crateName, valuePart, scope, hasCargoLock, state);
             }
             else
             {
@@ -123,10 +137,10 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
             }
         }
 
-        FlushCargoTableDependency(ref tableDependency, relativePath, hasCargoLock, state);
+        FlushCargoTableDependency(ref tableDependency, context.RepositoryPath, relativePath, hasCargoLock, state);
     }
 
-    private static bool HasCargoLock(AnalysisContext context, string cargoTomlPath)
+    private static bool HasCargoLock(string cargoTomlPath, IReadOnlyCollection<string> workspaceLockRoots)
     {
         var directory = Path.GetDirectoryName(cargoTomlPath);
         if (directory == null)
@@ -135,7 +149,12 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         }
 
         var cargoLockPath = Path.Combine(directory, "Cargo.lock");
-        return File.Exists(cargoLockPath);
+        if (File.Exists(cargoLockPath))
+        {
+            return true;
+        }
+
+        return workspaceLockRoots.Any(root => IsSameOrChildPath(directory, root));
     }
 
     private static CargoSection ParseCargoSection(string line)
@@ -227,14 +246,24 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
             _ => DependencyScope.Production
         };
 
-    private void ParseCargoInlineTable(string manifestPath, string crateName, string valuePart, DependencyScope scope, bool hasCargoLock, DependencyInventoryState state)
+    private void ParseCargoInlineTable(
+        string repositoryPath,
+        string manifestPath,
+        string crateName,
+        string valuePart,
+        DependencyScope scope,
+        bool hasCargoLock,
+        DependencyInventoryState state)
     {
         // Extract version from inline table like { version = "1.2.3", features = [...] }
         var version = ExtractCargoInlineValue(valuePart, "version");
         var isGit = valuePart.Contains("git", StringComparison.OrdinalIgnoreCase) &&
                     ExtractCargoInlineValue(valuePart, "git") != null;
-        var isPath = valuePart.Contains("path", StringComparison.OrdinalIgnoreCase) &&
-                     ExtractCargoInlineValue(valuePart, "path") != null;
+        var pathSource = valuePart.Contains("path", StringComparison.OrdinalIgnoreCase)
+            ? ExtractCargoInlineValue(valuePart, "path")
+            : null;
+        var isPath = pathSource != null;
+        var isRepositoryLocalPath = IsRepositoryLocalPathDependency(repositoryPath, manifestPath, pathSource);
 
         var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (isGit)
@@ -255,16 +284,19 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         if (isPath)
         {
             metadata["sourceKind"] = "path";
-            state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
-                "TRUST-DEP028",
-                "Cargo dependency uses a path source",
-                Severity.Low,
-                Confidence.High,
-                $"Cargo dependency '{crateName}' references a local path instead of a registry version.",
-                "cargo-path-dependency",
-                $"Crate '{crateName}' uses a path source.",
-                manifestPath,
-                "Review path-sourced dependencies because they depend on repository layout and may bypass registry provenance."));
+            if (!isRepositoryLocalPath)
+            {
+                state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
+                    "TRUST-DEP028",
+                    "Cargo dependency uses a path source",
+                    Severity.Low,
+                    Confidence.High,
+                    $"Cargo dependency '{crateName}' references a path outside the repository instead of a registry version.",
+                    "cargo-path-dependency",
+                    $"Crate '{crateName}' uses path source '{pathSource}'.",
+                    manifestPath,
+                    "Review path-sourced dependencies because they can bypass registry provenance and may depend on local filesystem state."));
+            }
         }
 
         var isPinned = IsExactCargoRequirement(version);
@@ -336,7 +368,12 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         }
     }
 
-    private void FlushCargoTableDependency(ref CargoTableDependency? tableDependency, string manifestPath, bool hasCargoLock, DependencyInventoryState state)
+    private void FlushCargoTableDependency(
+        ref CargoTableDependency? tableDependency,
+        string repositoryPath,
+        string manifestPath,
+        bool hasCargoLock,
+        DependencyInventoryState state)
     {
         if (tableDependency is null)
         {
@@ -358,6 +395,7 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         }
 
         ParseCargoInlineTable(
+            repositoryPath,
             manifestPath,
             tableDependency.CrateName,
             "{ " + string.Join(", ", parts) + " }",
@@ -438,6 +476,72 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         !string.IsNullOrWhiteSpace(version) &&
         version.StartsWith('=') &&
         ExactCargoVersionPattern().IsMatch(version[1..].Trim());
+
+    private static bool IsCargoWorkspaceRoot(string directory)
+    {
+        var manifestPath = Path.Combine(directory, "Cargo.toml");
+        if (!RepositoryFileSystem.CanReadAsText(manifestPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            return File.ReadAllText(manifestPath).Contains("[workspace]", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsRepositoryLocalPathDependency(string repositoryPath, string manifestPath, string? dependencyPath)
+    {
+        if (string.IsNullOrWhiteSpace(dependencyPath))
+        {
+            return false;
+        }
+
+        var normalizedManifestPath = manifestPath.Replace('/', Path.DirectorySeparatorChar);
+        var manifestDirectory = Path.GetDirectoryName(Path.Combine(repositoryPath, normalizedManifestPath));
+        if (manifestDirectory is null)
+        {
+            return false;
+        }
+
+        var fullDependencyPath = Path.GetFullPath(Path.IsPathRooted(dependencyPath)
+            ? dependencyPath
+            : Path.Combine(manifestDirectory, dependencyPath));
+        return IsSameOrChildPath(fullDependencyPath, Path.GetFullPath(repositoryPath));
+    }
+
+    private static bool IsSameOrChildPath(string path, string parent)
+    {
+        var normalizedPath = TrimTrailingDirectorySeparators(Path.GetFullPath(path));
+        var normalizedParent = TrimTrailingDirectorySeparators(Path.GetFullPath(parent));
+        return string.Equals(normalizedPath, normalizedParent, PathComparison) ||
+               normalizedPath.StartsWith(EnsureTrailingDirectorySeparator(normalizedParent), PathComparison);
+    }
+
+    private static string EnsureTrailingDirectorySeparator(string path) =>
+        path.EndsWith(Path.DirectorySeparatorChar) || path.EndsWith(Path.AltDirectorySeparatorChar)
+            ? path
+            : path + Path.DirectorySeparatorChar;
+
+    private static string TrimTrailingDirectorySeparators(string path)
+    {
+        var root = Path.GetPathRoot(path) ?? string.Empty;
+        while (path.Length > root.Length &&
+               (path[^1] == Path.DirectorySeparatorChar || path[^1] == Path.AltDirectorySeparatorChar))
+        {
+            path = path[..^1];
+        }
+
+        return path;
+    }
+
+    private static StringComparison PathComparison =>
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     [GeneratedRegex(@"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$", RegexOptions.CultureInvariant)]
     private static partial Regex ExactCargoVersionPattern();
