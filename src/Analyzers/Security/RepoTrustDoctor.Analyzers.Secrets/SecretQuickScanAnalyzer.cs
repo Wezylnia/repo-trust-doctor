@@ -6,7 +6,7 @@ namespace RepoTrustDoctor.Analyzers.Secrets;
 
 public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 {
-    private const int DefaultMaxSourceContentScanFiles = 1500;
+    private const int DefaultMaxSourceContentScanFiles = 800;
     private const int DefaultMaxConfigurationContentScanFiles = 1000;
     private static readonly string[] SensitiveFileNames = [".env", ".env.local", ".env.production", ".env.development", "id_rsa", ".git-credentials", ".netrc"];
     private static readonly string[] CredentialConfigFileNames = [".npmrc", ".pypirc"];

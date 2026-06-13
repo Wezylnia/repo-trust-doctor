@@ -401,6 +401,31 @@ public sealed class SecretQuickScanAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_DefaultSourceBudgetBoundsBroadSourceScanning()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var sourceDirectory = Path.Combine(fixture.Path, "src");
+        Directory.CreateDirectory(sourceDirectory);
+
+        for (var index = 0; index < 801; index++)
+        {
+            File.WriteAllText(
+                Path.Combine(sourceDirectory, $"file{index:D3}.cs"),
+                "public sealed class Sample { public string Value => \"safe\"; }");
+        }
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        Assert.NotNull(result.Warnings);
+        Assert.Contains(result.Warnings, warning => warning.Contains("skipped 1 lower-priority source files", StringComparison.Ordinal));
+        Assert.NotNull(result.Metrics);
+        Assert.Equal("800", result.Metrics["secret.source.content.scanned.count"]);
+        Assert.Equal("1", result.Metrics["secret.source.content.skipped.count"]);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_BudgetsConfigurationFilesButKeepsCredentialConfigs()
     {
         using var fixture = TemporaryRepository.Create();
