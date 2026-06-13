@@ -87,6 +87,8 @@ Reviews release and publishing evidence without downloading arbitrary artifacts 
 - SBOM evidence,
 - provenance or attestation evidence.
 
+For monorepos, root release notes are matched to root package metadata only. Nested packages are evaluated against package-directory changelogs when present, and private fixtures/examples are ignored for release version drift.
+
 The analyzer distinguishes missing evidence from confirmed compromise.
 
 ## Codebase Intelligence

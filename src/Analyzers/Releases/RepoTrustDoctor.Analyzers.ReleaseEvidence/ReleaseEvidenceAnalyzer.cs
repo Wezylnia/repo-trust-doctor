@@ -9,6 +9,8 @@ namespace RepoTrustDoctor.Analyzers.ReleaseEvidence;
 
 public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
 {
+    private const int PackageVersionFindingLimit = 10;
+
     private static readonly string[] ArtifactExtensions = [".zip", ".tar", ".gz", ".tgz", ".nupkg", ".whl", ".exe", ".dll"];
     private static readonly string[] ArtifactRoots = ["dist", "release", "releases", "artifacts"];
 
@@ -35,21 +37,29 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
         var changelogText = changelog is not null && TryReadText(changelog, out var text) ? text : null;
         var changelogVersion = changelogText is null ? null : ReadLatestChangelogVersion(changelogText);
 
+        var packageVersionFindings = new List<Finding>();
         foreach (var packageVersion in ReadPackageVersions(context))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!string.IsNullOrWhiteSpace(changelogText) &&
-                !changelogText.Contains(packageVersion.Version, StringComparison.OrdinalIgnoreCase))
+            var releaseNotes = ResolveReleaseNotesForPackageVersion(context.RepositoryPath, packageVersion, changelog, changelogText, changelogVersion);
+            if (releaseNotes is null)
             {
-                findings.Add(CreateFinding("TRUST-REL001", "Changelog does not mention detected package version", Severity.Low, Confidence.Medium, $"Package version `{packageVersion.Version}` is not mentioned in the changelog.", "release-version", $"Version `{packageVersion.Version}` detected in `{packageVersion.FilePath}`.", packageVersion.FilePath, "Add release notes for the package version in CHANGELOG.md."));
+                continue;
             }
 
-            if (!string.IsNullOrWhiteSpace(changelogVersion) &&
-                !string.Equals(NormalizeVersion(changelogVersion), NormalizeVersion(packageVersion.Version), StringComparison.OrdinalIgnoreCase))
+            if (!releaseNotes.Text.Contains(packageVersion.Version, StringComparison.OrdinalIgnoreCase))
             {
-                findings.Add(CreateFinding("TRUST-REL004", "Package version does not match latest changelog version", Severity.Medium, Confidence.Medium, $"Package version `{packageVersion.Version}` does not match changelog version `{changelogVersion}`.", "release-version", $"Package version `{packageVersion.Version}` differs from changelog `{changelogVersion}`.", packageVersion.FilePath, "Keep package version metadata and release notes aligned."));
+                packageVersionFindings.Add(CreateFinding("TRUST-REL001", "Changelog does not mention detected package version", Severity.Low, Confidence.Medium, $"Package version `{packageVersion.Version}` is not mentioned in the changelog.", "release-version", $"Version `{packageVersion.Version}` detected in `{packageVersion.FilePath}`.", packageVersion.FilePath, "Add release notes for the package version in CHANGELOG.md."));
+            }
+
+            if (!string.IsNullOrWhiteSpace(releaseNotes.LatestVersion) &&
+                !string.Equals(NormalizeVersion(releaseNotes.LatestVersion), NormalizeVersion(packageVersion.Version), StringComparison.OrdinalIgnoreCase))
+            {
+                packageVersionFindings.Add(CreateFinding("TRUST-REL004", "Package version does not match latest changelog version", Severity.Medium, Confidence.Medium, $"Package version `{packageVersion.Version}` does not match changelog version `{releaseNotes.LatestVersion}`.", "release-version", $"Package version `{packageVersion.Version}` differs from changelog `{releaseNotes.LatestVersion}`.", packageVersion.FilePath, "Keep package version metadata and release notes aligned."));
             }
         }
+
+        findings.AddRange(packageVersionFindings.Take(PackageVersionFindingLimit));
 
         foreach (var artifact in EnumerateReleaseArtifacts(context.RepositoryPath))
         {
@@ -90,16 +100,26 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
         foreach (var packageJson in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "package.json"))
         {
             var relativePath = Relative(context.RepositoryPath, packageJson);
-            var version = TryReadPackageJsonVersion(packageJson);
-            if (!string.IsNullOrWhiteSpace(version))
+            if (RepositoryPathClassifier.IsTestFixtureExampleOrDocumentationPath(relativePath))
             {
-                yield return new PackageVersionEvidence(relativePath, version);
+                continue;
+            }
+
+            var package = TryReadPackageJsonVersion(packageJson);
+            if (package is not null && !package.IsPrivate)
+            {
+                yield return new PackageVersionEvidence(relativePath, package.Version);
             }
         }
 
         foreach (var project in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.csproj"))
         {
             var relativePath = Relative(context.RepositoryPath, project);
+            if (RepositoryPathClassifier.IsTestFixtureExampleOrDocumentationPath(relativePath))
+            {
+                continue;
+            }
+
             if (!RepositoryFileSystem.CanReadAsText(project))
             {
                 continue;
@@ -118,6 +138,11 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
         foreach (var pyproject in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "pyproject.toml"))
         {
             var relativePath = Relative(context.RepositoryPath, pyproject);
+            if (RepositoryPathClassifier.IsTestFixtureExampleOrDocumentationPath(relativePath))
+            {
+                continue;
+            }
+
             if (!TryReadText(pyproject, out var content))
             {
                 continue;
@@ -133,6 +158,53 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
                 }
             }
         }
+    }
+
+    private static ReleaseNotes? ResolveReleaseNotesForPackageVersion(
+        string repositoryPath,
+        PackageVersionEvidence packageVersion,
+        string? rootChangelog,
+        string? rootChangelogText,
+        string? rootChangelogVersion)
+    {
+        if (IsRootManifest(packageVersion.FilePath))
+        {
+            return rootChangelog is not null && rootChangelogText is not null
+                ? new ReleaseNotes(rootChangelog, rootChangelogText, rootChangelogVersion)
+                : null;
+        }
+
+        var packagePath = Path.Combine(repositoryPath, packageVersion.FilePath.Replace('/', Path.DirectorySeparatorChar));
+        var packageDirectory = Path.GetDirectoryName(packagePath);
+        var localChangelog = FindPackageDirectoryChangelog(packageDirectory);
+        if (localChangelog is null || !TryReadText(localChangelog, out var localChangelogText))
+        {
+            return null;
+        }
+
+        return new ReleaseNotes(localChangelog, localChangelogText, ReadLatestChangelogVersion(localChangelogText));
+    }
+
+    private static bool IsRootManifest(string relativePath) =>
+        !relativePath.Contains('/', StringComparison.Ordinal);
+
+    private static string? FindPackageDirectoryChangelog(string? directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            return null;
+        }
+
+        foreach (var name in new[] { "CHANGELOG.md", "CHANGELOG", "HISTORY.md", "RELEASES.md" })
+        {
+            var path = Path.Combine(directory, name);
+            if (File.Exists(path))
+            {
+                return path;
+            }
+        }
+
+        return null;
     }
 
     private static IEnumerable<string> EnumerateReleaseArtifacts(string repositoryPath)
@@ -172,7 +244,7 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
         }
     }
 
-    private static string? TryReadPackageJsonVersion(string packageJson)
+    private static NpmPackageVersion? TryReadPackageJsonVersion(string packageJson)
     {
         try
         {
@@ -186,7 +258,9 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
                 version.ValueKind == JsonValueKind.String &&
                 !string.IsNullOrWhiteSpace(version.GetString()))
             {
-                return version.GetString();
+                var isPrivate = document.RootElement.TryGetProperty("private", out var privateElement) &&
+                                privateElement.ValueKind == JsonValueKind.True;
+                return new NpmPackageVersion(version.GetString()!, isPrivate);
             }
         }
         catch (JsonException)
@@ -330,6 +404,10 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
         new(ruleId, title, AnalysisCategory.Releases, severity, confidence, message, [new Evidence(evidenceKind, evidence, filePath)], new Recommendation(recommendation));
 
     private sealed record PackageVersionEvidence(string FilePath, string Version);
+
+    private sealed record NpmPackageVersion(string Version, bool IsPrivate);
+
+    private sealed record ReleaseNotes(string FilePath, string Text, string? LatestVersion);
 
     [GeneratedRegex(@"^#+\s*\[?(?<version>v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)\]?", RegexOptions.CultureInvariant)]
     private static partial Regex ChangelogHeadingPattern();

@@ -26,6 +26,87 @@ public sealed class ReleaseEvidenceAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_DoesNotCompareNestedPackagesToRootChangelog()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## v19.2.1
+        """);
+        var packageDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "runtime"));
+        File.WriteAllText(Path.Combine(packageDirectory.FullName, "package.json"), """
+        {
+          "name": "runtime",
+          "version": "0.0.1",
+          "private": false
+        }
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportPrivateOrFixturePackageVersions()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## v19.2.1
+        """);
+        var privateDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "playground"));
+        File.WriteAllText(Path.Combine(privateDirectory.FullName, "package.json"), """
+        {
+          "name": "playground",
+          "version": "0.1.0",
+          "private": true
+        }
+        """);
+        var fixtureDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "fixtures", "dom"));
+        File.WriteAllText(Path.Combine(fixtureDirectory.FullName, "package.json"), """
+        {
+          "name": "fixture",
+          "version": "0.1.0"
+        }
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_UsesNestedChangelogForNestedPackage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## v19.2.1
+        """);
+        var packageDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "runtime"));
+        File.WriteAllText(Path.Combine(packageDirectory.FullName, "CHANGELOG.md"), """
+        # Runtime
+
+        ## v2.0.0
+        """);
+        File.WriteAllText(Path.Combine(packageDirectory.FullName, "package.json"), """
+        {
+          "name": "runtime",
+          "version": "1.0.0"
+        }
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-REL004");
+        Assert.Contains("2.0.0", finding.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ArtifactWithoutIntegrityEvidenceReportsRules()
     {
         using var fixture = TemporaryRepository.Create();
