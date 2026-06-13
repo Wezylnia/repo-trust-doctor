@@ -98,7 +98,9 @@ public sealed record ScanModule(
     DateTimeOffset CompletedAt,
     int FindingsCount,
     string? ErrorMessage = null,
-    string? SkippedReason = null);
+    string? SkippedReason = null,
+    IReadOnlyDictionary<string, string>? Metrics = null,
+    IReadOnlyList<string>? Warnings = null);
 
 public sealed record CategoryScore(AnalysisCategory Category, int Score);
 

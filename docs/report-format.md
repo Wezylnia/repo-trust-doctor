@@ -8,7 +8,7 @@ The initial report model includes:
 - scan mode,
 - trust profile,
 - started and completed timestamps,
-- module statuses,
+- module statuses, timing, coverage/performance metrics, and structured warnings,
 - findings,
 - category scores,
 - overall score,

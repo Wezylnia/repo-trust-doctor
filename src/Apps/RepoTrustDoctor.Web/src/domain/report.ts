@@ -34,6 +34,8 @@ export interface ScanModule {
   findingsCount: number;
   errorMessage?: string | null;
   skippedReason?: string | null;
+  metrics?: Record<string, string> | null;
+  warnings?: string[] | null;
 }
 
 export interface CategoryScore {

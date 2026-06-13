@@ -51,7 +51,9 @@ public sealed class AnalyzerExecutor
                     started,
                     completed,
                     result.Findings.Count,
-                    moduleMessage));
+                    moduleMessage,
+                    Metrics: result.Metrics,
+                    Warnings: result.Warnings));
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {

@@ -34,7 +34,7 @@ Searches candidate text/config/source files for high-signal secret-like patterns
 
 The scanner avoids binary files, oversized text files, and common generated, vendored, fixture, example, test, and documentation paths. Sensitive files such as `.env`, private-key extensions, and credential files are still surfaced when they appear in production paths. Registry config files such as `.npmrc` and `.pypirc` are scanned for token values without being reported solely for existing.
 
-For very large repositories, the quick scan prioritizes sensitive filenames and credential config files, then scans bounded sets of lower-priority general configuration and source files. When either budget is reached, the module completes with a warning and metrics instead of timing out.
+For very large repositories, the quick scan prioritizes sensitive filenames and credential config files, then scans bounded sets of lower-priority general configuration and source files. Content reads use bounded parallelism while report ordering remains deterministic. Fast scans inspect up to 800 source and 1,000 configuration files, standard scans up to 2,500 of each, and deep scans up to 10,000 source and 5,000 configuration files. When a budget is reached, the module completes with a warning plus analyzed/skipped counts and coverage percentages instead of silently appearing exhaustive.
 
 ## Docker And Containers
 

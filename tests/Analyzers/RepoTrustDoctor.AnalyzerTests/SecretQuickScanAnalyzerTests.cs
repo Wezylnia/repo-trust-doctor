@@ -426,6 +426,34 @@ public sealed class SecretQuickScanAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_DeepScanExpandsSourceCoverageBeyondFastBudget()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var sourceDirectory = Path.Combine(fixture.Path, "src");
+        Directory.CreateDirectory(sourceDirectory);
+        var fakeToken = "ghp_" + "abcdefghijklmnopqrstuvwxyz123456";
+
+        for (var index = 0; index < 801; index++)
+        {
+            var content = index == 800
+                ? $"public static class Last {{ private const string Token = \"{fakeToken}\"; }}"
+                : "public sealed class Sample { public string Value => \"safe\"; }";
+            File.WriteAllText(Path.Combine(sourceDirectory, $"file{index:D3}.cs"), content);
+        }
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep),
+            CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, item => item.RuleId == "TRUST-SECRET003");
+        Assert.Equal("src/file800.cs", Assert.Single(finding.Evidence).FilePath);
+        Assert.Equal("801", result.Metrics!["secret.source.content.scanned.count"]);
+        Assert.Equal("0", result.Metrics["secret.source.content.skipped.count"]);
+        Assert.Equal("100", result.Metrics["secret.source.content.coverage.percent"]);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_BudgetsConfigurationFilesButKeepsCredentialConfigs()
     {
         using var fixture = TemporaryRepository.Create();

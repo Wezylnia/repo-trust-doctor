@@ -99,6 +99,8 @@ public sealed class AnalyzerInfrastructureTests
 
         Assert.Equal(ModuleStatus.CompletedWithWarnings, result.Module.Status);
         Assert.Contains("scope was truncated", result.Module.ErrorMessage, StringComparison.Ordinal);
+        Assert.Equal("10", result.Module.Metrics!["analyzed.count"]);
+        Assert.Contains("scope was truncated", result.Module.Warnings!);
     }
 
     [Fact]
@@ -216,6 +218,9 @@ public sealed class AnalyzerInfrastructureTests
         ];
 
         public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken) =>
-            Task.FromResult(AnalyzerResult.Completed([], warnings: ["scope was truncated"]));
+            Task.FromResult(AnalyzerResult.Completed(
+                [],
+                metrics: new Dictionary<string, string> { ["analyzed.count"] = "10" },
+                warnings: ["scope was truncated"]));
     }
 }
