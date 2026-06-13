@@ -256,6 +256,72 @@ public sealed class SecretQuickScanAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_SkipsSensitiveFiles_InRestTestAndDocumentationPaths()
+    {
+        using var fixture = TemporaryRepository.Create();
+
+        var javaRestKey = Path.Combine(fixture.Path, "modules", "data-streams", "src", "javaRestTest", "resources", "ssl", "ca.key");
+        Directory.CreateDirectory(Path.GetDirectoryName(javaRestKey)!);
+        File.WriteAllText(javaRestKey, "java REST test certificate fixture");
+
+        var yamlRestKey = Path.Combine(fixture.Path, "x-pack", "qa", "reindex-tests-with-security", "src", "yamlRestTest", "resources", "ssl", "http.key");
+        Directory.CreateDirectory(Path.GetDirectoryName(yamlRestKey)!);
+        File.WriteAllText(yamlRestKey, "YAML REST test certificate fixture");
+
+        var docsCert = Path.Combine(fixture.Path, "docs", "httpCa.p12");
+        Directory.CreateDirectory(Path.GetDirectoryName(docsCert)!);
+        File.WriteAllText(docsCert, "documentation certificate fixture");
+
+        File.WriteAllText(Path.Combine(fixture.Path, "prod.key"), "production key material");
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET001");
+        Assert.Equal("prod.key", Assert.Single(finding.Evidence).FilePath);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PublicCertificatePem_DoesNotReportSensitiveFile()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "public-ca.pem"), """
+        -----BEGIN CERTIFICATE-----
+        MIIDpubliccertificate
+        -----END CERTIFICATE-----
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "private-ca.key"), "private key material");
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET001");
+        Assert.Equal("private-ca.key", Assert.Single(finding.Evidence).FilePath);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_SourceCodePrivateKeyMarkerWithoutBlock_DoesNotReportSecret002()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "src"));
+        File.WriteAllText(Path.Combine(fixture.Path, "src", "keyMarkers.ts"), """
+        export const privateKeyHeader = "-----BEGIN PRIVATE KEY-----";
+        export const privateKeyBlockPattern = /-----BEGIN PRIVATE KEY-----[\s\S]+?-----END PRIVATE KEY-----/g;
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "secrets.txt"), """
+        -----BEGIN PRIVATE KEY-----
+        abcdefghijklmnopqrstuvwxyz
+        -----END PRIVATE KEY-----
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET002");
+        Assert.Equal("secrets.txt", Assert.Single(finding.Evidence).FilePath);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_SkipsBinaryFilesWithNullBytes()
     {
         using var fixture = TemporaryRepository.Create();

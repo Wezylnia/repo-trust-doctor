@@ -55,8 +55,15 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
-            if (SensitiveFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) || SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            if ((SensitiveFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) ||
+                 SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase)) &&
+                !IsDocumentationSensitiveFilePath(relativePath))
             {
+                if (IsPublicCertificatePem(file, extension))
+                {
+                    continue;
+                }
+
                 findings.Add(CreateFinding("TRUST-SECRET001", "Sensitive-looking file is committed", Severity.High, Confidence.High, relativePath, $"Sensitive-looking file '{fileName}' exists."));
                 continue;
             }
@@ -67,10 +74,17 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             }
 
             var content = await File.ReadAllTextAsync(file, cancellationToken);
-            if (PrivateKeyPattern().Match(content) is { Success: true } privateKeyMatch &&
-                !IsDocumentationTextPath(relativePath))
+            var privateKeyBlockMatch = PrivateKeyBlockPattern().Match(content);
+            var privateKeyMarkerMatch = privateKeyBlockMatch.Success
+                ? privateKeyBlockMatch
+                : PrivateKeyMarkerPattern().Match(content);
+            if (privateKeyMarkerMatch.Success &&
+                !IsDocumentationTextPath(relativePath) &&
+                (privateKeyBlockMatch.Success
+                    ? !IsLikelySourceCodePrivateKeyPattern(relativePath, content, privateKeyBlockMatch)
+                    : !IsLikelySourceCodeMarker(relativePath, content, privateKeyMarkerMatch.Index)))
             {
-                findings.Add(CreateFinding("TRUST-SECRET002", "Possible private key marker found", Severity.Critical, Confidence.High, relativePath, "A private key block marker was found.", GetLineNumber(content, privateKeyMatch.Index), isBlocking: true));
+                findings.Add(CreateFinding("TRUST-SECRET002", "Possible private key marker found", Severity.Critical, Confidence.High, relativePath, "A private key block marker was found.", GetLineNumber(content, privateKeyMarkerMatch.Index), isBlocking: true));
             }
 
             if (GitHubTokenPattern().Match(content) is { Success: true } gitHubTokenMatch)
@@ -182,6 +196,12 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
                normalized.Contains("smoke-test", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("dockertest", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("testfixtures", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/src/javaresttest/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("src/javaresttest/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/src/yamlresttest/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("src/yamlresttest/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("rest-tests", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("resttests", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("/testassets/", StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith("testassets/", StringComparison.OrdinalIgnoreCase) ||
                normalized.Contains("/testcertificates/", StringComparison.OrdinalIgnoreCase) ||
@@ -233,6 +253,99 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
                 normalized.Contains("/docs/", StringComparison.OrdinalIgnoreCase) ||
                 normalized.StartsWith("documentation/", StringComparison.OrdinalIgnoreCase) ||
                 normalized.Contains("/documentation/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsDocumentationSensitiveFilePath(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/');
+        var fileName = Path.GetFileName(normalized);
+        var extension = Path.GetExtension(normalized);
+        var isDocumentationPath = normalized.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
+                                  normalized.Contains("/docs/", StringComparison.OrdinalIgnoreCase) ||
+                                  normalized.StartsWith("documentation/", StringComparison.OrdinalIgnoreCase) ||
+                                  normalized.Contains("/documentation/", StringComparison.OrdinalIgnoreCase);
+
+        return isDocumentationPath &&
+               (SensitiveFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) ||
+                SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static bool IsPublicCertificatePem(string filePath, string extension)
+    {
+        if (!extension.Equals(".pem", StringComparison.OrdinalIgnoreCase) ||
+            !RepositoryFileSystem.CanReadAsText(filePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var content = File.ReadAllText(filePath);
+            return content.Contains("-----BEGIN CERTIFICATE-----", StringComparison.Ordinal) &&
+                   !PrivateKeyMarkerPattern().IsMatch(content);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsLikelySourceCodeMarker(string relativePath, string content, int matchIndex)
+    {
+        if (!IsSourceCodePath(relativePath))
+        {
+            return false;
+        }
+
+        var lineStart = content.LastIndexOf('\n', Math.Max(0, matchIndex - 1));
+        lineStart = lineStart < 0 ? 0 : lineStart + 1;
+        var lineEnd = content.IndexOf('\n', matchIndex);
+        lineEnd = lineEnd < 0 ? content.Length : lineEnd;
+        var line = content[lineStart..lineEnd].Trim();
+
+        return line.StartsWith("//", StringComparison.Ordinal) ||
+               line.StartsWith("#", StringComparison.Ordinal) ||
+               line.StartsWith("*", StringComparison.Ordinal) ||
+               line.Contains('"', StringComparison.Ordinal) ||
+               line.Contains('\'', StringComparison.Ordinal) ||
+               line.Contains('`', StringComparison.Ordinal);
+    }
+
+    private static bool IsLikelySourceCodePrivateKeyPattern(string relativePath, string content, Match match)
+    {
+        if (!IsSourceCodePath(relativePath))
+        {
+            return false;
+        }
+
+        var matchedText = match.Value;
+        if (matchedText.Contains(@"[\s\S]", StringComparison.Ordinal) ||
+            matchedText.Contains(@"\s", StringComparison.Ordinal) ||
+            matchedText.Contains(".+?", StringComparison.Ordinal) ||
+            matchedText.Contains(".*?", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsSourceCodePath(string relativePath)
+    {
+        var extension = Path.GetExtension(relativePath);
+        return extension.Equals(".cs", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".ts", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".tsx", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".js", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".jsx", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".java", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".go", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".py", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".rs", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".kt", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".swift", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".php", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".rb", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsPlaceholderValue(string value)
@@ -290,8 +403,11 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
         return false;
     }
 
+    [GeneratedRegex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----")]
+    private static partial Regex PrivateKeyBlockPattern();
+
     [GeneratedRegex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----")]
-    private static partial Regex PrivateKeyPattern();
+    private static partial Regex PrivateKeyMarkerPattern();
 
     [GeneratedRegex(@"gh[pousr]_[A-Za-z0-9_]{20,}")]
     private static partial Regex GitHubTokenPattern();

@@ -30,7 +30,14 @@ internal sealed partial class PubDependencyCollector : IDependencyInventoryColle
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Pub, relativePath, "pubspec.yaml"));
 
-        if (!HasSiblingLockfile(filePath))
+        var hasSiblingLockfile = HasSiblingLockfile(filePath);
+        var reportReproducibilityFindings =
+            !hasSiblingLockfile &&
+            IsLikelyPubApplicationManifest(filePath, relativePath) &&
+            !IsLowSignalPubPath(relativePath) &&
+            !DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath);
+
+        if (reportReproducibilityFindings)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP037",
@@ -52,9 +59,11 @@ internal sealed partial class PubDependencyCollector : IDependencyInventoryColle
         var lines = DependencyInventorySupport.SplitLines(content);
         DependencyScope currentScope = DependencyScope.Production;
         bool inDeps = false;
+        var dependencyIndent = 2;
 
-        foreach (var rawLine in lines)
+        for (var index = 0; index < lines.Length; index++)
         {
+            var rawLine = lines[index];
             var line = rawLine.Trim();
             if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal))
             {
@@ -76,7 +85,7 @@ internal sealed partial class PubDependencyCollector : IDependencyInventoryColle
             }
 
             // Exit dependency section when we hit a non-indented line
-            if (inDeps && !rawLine.StartsWith(" ", StringComparison.Ordinal))
+            if (inDeps && CountLeadingSpaces(rawLine) == 0)
             {
                 inDeps = false;
                 continue;
@@ -87,15 +96,26 @@ internal sealed partial class PubDependencyCollector : IDependencyInventoryColle
                 continue;
             }
 
-            // Match indented dependency: "  package_name: version_constraint"
+            // Match direct dependency entries only. Nested YAML properties such as
+            // "sdk: flutter" or "path: ../pkg" belong to the previous package.
             var match = PubDependencyPattern().Match(rawLine);
-            if (!match.Success)
+            if (!match.Success || CountLeadingSpaces(rawLine) != dependencyIndent)
             {
                 continue;
             }
 
             var pkgName = match.Groups["name"].Value;
-            var constraint = match.Groups["constraint"].Success ? match.Groups["constraint"].Value.Trim('"', '\'') : null;
+            if (IsPubDependencyMetadataKey(pkgName))
+            {
+                continue;
+            }
+
+            var inlineConstraint = match.Groups["constraint"].Success ? match.Groups["constraint"].Value.Trim() : string.Empty;
+            var dependencyInfo = inlineConstraint.Length > 0
+                ? new PubDependencyInfo(NormalizePubConstraint(inlineConstraint), null)
+                : ReadPubDependencyBlock(lines, index + 1, dependencyIndent);
+
+            var constraint = dependencyInfo.Constraint;
 
             var isPinned = constraint != null && ExactVersionPattern().IsMatch(constraint);
             var isPrerelease = constraint != null && DependencyInventorySupport.IsPrereleaseVersion(constraint);
@@ -110,9 +130,9 @@ internal sealed partial class PubDependencyCollector : IDependencyInventoryColle
                 true,
                 isPinned,
                 isPrerelease,
-                null));
+                dependencyInfo.Metadata));
 
-            if (!isPinned && constraint != null)
+            if (!isPinned && constraint != null && reportReproducibilityFindings)
             {
                 state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                     "TRUST-DEP038",
@@ -128,8 +148,142 @@ internal sealed partial class PubDependencyCollector : IDependencyInventoryColle
         }
     }
 
-    [GeneratedRegex(@"^\s+(?<name>[^:\s]+):\s*(?<constraint>\S+)")]
+    private static PubDependencyInfo ReadPubDependencyBlock(string[] lines, int startIndex, int dependencyIndent)
+    {
+        string? constraint = null;
+        Dictionary<string, string>? metadata = null;
+
+        for (var index = startIndex; index < lines.Length; index++)
+        {
+            var rawLine = lines[index];
+            var line = rawLine.Trim();
+            if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (CountLeadingSpaces(rawLine) <= dependencyIndent)
+            {
+                break;
+            }
+
+            var property = PubDependencyBlockPropertyPattern().Match(rawLine);
+            if (!property.Success)
+            {
+                continue;
+            }
+
+            var key = property.Groups["name"].Value;
+            var value = NormalizePubConstraint(property.Groups["value"].Value);
+
+            if (key.Equals("version", StringComparison.OrdinalIgnoreCase))
+            {
+                constraint = value;
+            }
+            else if (key.Equals("sdk", StringComparison.OrdinalIgnoreCase))
+            {
+                metadata ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                metadata["sourceKind"] = "sdk";
+            }
+            else if (key.Equals("path", StringComparison.OrdinalIgnoreCase))
+            {
+                metadata ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                metadata["sourceKind"] = "path";
+            }
+            else if (key.Equals("git", StringComparison.OrdinalIgnoreCase))
+            {
+                metadata ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                metadata["sourceKind"] = "git";
+            }
+        }
+
+        return new PubDependencyInfo(constraint, metadata);
+    }
+
+    private static string? NormalizePubConstraint(string value)
+    {
+        var normalized = value.Trim().Trim('"', '\'');
+        if (normalized.Length == 0)
+        {
+            return null;
+        }
+
+        if (normalized is "{}" or "[]" or "|")
+        {
+            return null;
+        }
+
+        return normalized;
+    }
+
+    private static bool IsPubDependencyMetadataKey(string packageName) =>
+        packageName.Equals("sdk", StringComparison.OrdinalIgnoreCase) ||
+        packageName.Equals("path", StringComparison.OrdinalIgnoreCase) ||
+        packageName.Equals("git", StringComparison.OrdinalIgnoreCase) ||
+        packageName.Equals("hosted", StringComparison.OrdinalIgnoreCase) ||
+        packageName.Equals("version", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsLowSignalPubPath(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/');
+        return normalized.StartsWith("dev/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/dev/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/benchmarks/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/benchmark/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/integration_tests/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/integration_test/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/customer_testing/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/devicelab/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("ci/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/ci/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("tools/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/tools/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("testing/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/testing/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("example/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/example/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("test_private", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("forbidden_from_release_tests", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLikelyPubApplicationManifest(string filePath, string relativePath)
+    {
+        if (relativePath.Equals("pubspec.yaml", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var directory = Path.GetDirectoryName(filePath);
+        if (directory is null)
+        {
+            return false;
+        }
+
+        return Directory.Exists(Path.Combine(directory, "android")) ||
+               Directory.Exists(Path.Combine(directory, "ios")) ||
+               Directory.Exists(Path.Combine(directory, "web")) ||
+               Directory.Exists(Path.Combine(directory, "macos")) ||
+               Directory.Exists(Path.Combine(directory, "linux")) ||
+               Directory.Exists(Path.Combine(directory, "windows")) ||
+               File.Exists(Path.Combine(directory, "lib", "main.dart"));
+    }
+
+    private static int CountLeadingSpaces(string value)
+    {
+        var count = 0;
+        while (count < value.Length && value[count] == ' ')
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    [GeneratedRegex(@"^\s+(?<name>[^:\s]+):\s*(?<constraint>.*)$")]
     private static partial Regex PubDependencyPattern();
+
+    [GeneratedRegex(@"^\s+(?<name>[^:\s]+):\s*(?<value>.*)$")]
+    private static partial Regex PubDependencyBlockPropertyPattern();
 
     [GeneratedRegex(@"^\d+\.\d+\.\d+$")]
     private static partial Regex ExactVersionPattern();
@@ -139,4 +293,6 @@ internal sealed partial class PubDependencyCollector : IDependencyInventoryColle
         var directory = Path.GetDirectoryName(pubspecPath);
         return directory is not null && File.Exists(Path.Combine(directory, "pubspec.lock"));
     }
+
+    private sealed record PubDependencyInfo(string? Constraint, IReadOnlyDictionary<string, string>? Metadata);
 }

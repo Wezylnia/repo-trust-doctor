@@ -52,6 +52,7 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
 
         var lines = DependencyInventorySupport.SplitLines(content);
         CargoSection currentSection = CargoSection.None;
+        CargoTableDependency? tableDependency = null;
 
         foreach (var rawLine in lines)
         {
@@ -63,7 +64,22 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
 
             if (line.StartsWith('[') && line.EndsWith(']'))
             {
+                FlushCargoTableDependency(ref tableDependency, relativePath, state);
+
+                if (TryParseCargoDependencyTable(line, out var tableCrateName, out var tableScope))
+                {
+                    tableDependency = new CargoTableDependency(tableCrateName, tableScope);
+                    currentSection = CargoSection.None;
+                    continue;
+                }
+
                 currentSection = ParseCargoSection(line);
+                continue;
+            }
+
+            if (tableDependency is not null)
+            {
+                ParseCargoDependencyTableLine(line, tableDependency);
                 continue;
             }
 
@@ -92,6 +108,11 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
                 continue;
             }
 
+            if (IsCargoDependencyMetadataKey(crateName))
+            {
+                continue;
+            }
+
             if (valuePart.StartsWith('{'))
             {
                 ParseCargoInlineTable(relativePath, crateName, valuePart, scope, state);
@@ -101,6 +122,8 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
                 ParseCargoSimpleVersion(relativePath, crateName, valuePart.Trim('"'), scope, state);
             }
         }
+
+        FlushCargoTableDependency(ref tableDependency, relativePath, state);
     }
 
     private static bool HasCargoLock(AnalysisContext context, string cargoTomlPath)
@@ -117,25 +140,80 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
 
     private static CargoSection ParseCargoSection(string line)
     {
-        if (line.Contains("dependencies", StringComparison.OrdinalIgnoreCase))
+        var section = line.Trim('[', ']').Trim();
+
+        if (section.StartsWith("workspace.", StringComparison.OrdinalIgnoreCase))
         {
-            if (line.Contains("build", StringComparison.OrdinalIgnoreCase))
-            {
-                return CargoSection.BuildDependencies;
-            }
-            if (line.Contains("dev", StringComparison.OrdinalIgnoreCase))
-            {
-                return CargoSection.DevDependencies;
-            }
-            // workspace.dependencies should be treated as a reference, not direct
-            if (line.Contains("workspace", StringComparison.OrdinalIgnoreCase))
-            {
-                return CargoSection.WorkspaceDependencies;
-            }
+            return CargoSection.WorkspaceDependencies;
+        }
+
+        if (section.Equals("build-dependencies", StringComparison.OrdinalIgnoreCase) ||
+            section.EndsWith(".build-dependencies", StringComparison.OrdinalIgnoreCase))
+        {
+            return CargoSection.BuildDependencies;
+        }
+
+        if (section.Equals("dev-dependencies", StringComparison.OrdinalIgnoreCase) ||
+            section.EndsWith(".dev-dependencies", StringComparison.OrdinalIgnoreCase))
+        {
+            return CargoSection.DevDependencies;
+        }
+
+        if (section.Equals("dependencies", StringComparison.OrdinalIgnoreCase) ||
+            section.EndsWith(".dependencies", StringComparison.OrdinalIgnoreCase))
+        {
             return CargoSection.Dependencies;
         }
 
         return CargoSection.None;
+    }
+
+    private static bool TryParseCargoDependencyTable(string line, out string crateName, out DependencyScope scope)
+    {
+        var section = line.Trim('[', ']').Trim();
+        crateName = string.Empty;
+        scope = DependencyScope.Production;
+
+        if (section.StartsWith("workspace.", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (TryReadDependencyTableName(section, "build-dependencies.", out crateName) ||
+            TryReadDependencyTableName(section, ".build-dependencies.", out crateName))
+        {
+            scope = DependencyScope.Development;
+            return true;
+        }
+
+        if (TryReadDependencyTableName(section, "dev-dependencies.", out crateName) ||
+            TryReadDependencyTableName(section, ".dev-dependencies.", out crateName))
+        {
+            scope = DependencyScope.Development;
+            return true;
+        }
+
+        if (TryReadDependencyTableName(section, "dependencies.", out crateName) ||
+            TryReadDependencyTableName(section, ".dependencies.", out crateName))
+        {
+            scope = DependencyScope.Production;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryReadDependencyTableName(string section, string marker, out string crateName)
+    {
+        crateName = string.Empty;
+        var markerIndex = section.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0)
+        {
+            return false;
+        }
+
+        crateName = section[(markerIndex + marker.Length)..].Trim().Trim('"', '\'');
+        return crateName.Length > 0 && !crateName.Contains('.', StringComparison.Ordinal);
     }
 
     private static bool IsDependencySection(CargoSection section) =>
@@ -233,6 +311,61 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         }
     }
 
+    private void ParseCargoDependencyTableLine(string line, CargoTableDependency tableDependency)
+    {
+        var equalsIndex = line.IndexOf('=', StringComparison.Ordinal);
+        if (equalsIndex < 0)
+        {
+            return;
+        }
+
+        var key = line[..equalsIndex].Trim();
+        var value = line[(equalsIndex + 1)..].Trim().Trim('"');
+
+        if (key.Equals("version", StringComparison.OrdinalIgnoreCase))
+        {
+            tableDependency.Version = value;
+        }
+        else if (key.Equals("git", StringComparison.OrdinalIgnoreCase))
+        {
+            tableDependency.Git = value;
+        }
+        else if (key.Equals("path", StringComparison.OrdinalIgnoreCase))
+        {
+            tableDependency.Path = value;
+        }
+    }
+
+    private void FlushCargoTableDependency(ref CargoTableDependency? tableDependency, string manifestPath, DependencyInventoryState state)
+    {
+        if (tableDependency is null)
+        {
+            return;
+        }
+
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(tableDependency.Version))
+        {
+            parts.Add($"version = \"{tableDependency.Version}\"");
+        }
+        if (!string.IsNullOrWhiteSpace(tableDependency.Git))
+        {
+            parts.Add($"git = \"{tableDependency.Git}\"");
+        }
+        if (!string.IsNullOrWhiteSpace(tableDependency.Path))
+        {
+            parts.Add($"path = \"{tableDependency.Path}\"");
+        }
+
+        ParseCargoInlineTable(
+            manifestPath,
+            tableDependency.CrateName,
+            "{ " + string.Join(", ", parts) + " }",
+            tableDependency.Scope,
+            state);
+        tableDependency = null;
+    }
+
     private void ParseCargoSimpleVersion(string manifestPath, string crateName, string version, DependencyScope scope, DependencyInventoryState state)
     {
         var isPinned = IsExactCargoRequirement(version);
@@ -287,6 +420,19 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         return match.Success ? match.Groups[1].Value : null;
     }
 
+    private static bool IsCargoDependencyMetadataKey(string crateName) =>
+        crateName.Equals("version", StringComparison.OrdinalIgnoreCase) ||
+        crateName.Equals("features", StringComparison.OrdinalIgnoreCase) ||
+        crateName.Equals("default-features", StringComparison.OrdinalIgnoreCase) ||
+        crateName.Equals("optional", StringComparison.OrdinalIgnoreCase) ||
+        crateName.Equals("path", StringComparison.OrdinalIgnoreCase) ||
+        crateName.Equals("git", StringComparison.OrdinalIgnoreCase) ||
+        crateName.Equals("branch", StringComparison.OrdinalIgnoreCase) ||
+        crateName.Equals("tag", StringComparison.OrdinalIgnoreCase) ||
+        crateName.Equals("rev", StringComparison.OrdinalIgnoreCase) ||
+        crateName.Equals("registry", StringComparison.OrdinalIgnoreCase) ||
+        crateName.Equals("package", StringComparison.OrdinalIgnoreCase);
+
     private static bool IsExactCargoRequirement(string? version) =>
         !string.IsNullOrWhiteSpace(version) &&
         version.StartsWith('=') &&
@@ -294,6 +440,19 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
 
     [GeneratedRegex(@"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$", RegexOptions.CultureInvariant)]
     private static partial Regex ExactCargoVersionPattern();
+}
+
+internal sealed class CargoTableDependency(string crateName, DependencyScope scope)
+{
+    public string CrateName { get; } = crateName;
+
+    public DependencyScope Scope { get; } = scope;
+
+    public string? Version { get; set; }
+
+    public string? Git { get; set; }
+
+    public string? Path { get; set; }
 }
 
 internal enum CargoSection

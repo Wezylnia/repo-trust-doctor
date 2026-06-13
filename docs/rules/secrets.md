@@ -6,9 +6,11 @@
 - Default severity: High
 - Default confidence: High
 
-Detects committed files such as `.env`, `.env.production`, `id_rsa`, `.pem`, and `.key`.
+Detects committed files such as `.env`, `.env.production`, `id_rsa`, private-key-like `.pem`, and `.key`.
 
 Why it matters: these files often contain secrets, credentials, or private keys.
+
+Plain public certificate `.pem` files containing `-----BEGIN CERTIFICATE-----` without a private-key marker are not reported as sensitive files.
 
 Recommendation: manually verify the file, rotate exposed secrets if confirmed, and remove the secret from repository history.
 
@@ -18,7 +20,7 @@ Recommendation: manually verify the file, rotate exposed secrets if confirmed, a
 - Default severity: Critical
 - Default confidence: High
 
-Detects private key block markers.
+Detects private key block markers. Complete private-key blocks are reported even when they appear inside source files; single-line marker constants in source code are suppressed when no matching key block exists.
 
 Why it matters: committed private keys can allow unauthorized access to systems or services.
 
@@ -103,10 +105,13 @@ To avoid noise in automated testing and documentation, the secret scanner ignore
 - `smoke-test/`
 - `dockerTest/`
 - `testFixtures/`
+- `src/javaRestTest/`
+- `src/yamlRestTest/`
+- `rest-tests/`
 - `docs/examples/`
 - `documentation/`
 
-Markdown files under `docs/` also suppress JWT-token examples, because many security tutorials include sample JWTs. Text documentation files under `docs/` and `documentation/` suppress private-key block examples when they are clearly documentation content. Note that files under these paths are still checked for general repository metadata or container settings where appropriate, but secret rules will not fire.
+Markdown files under `docs/` also suppress JWT-token examples, because many security tutorials include sample JWTs. Text documentation files under `docs/` and `documentation/` suppress private-key block examples when they are clearly documentation content. Sensitive-looking certificate or environment filenames under documentation paths are also suppressed to avoid flagging committed tutorial artifacts such as sample `.p12` files. Note that files under these paths are still checked for general repository metadata or container settings where appropriate, but secret rules will not fire.
 
 ## Generic API Key Filtering (TRUST-SECRET012)
 

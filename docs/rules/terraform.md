@@ -60,6 +60,8 @@ Why it matters: unversioned providers can drift and break infrastructure.
 
 Recommendation: add version constraints to all required providers.
 
+Fixture, sample, example, and Terraform testdata paths are skipped for this rule family so provider snippets used by Terraform's own tests or documentation are not scored as production infrastructure.
+
 ## TRUST-TF006: S3 Backend Lacks Encryption
 
 - Category: Infrastructure

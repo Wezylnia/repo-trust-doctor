@@ -247,6 +247,55 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_CargoDependencySubtable_DoesNotRecordMetadataKeysAsPackages()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
+        [package]
+        name = "mycrate"
+
+        [dependencies.serde]
+        version = "=1.0.210"
+        features = ["derive"]
+        default-features = false
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        var package = Assert.Single(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Cargo);
+        Assert.Equal("serde", package.Name);
+        Assert.True(package.IsVersionPinned);
+        Assert.DoesNotContain(inventory.Packages, p => p.Name is "version" or "features" or "default-features");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP029");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CargoTargetDependencySubtable_RecordsCrateName()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
+        [package]
+        name = "mycrate"
+
+        [target.'cfg(windows)'.dependencies.windows-sys]
+        version = "0.59.0"
+        features = ["Win32_Foundation"]
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Cargo && p.Name == "windows-sys");
+        Assert.DoesNotContain(inventory.Packages, p => p.Name == "features");
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP029" && f.Message.Contains("windows-sys", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_CargoNonExactVersion_ReportsDep029()
     {
         using var fixture = TemporaryRepository.Create();

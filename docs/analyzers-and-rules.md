@@ -241,27 +241,27 @@ Collects structured dependency manifests across 12 ecosystems: npm, NuGet, Pytho
 | TRUST-DEP019 | Java uses SNAPSHOT dependency | Low | High |
 | TRUST-DEP020 | Gradle wrapper is missing | Medium | High |
 | TRUST-DEP021 | Spring Boot Actuator exposes all endpoints | High | High |
-| TRUST-DEP022 | Go uses pseudo-version dependency | Low | High |
-| TRUST-DEP023 | Go uses replace directive | Low | Medium |
-| TRUST-DEP024 | Go has no go.sum lockfile | Low | Medium |
-| TRUST-DEP025 | Go uses unpinned version | Medium | High |
-| TRUST-DEP026 | Cargo uses unpinned version | Medium | High |
-| TRUST-DEP027 | Cargo uses prerelease dependency | Low | High |
-| TRUST-DEP028 | Cargo uses Git dependency | Medium | High |
-| TRUST-DEP029 | Cargo uses path dependency | Low | Medium |
-| TRUST-DEP030 | Cargo has no Cargo.lock | Low | Medium |
-| TRUST-DEP031 | Composer uses unpinned version | Medium | High |
-| TRUST-DEP032 | Composer has no composer.lock | Low | Medium |
-| TRUST-DEP033 | Composer uses dev-master constraint | Medium | Medium |
-| TRUST-DEP034 | Ruby uses unpinned version | Medium | High |
-| TRUST-DEP035 | Ruby uses Git/path dependency | Medium | High |
-| TRUST-DEP036 | Ruby has no Gemfile.lock | Low | Medium |
-| TRUST-DEP037 | Dart uses unpinned version | Medium | High |
-| TRUST-DEP038 | Dart has no pubspec.lock | Low | Medium |
-| TRUST-DEP040 | Elixir uses unpinned version | Medium | High |
-| TRUST-DEP041 | Elixir uses non-Hex dependency | Medium | High |
-| TRUST-DEP042 | Elixir has no mix.lock | Low | Medium |
-| TRUST-DEP043 | Swift uses unpinned version | Medium | High |
+| TRUST-DEP022 | Go module has no go.sum lockfile | Medium | High |
+| TRUST-DEP023 | Go module uses replace directive | Low | High |
+| TRUST-DEP024 | Go dependency uses non-exact version | Medium | High |
+| TRUST-DEP025 | Go dependency uses pseudo-version | Low | High |
+| TRUST-DEP026 | Cargo has no Cargo.lock | Medium | High |
+| TRUST-DEP027 | Cargo dependency uses Git source | Medium | High |
+| TRUST-DEP028 | Cargo dependency uses path source | Low | High |
+| TRUST-DEP029 | Cargo dependency uses non-exact version | Medium | High |
+| TRUST-DEP030 | Cargo dependency uses prerelease version | Low | High |
+| TRUST-DEP031 | Composer has no composer.lock | Medium | High |
+| TRUST-DEP032 | Composer dependency uses non-exact version | Medium | High |
+| TRUST-DEP033 | Composer dependency uses prerelease version | Low | High |
+| TRUST-DEP034 | Ruby has no Gemfile.lock | Medium | High |
+| TRUST-DEP035 | Ruby gem uses non-exact version | Medium | High |
+| TRUST-DEP036 | Ruby gem uses Git/path dependency | Medium | High |
+| TRUST-DEP037 | Dart project has no pubspec.lock | Medium | High |
+| TRUST-DEP038 | Dart dependency uses non-exact version | Medium | High |
+| TRUST-DEP040 | Elixir has no mix.lock | Medium | High |
+| TRUST-DEP041 | Elixir dependency uses non-exact version | Medium | High |
+| TRUST-DEP042 | Elixir dependency uses non-Hex source | Medium | High |
+| TRUST-DEP043 | Swift package has no Package.resolved | Medium | High |
 | TRUST-DEP044 | Swift uses branch-based dependency | Medium | High |
 | TRUST-DEP046 | C/C++ uses Conan package manager | Low | High |
 | TRUST-DEP047 | C/C++ uses vcpkg | Low | High |

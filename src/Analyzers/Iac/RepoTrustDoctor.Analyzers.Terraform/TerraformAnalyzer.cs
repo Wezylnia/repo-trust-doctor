@@ -48,10 +48,7 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
             if (!RepositoryFileSystem.CanReadAsText(file)) continue;
             var relativePath = Path.GetRelativePath(context.RepositoryPath, file).Replace('\\', '/');
 
-            // Skip lock files and vendor/module dirs
-            if (relativePath.Contains(".terraform/", StringComparison.OrdinalIgnoreCase) ||
-                relativePath.Contains("/vendor/", StringComparison.OrdinalIgnoreCase) ||
-                relativePath.EndsWith(".terraform.lock.hcl", StringComparison.OrdinalIgnoreCase))
+            if (ShouldSkipTerraformFile(relativePath))
                 continue;
 
             var content = await File.ReadAllTextAsync(file, cancellationToken);
@@ -65,8 +62,7 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
             if (!RepositoryFileSystem.CanReadAsText(file)) continue;
             var relativePath = Path.GetRelativePath(context.RepositoryPath, file).Replace('\\', '/');
 
-            if (relativePath.Contains(".terraform/", StringComparison.OrdinalIgnoreCase) ||
-                relativePath.Contains("/vendor/", StringComparison.OrdinalIgnoreCase))
+            if (ShouldSkipTerraformFile(relativePath))
                 continue;
 
             try
@@ -277,6 +273,33 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
             if (content[i] == '\n') line++;
         return line;
     }
+
+    private static bool ShouldSkipTerraformFile(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/');
+
+        return normalized.Contains(".terraform/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/vendor/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.EndsWith(".terraform.lock.hcl", StringComparison.OrdinalIgnoreCase) ||
+               IsLikelyTerraformFixturePath(normalized);
+    }
+
+    private static bool IsLikelyTerraformFixturePath(string normalizedPath) =>
+        normalizedPath.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.StartsWith("test/", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.Contains("/fixtures/", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.StartsWith("examples/", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.Contains("/examples/", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.StartsWith("samples/", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.Contains("/samples/", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.StartsWith("testdata/", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.Contains("/testdata/", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.Contains("e2etest", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.Contains("integration-test", StringComparison.OrdinalIgnoreCase) ||
+        normalizedPath.Contains("smoke-test", StringComparison.OrdinalIgnoreCase);
 
     // ── Patterns ──────────────────────────────────────────────────────
 

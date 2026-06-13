@@ -302,6 +302,32 @@ public sealed class TerraformAnalyzerTests
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-TF006");
     }
 
+    [Theory]
+    [InlineData("internal/command/e2etest/testdata/custom-provider-install-method/main.tf")]
+    [InlineData("internal/command/testdata/provider-missing-version/main.tf")]
+    [InlineData("examples/complete/main.tf")]
+    [InlineData("fixtures/aws/main.tf")]
+    public async Task AnalyzeAsync_TerraformFixturePaths_AreSkipped(string relativePath)
+    {
+        using var fixture = TemporaryRepository.Create();
+        var filePath = Path.Combine(fixture.Path, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, """
+        terraform {
+          required_providers {
+            happycloud = {
+              source = "example.com/awesomecorp/happycloud"
+            }
+          }
+        }
+        """);
+
+        var analyzer = new TerraformAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-TF005");
+    }
+
     [Fact]
     public async Task AnalyzeAsync_LockFile_NoFindings()
     {

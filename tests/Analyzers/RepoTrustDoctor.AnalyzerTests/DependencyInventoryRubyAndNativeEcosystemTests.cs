@@ -224,6 +224,7 @@ public sealed class DependencyInventoryRubyAndNativeEcosystemTests
         File.WriteAllText(Path.Combine(fixture.Path, "pubspec.lock"), "");
         var appDirectory = Path.Combine(fixture.Path, "apps", "mobile");
         Directory.CreateDirectory(appDirectory);
+        Directory.CreateDirectory(Path.Combine(appDirectory, "android"));
         File.WriteAllText(Path.Combine(appDirectory, "pubspec.yaml"), """
         name: mobile
         dependencies:
@@ -234,6 +235,26 @@ public sealed class DependencyInventoryRubyAndNativeEcosystemTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
 
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP037" && f.Evidence[0].FilePath == "apps/mobile/pubspec.yaml");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_NestedPubspecWithoutApplicationSignals_DoesNotReportReproducibilityFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var packageDirectory = Path.Combine(fixture.Path, "packages", "widgets");
+        Directory.CreateDirectory(packageDirectory);
+        File.WriteAllText(Path.Combine(packageDirectory, "pubspec.yaml"), """
+        name: widgets
+        dependencies:
+          http: ^1.2.0
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Pub && p.Name == "http");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId is "TRUST-DEP037" or "TRUST-DEP038");
     }
 
     [Fact]
@@ -255,6 +276,54 @@ public sealed class DependencyInventoryRubyAndNativeEcosystemTests
         var inventory = GetInventory(result);
         Assert.Contains(inventory.Manifests, m => m.Ecosystem == DependencyEcosystem.Pub);
         Assert.NotEmpty(inventory.Packages);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PubspecNestedDependencyMetadata_IsNotRecordedAsPackage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "pubspec.lock"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "pubspec.yaml"), """
+        name: myapp
+        dependencies:
+          flutter:
+            sdk: flutter
+          local_widgets:
+            path: ../local_widgets
+          http: 1.2.0
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Pub && p.Name == "flutter");
+        Assert.Contains(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Pub && p.Name == "local_widgets");
+        Assert.Contains(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Pub && p.Name == "http" && p.IsVersionPinned);
+        Assert.DoesNotContain(inventory.Packages, p => p.Name is "sdk" or "path");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP038");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PubspecInLowSignalDevPath_SuppressesReproducibilityFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var pubspecDirectory = Path.Combine(fixture.Path, "dev", "benchmarks", "microbenchmarks");
+        Directory.CreateDirectory(pubspecDirectory);
+        File.WriteAllText(Path.Combine(pubspecDirectory, "pubspec.yaml"), """
+        name: microbenchmarks
+        dependencies:
+          flutter:
+            sdk: flutter
+          http: ^1.2.0
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Pub && p.Name == "http");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId is "TRUST-DEP037" or "TRUST-DEP038");
     }
 
     [Fact]

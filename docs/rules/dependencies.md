@@ -414,7 +414,7 @@ Recommendation: review path-sourced dependencies and document whether they are w
 - Default severity: Medium
 - Default confidence: High
 
-Detects Cargo dependencies that do not use an exact requirement (e.g. `"1"`, `"1.2"`, or `"1.2.3"` instead of `"=1.2.3"`).
+Detects Cargo dependencies that do not use an exact requirement (e.g. `"1"`, `"1.2"`, or `"1.2.3"` instead of `"=1.2.3"`). The collector reads normal dependency sections, target-specific dependency sections, and dependency subtables such as `[dependencies.serde]` without treating metadata keys like `features` as packages.
 
 Why it matters: non-exact Cargo dependency versions can resolve to different minor or patch versions over time.
 
@@ -510,7 +510,7 @@ Recommendation: review non-registry gem sources and prefer RubyGems packages wit
 - Default severity: Medium
 - Default confidence: High
 
-Detects Dart or Flutter repositories with `pubspec.yaml` but no sibling `pubspec.lock`.
+Detects Dart or Flutter application-like repositories with `pubspec.yaml` but no sibling `pubspec.lock`. Root target manifests and nested manifests with application signals such as platform folders, `web/`, or `lib/main.dart` are eligible. Library, tool, example, CI, and test package manifests are inventoried but do not emit this reproducibility warning.
 
 Why it matters: without a lockfile, package resolution can drift between installs.
 
@@ -522,11 +522,11 @@ Recommendation: run `dart pub get` or `flutter pub get` and commit `pubspec.lock
 - Default severity: Medium
 - Default confidence: High
 
-Detects Dart dependencies with version ranges or constraints instead of exact versions.
+Detects Dart application dependencies with version ranges or constraints instead of exact versions when no sibling `pubspec.lock` exists. Nested Pub metadata such as `sdk: flutter`, `path: ../package`, and `git:` is associated with the parent dependency instead of being recorded as a package.
 
 Why it matters: version constraints can resolve to different package versions over time.
 
-Recommendation: use exact version constraints with a committed `pubspec.lock` for reproducible builds.
+Recommendation: use exact version constraints with a committed `pubspec.lock` for reproducible builds in application manifests.
 
 ## TRUST-DEP040: Elixir Project Does Not Have a mix.lock File
 
