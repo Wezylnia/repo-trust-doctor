@@ -15,6 +15,8 @@ public sealed class RepositoryPathClassifierTests
     [InlineData("src/Analyzers/Security/SecretQuickScanAnalyzer.cs", RepositoryPathClassification.AnalyzerImplementation)]
     [InlineData("scripts/release/package.ts", RepositoryPathClassification.Tooling)]
     [InlineData("extensions/copilot/script/generateReport.ts", RepositoryPathClassification.Tooling)]
+    [InlineData("devenv/docker/blocks/prometheus/docker-compose.yaml", RepositoryPathClassification.Tooling)]
+    [InlineData(".citools/src/golangci-lint/go.mod", RepositoryPathClassification.Tooling)]
     public void Classify_ReturnsExpectedFlags(string path, RepositoryPathClassification expected)
     {
         var classification = RepositoryPathClassifier.Classify(path);

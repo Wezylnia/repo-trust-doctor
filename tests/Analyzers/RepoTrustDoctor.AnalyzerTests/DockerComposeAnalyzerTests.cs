@@ -113,6 +113,46 @@ public sealed class DockerComposeAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_DoesNotReportBroadPortExposureInDevelopmentComposeFiles()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var composePath = Path.Combine(fixture.Path, "devenv", "docker", "blocks", "prometheus", "docker-compose.yaml");
+        Directory.CreateDirectory(Path.GetDirectoryName(composePath)!);
+        File.WriteAllText(composePath, """
+        services:
+          prometheus:
+            image: prom/prometheus
+            ports:
+              - "9090:9090"
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_StillReportsDockerSocketInDevelopmentComposeFiles()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var composePath = Path.Combine(fixture.Path, "devenv", "docker", "compose.yaml");
+        Directory.CreateDirectory(Path.GetDirectoryName(composePath)!);
+        File.WriteAllText(composePath, """
+        services:
+          builder:
+            image: docker
+            volumes:
+              - /var/run/docker.sock:/var/run/docker.sock
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-COMP006");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_DetectsSecretInEnvironment()
     {
         using var fixture = TemporaryRepository.Create();

@@ -106,6 +106,11 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
 
     private static void CheckBroadPorts(string content, string relativePath, List<Finding> findings)
     {
+        if (IsLowSignalComposePath(relativePath))
+        {
+            return;
+        }
+
         foreach (Match match in BroadPortPattern().Matches(content))
         {
             findings.Add(CreateFinding("TRUST-COMP004", "Docker Compose exposes broad port range",
@@ -217,6 +222,16 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
 
         return trimmed.Trim('"', '\'');
     }
+
+    private static bool IsLowSignalComposePath(string relativePath) =>
+        RepositoryPathClassifier.Classify(relativePath).HasAny(
+            RepositoryPathClassification.Tooling |
+            RepositoryPathClassification.Test |
+            RepositoryPathClassification.Fixture |
+            RepositoryPathClassification.Example |
+            RepositoryPathClassification.Documentation |
+            RepositoryPathClassification.Generated |
+            RepositoryPathClassification.Template);
 
     private static int CountIndent(string line)
     {

@@ -180,6 +180,8 @@ Recommendation: prefer named volumes and review host path mounts.
 
 Detects port mappings bound to `0.0.0.0`, `*`, or the Compose default all-interface bind such as `8080:80`.
 
+Development and tooling Compose files under paths such as `devenv/`, `.citools/`, `scripts/`, `tools/`, examples, fixtures, tests, and docs are ignored for this low-severity broad-port rule. Higher-risk Compose findings such as Docker socket mounts and inline secrets still apply in those files.
+
 Why it matters: binding to all interfaces exposes the service to potentially untrusted networks.
 
 Recommendation: bind services to specific interfaces where possible.

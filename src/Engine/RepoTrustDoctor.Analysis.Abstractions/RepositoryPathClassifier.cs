@@ -107,6 +107,8 @@ public static class RepositoryPathClassifier
             HasSegment(normalized, "tooling") ||
             HasSegment(normalized, "scripts") ||
             HasSegment(normalized, "script") ||
+            HasSegment(normalized, "devenv") ||
+            HasSegment(normalized, ".citools") ||
             HasSegment(normalized, "build") ||
             HasSegment(normalized, "ci") ||
             HasSegment(normalized, ".github") ||
