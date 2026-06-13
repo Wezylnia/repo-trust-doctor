@@ -178,11 +178,11 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
                 "Use exact versions with a committed go.sum for reproducible Go builds."));
         }
 
-        if (isPseudoVersion)
+        if (isPseudoVersion && !isIndirect)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP025",
-                "Go dependency uses a pseudo-version",
+                "Direct Go dependency uses a pseudo-version",
                 Severity.Low,
                 Confidence.High,
                 $"Go dependency '{modulePath}' references a pseudo-version.",

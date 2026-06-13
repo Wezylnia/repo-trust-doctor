@@ -244,7 +244,7 @@ Collects structured dependency manifests across 12 ecosystems: npm, NuGet, Pytho
 | TRUST-DEP022 | Go module has no go.sum lockfile | Medium | High |
 | TRUST-DEP023 | Go module uses replace directive | Low | High |
 | TRUST-DEP024 | Go dependency uses non-exact version | Medium | High |
-| TRUST-DEP025 | Go dependency uses pseudo-version | Low | High |
+| TRUST-DEP025 | Direct Go dependency uses pseudo-version | Low | High |
 | TRUST-DEP026 | Cargo has no Cargo.lock | Medium | High |
 | TRUST-DEP027 | Cargo dependency uses Git source | Medium | High |
 | TRUST-DEP028 | Cargo dependency uses path source | Low | High |

@@ -117,6 +117,27 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
         Assert.Contains(GetInventory(result).Packages, p => p.Name == "github.com/example/lib" && p.IsVersionPinned);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_GoModIndirectPseudoVersion_IsRecordedWithoutDep025()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.sum"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), """
+        module example.com/mymodule
+
+        go 1.22
+
+        require github.com/example/transitive v0.0.0-20240115120000-abcdef123456 // indirect
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, package => package.Name == "github.com/example/transitive" && package.Metadata?["pseudoVersion"] == "true");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DEP025");
+    }
+
     [Theory]
     [InlineData("v1.2.3-rc.1")]
     [InlineData("v2.5.0+incompatible")]

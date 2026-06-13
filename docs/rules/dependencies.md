@@ -360,17 +360,17 @@ Why it matters: non-exact Go dependency versions can resolve to different minor 
 
 Recommendation: use exact versions with a committed `go.sum` for reproducible Go builds.
 
-## TRUST-DEP025: Go Dependency Uses a Pseudo-Version
+## TRUST-DEP025: Direct Go Dependency Uses a Pseudo-Version
 
 - Category: Dependencies
 - Default severity: Low
 - Default confidence: High
 
-Detects Go module dependencies that reference a pseudo-version (e.g. `v0.0.0-20240115120000-abcdef123456`).
+Detects direct Go module dependencies that reference a pseudo-version (e.g. `v0.0.0-20240115120000-abcdef123456`). Indirect pseudo-version dependencies are still recorded in the dependency inventory, but they do not emit this finding because they are transitive resolution evidence rather than direct dependency choices.
 
-Why it matters: pseudo-versions point to unreleased commits and can be less stable or intentionally temporary. They may also bypass normal release review processes.
+Why it matters: direct pseudo-versions point to unreleased commits and can be less stable or intentionally temporary. They may also bypass normal release review processes.
 
-Recommendation: prefer tagged releases over pseudo-versions and review pseudo-version origins.
+Recommendation: prefer tagged releases over direct pseudo-version dependencies and review pseudo-version origins.
 
 ## TRUST-DEP026: Cargo Project Does Not Have a Cargo.lock File
 
