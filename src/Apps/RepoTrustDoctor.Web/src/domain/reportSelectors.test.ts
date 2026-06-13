@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Finding, RepositoryScan } from './report';
 import {
   buildAreaScores,
+  buildScanCoverage,
   explainFinding,
   formatCategory,
   formatDecision,
@@ -112,6 +113,70 @@ describe('report selectors', () => {
     expect(areas.find((area) => area.id === 'repository-health')?.score).toBe(56);
     expect(areas.find((area) => area.id === 'security')?.score).toBe(100);
     expect(areas.find((area) => area.id === 'containers')?.score).toBe(70);
+  });
+
+  it('summarizes dependency and secret scan coverage without exposing raw metric keys', () => {
+    const coverage = buildScanCoverage([
+      {
+        moduleId: 'dependency-vulnerability',
+        displayName: 'Dependency vulnerabilities',
+        category: 'Dependencies',
+        status: 'CompletedWithWarnings',
+        findingsCount: 0,
+        metrics: {
+          'dependency.vulnerability.supported.count': '120',
+          'dependency.vulnerability.lookup.completed.count': '100',
+          'dependency.vulnerability.lookup.incomplete.count': '20',
+          'dependency.vulnerability.unpinned.count': '8',
+          'dependency.vulnerability.unsupported.count': '2'
+        }
+      },
+      {
+        moduleId: 'secrets',
+        displayName: 'Secret scan',
+        category: 'Security',
+        status: 'Completed',
+        findingsCount: 0,
+        metrics: {
+          'secret.source.content.coverage.percent': '64.25',
+          'secret.configuration.content.coverage.percent': '100'
+        }
+      }
+    ]);
+
+    expect(coverage).toEqual([
+      expect.objectContaining({
+        label: 'Known vulnerabilities',
+        status: 'partial',
+        detail: expect.stringContaining('100 of 120 exact-version packages')
+      }),
+      expect.objectContaining({
+        label: 'Secret content scan',
+        status: 'partial',
+        detail: 'Source files 64.25%. Configuration files 100%'
+      })
+    ]);
+    expect(coverage[0].detail).toContain('8 dependencies had no exact version');
+    expect(coverage[0].detail).not.toContain('dependency.vulnerability');
+  });
+
+  it('surfaces failed analyzers even when they have no coverage metrics', () => {
+    const coverage = buildScanCoverage([{
+      moduleId: 'codebase',
+      displayName: 'Codebase analysis',
+      category: 'Codebase',
+      status: 'Failed',
+      findingsCount: 0,
+      errorMessage: 'Parser failed.'
+    }]);
+
+    expect(coverage).toEqual([{
+      id: 'codebase',
+      label: 'Codebase analysis',
+      detail: 'Parser failed.',
+      status: 'failed',
+      warning: undefined
+    }]);
   });
 
   it('adds richer finding explanations by rule family', () => {

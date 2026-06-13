@@ -1,12 +1,20 @@
 import { useMemo, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import type { RepositoryScan } from '../../domain/report';
-import { getDependencyInventory, summarizeFindings, buildAreaScores, formatCategory } from '../../domain/reportSelectors';
+import {
+  getDependencyInventory,
+  summarizeFindings,
+  buildAreaScores,
+  buildScanCoverage,
+  formatCategory
+} from '../../domain/reportSelectors';
 import { FilterToolbar } from './components/FilterToolbar';
 import { CategoryScoreTable } from './components/CategoryScoreTable';
 import { DecisionPanel } from './components/DecisionPanel';
 import { FindingDetail } from './components/FindingDetail';
 import { FindingList } from './components/FindingList';
 import { ReportSidebar } from './components/ReportSidebar';
+import { ScanCoveragePanel } from './components/ScanCoveragePanel';
 import { useFindingFilters } from './useFindingFilters';
 
 type ViewMode = 'overview' | 'category';
@@ -19,6 +27,7 @@ export function ReportViewer({ report }: { report: RepositoryScan }) {
   const summary = useMemo(() => report.summary ?? summarizeFindings(report.findings), [report]);
   const dependencyInventory = useMemo(() => getDependencyInventory(report), [report]);
   const areaScores = useMemo(() => buildAreaScores(report), [report]);
+  const scanCoverage = useMemo(() => buildScanCoverage(report.modules), [report.modules]);
 
   const categoryFindings = useMemo(() => {
     if (!drillCategory) return report.findings;
@@ -60,6 +69,7 @@ export function ReportViewer({ report }: { report: RepositoryScan }) {
                 onCategoryClick={handleCategoryClick}
               />
             </div>
+            <ScanCoveragePanel coverage={scanCoverage} />
             <FilterToolbar
               categories={filters.categories}
               category={filters.category}
@@ -83,7 +93,8 @@ export function ReportViewer({ report }: { report: RepositoryScan }) {
           <>
             <div className="drilldown-header">
               <button className="back-button" onClick={handleBackToOverview}>
-                ← Back to overview
+                <ArrowLeft size={15} aria-hidden="true" />
+                Back to overview
               </button>
               <h2>{drillCategory ? formatCategory(drillCategory) : 'Category'} findings ({categoryFindings.length})</h2>
             </div>

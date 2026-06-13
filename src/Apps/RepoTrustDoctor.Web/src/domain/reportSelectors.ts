@@ -1,4 +1,4 @@
-import type { DependencyInventoryArtifact, Finding, FindingSummary, RepositoryScan } from './report';
+import type { DependencyInventoryArtifact, Finding, FindingSummary, RepositoryScan, ScanModule } from './report';
 
 export const severityOrder: Record<string, number> = {
   Critical: 5,
@@ -57,6 +57,14 @@ export interface AreaScore {
   score: number;
   description: string;
   categories: string[];
+}
+
+export interface ScanCoverageSummary {
+  id: string;
+  label: string;
+  detail: string;
+  status: 'complete' | 'partial' | 'failed';
+  warning?: string;
 }
 
 const areaDefinitions = [
@@ -267,6 +275,33 @@ export function buildAreaScores(report: RepositoryScan): AreaScore[] {
     .filter((area): area is AreaScore => area !== null);
 }
 
+export function buildScanCoverage(modules: ScanModule[]): ScanCoverageSummary[] {
+  return modules.flatMap((module) => {
+    const metrics = module.metrics ?? {};
+    const specialized = [
+      dependencyMetadataCoverage(module, metrics),
+      dependencyVulnerabilityCoverage(module, metrics),
+      secretCoverage(module, metrics)
+    ].filter((item): item is ScanCoverageSummary => item !== null);
+
+    if (specialized.length > 0) {
+      return specialized;
+    }
+
+    if (!isIncompleteModule(module)) {
+      return [];
+    }
+
+    return [{
+      id: module.moduleId,
+      label: module.displayName,
+      detail: module.errorMessage ?? module.skippedReason ?? 'The analyzer did not complete its full scope.',
+      status: module.status.toLowerCase() === 'failed' ? 'failed' : 'partial',
+      warning: module.warnings?.[0]
+    }];
+  });
+}
+
 function scoresForArea(
   categories: string[],
   scoreByCategory: Map<string, number>,
@@ -280,6 +315,106 @@ function scoresForArea(
 
     return moduleCategories.has(category) ? [100] : [];
   });
+}
+
+function dependencyMetadataCoverage(
+  module: ScanModule,
+  metrics: Record<string, string>
+): ScanCoverageSummary | null {
+  const supported = metricNumber(metrics, 'dependency.metadata.supported.count');
+  if (supported === null) {
+    return null;
+  }
+
+  const completed = metricNumber(metrics, 'dependency.metadata.lookup.completed.count') ?? 0;
+  const unsupported = metricNumber(metrics, 'dependency.metadata.unsupported.count') ?? 0;
+  const incomplete = metricNumber(metrics, 'dependency.metadata.lookup.incomplete.count') ?? Math.max(0, supported - completed);
+  const notes = [`${completed} of ${supported} supported packages checked`];
+  if (unsupported > 0) notes.push(`${unsupported} package ecosystems are not supported for metadata lookup`);
+
+  return {
+    id: `${module.moduleId}-metadata`,
+    label: 'Package metadata',
+    detail: notes.join('. '),
+    status: moduleCoverageStatus(module, incomplete > 0 || unsupported > 0),
+    warning: module.warnings?.[0]
+  };
+}
+
+function dependencyVulnerabilityCoverage(
+  module: ScanModule,
+  metrics: Record<string, string>
+): ScanCoverageSummary | null {
+  const supported = metricNumber(metrics, 'dependency.vulnerability.supported.count');
+  if (supported === null) {
+    return null;
+  }
+
+  const completed = metricNumber(metrics, 'dependency.vulnerability.lookup.completed.count') ?? 0;
+  const incomplete = metricNumber(metrics, 'dependency.vulnerability.lookup.incomplete.count') ?? Math.max(0, supported - completed);
+  const unpinned = metricNumber(metrics, 'dependency.vulnerability.unpinned.count') ?? 0;
+  const unsupported = metricNumber(metrics, 'dependency.vulnerability.unsupported.count') ?? 0;
+  const notes = [`${completed} of ${supported} exact-version packages checked against advisories`];
+  if (unpinned > 0) notes.push(`${unpinned} dependencies had no exact version and need lockfile resolution`);
+  if (unsupported > 0) notes.push(`${unsupported} exact-version packages use unsupported ecosystems`);
+
+  return {
+    id: `${module.moduleId}-vulnerabilities`,
+    label: 'Known vulnerabilities',
+    detail: notes.join('. '),
+    status: moduleCoverageStatus(module, incomplete > 0 || unpinned > 0 || unsupported > 0),
+    warning: module.warnings?.[0]
+  };
+}
+
+function secretCoverage(
+  module: ScanModule,
+  metrics: Record<string, string>
+): ScanCoverageSummary | null {
+  const sourceCoverage = metricNumber(metrics, 'secret.source.content.coverage.percent');
+  const configurationCoverage = metricNumber(metrics, 'secret.configuration.content.coverage.percent');
+  if (sourceCoverage === null && configurationCoverage === null) {
+    return null;
+  }
+
+  const notes: string[] = [];
+  if (sourceCoverage !== null) notes.push(`Source files ${formatPercent(sourceCoverage)}`);
+  if (configurationCoverage !== null) notes.push(`Configuration files ${formatPercent(configurationCoverage)}`);
+  const partial = (sourceCoverage ?? 100) < 100 || (configurationCoverage ?? 100) < 100;
+
+  return {
+    id: `${module.moduleId}-content`,
+    label: 'Secret content scan',
+    detail: notes.join('. '),
+    status: moduleCoverageStatus(module, partial),
+    warning: module.warnings?.[0]
+  };
+}
+
+function moduleCoverageStatus(module: ScanModule, partial: boolean): ScanCoverageSummary['status'] {
+  if (module.status.toLowerCase() === 'failed') {
+    return 'failed';
+  }
+
+  return partial || isIncompleteModule(module) ? 'partial' : 'complete';
+}
+
+function isIncompleteModule(module: ScanModule): boolean {
+  const status = module.status.toLowerCase();
+  return !status.startsWith('completed') || status.includes('warning') || Boolean(module.warnings?.length);
+}
+
+function metricNumber(metrics: Record<string, string>, key: string): number | null {
+  if (!(key in metrics)) {
+    return null;
+  }
+
+  const value = Number(metrics[key]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function formatPercent(value: number): string {
+  return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}%`;
 }
 
 export function summarizeFindings(findings: Finding[]): FindingSummary {

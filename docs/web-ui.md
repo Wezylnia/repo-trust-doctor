@@ -12,6 +12,8 @@ The web UI is a local-first React trust workbench. Its primary flow is to start 
 - shows a short product introduction before the scan form,
 - shows overall score, area scores, decision, metadata, severity totals, module status, and dependency inventory totals,
 - formats report enum values into readable labels instead of exposing API casing,
+- shows dependency metadata, vulnerability advisory, and secret-content scan coverage, including partial results and unsupported inputs,
+- surfaces analyzer timeouts, failures, and warnings instead of presenting partial scans as complete,
 - adds explanatory finding detail text alongside evidence and recommendations,
 - supports finding search, severity filtering, category filtering, and evidence inspection,
 - does not expose raw JSON import/export in the React UI.
