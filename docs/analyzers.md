@@ -71,7 +71,7 @@ The inventory analyzer is split into per-ecosystem collectors so future language
 
 Consumes dependency inventory and safe package metadata/advisory clients:
 
-- package metadata collection for npm, NuGet, PyPI, and Maven Central with duplicate package lookup suppression,
+- package metadata collection for npm, NuGet, PyPI, and Maven Central with duplicate package lookup suppression, no fixed package-count cutoff, bounded concurrency, and partial-result preservation when the lookup time budget is exhausted,
 - dependency freshness checks,
 - deprecated or yanked package checks,
 - OSV advisory lookup for known vulnerabilities with duplicate package/advisory reporting suppression,

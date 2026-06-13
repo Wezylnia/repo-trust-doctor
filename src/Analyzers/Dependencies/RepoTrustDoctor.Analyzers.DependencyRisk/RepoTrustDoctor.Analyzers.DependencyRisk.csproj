@@ -5,6 +5,7 @@
     <ProjectReference Include="..\..\..\Core\RepoTrustDoctor.Domain\RepoTrustDoctor.Domain.csproj" />
     <ProjectReference Include="..\..\..\Infrastructure\RepoTrustDoctor.Infrastructure.PackageRegistries\RepoTrustDoctor.Infrastructure.PackageRegistries.csproj" />
     <ProjectReference Include="..\..\..\Infrastructure\RepoTrustDoctor.Infrastructure.SecurityFeeds\RepoTrustDoctor.Infrastructure.SecurityFeeds.csproj" />
+    <InternalsVisibleTo Include="RepoTrustDoctor.AnalyzerTests" />
   </ItemGroup>
 
   <PropertyGroup>

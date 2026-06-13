@@ -6,10 +6,25 @@ using static RepoTrustDoctor.Analyzers.DependencyRisk.FindingFactory;
 
 namespace RepoTrustDoctor.Analyzers.DependencyRisk;
 
-public sealed class PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadataClient> clients) : IRepositoryAnalyzer
+public sealed class PackageMetadataAnalyzer : IRepositoryAnalyzer
 {
-    private const int MaxLookupPackages = 50;
+    private static readonly TimeSpan DefaultLookupBudget = TimeSpan.FromSeconds(40);
     private const int MaxConcurrentMetadataLookups = 8;
+    private readonly IReadOnlyCollection<IPackageMetadataClient> clients;
+    private readonly TimeSpan lookupBudget;
+
+    public PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadataClient> clients)
+        : this(clients, DefaultLookupBudget)
+    {
+    }
+
+    internal PackageMetadataAnalyzer(
+        IReadOnlyCollection<IPackageMetadataClient> clients,
+        TimeSpan lookupBudget)
+    {
+        this.clients = clients;
+        this.lookupBudget = lookupBudget;
+    }
 
     public string Id => "dependency-metadata";
     public string DisplayName => "Package Registry Metadata";
@@ -17,7 +32,7 @@ public sealed class PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadata
     public AnalysisDepth MinimumDepth => AnalysisDepth.Standard;
     public IReadOnlyCollection<string> DependsOn => [DependencyInventoryArtifact.ArtifactKey];
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.NetworkLookup;
-    public TimeSpan Timeout => TimeSpan.FromSeconds(20);
+    public TimeSpan Timeout => TimeSpan.FromSeconds(45);
     public IReadOnlyCollection<RuleMetadata> Rules => [];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -27,19 +42,24 @@ public sealed class PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadata
             return new AnalyzerResult(ModuleStatus.Skipped, []);
         }
 
-        var packages = DistinctPackagesForLookup(inventory.Packages
-                     .Where(package =>
-                         package.IsDirect &&
-                         package.IsVersionPinned &&
-                         !string.IsNullOrWhiteSpace(package.Version) &&
-                         !DependencyRiskPathFilters.IsLikelyExampleOrTestManifest(package.ManifestPath)))
-                     .Take(MaxLookupPackages)
-                     .ToArray();
+        var supportedEcosystems = clients
+            .Select(client => client.Ecosystem)
+            .ToHashSet();
+        var candidates = DistinctPackagesForLookup(inventory.Packages
+                .Where(package =>
+                    package.IsDirect &&
+                    package.IsVersionPinned &&
+                    !string.IsNullOrWhiteSpace(package.Version) &&
+                    !DependencyRiskPathFilters.IsLikelyExampleOrTestManifest(package.ManifestPath)))
+            .ToArray();
+        var packages = candidates
+            .Where(package => supportedEcosystems.Contains(package.Ecosystem))
+            .ToArray();
 
         var lookupResults = await QueryMetadataAsync(packages, cancellationToken);
         var metadata = new List<PackageRegistryMetadata>();
         var warnings = new List<string>();
-        foreach (var lookupResult in lookupResults)
+        foreach (var lookupResult in lookupResults.Results)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (lookupResult.Metadata is not null)
@@ -53,49 +73,51 @@ public sealed class PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadata
             }
         }
 
+        if (lookupResults.SoftBudgetExceeded)
+        {
+            warnings.Add(
+                $"Package metadata lookup completed {lookupResults.CompletedCount} of {lookupResults.TotalCount} supported packages before the {lookupBudget.TotalSeconds:0}-second soft budget; completed metadata was preserved.");
+        }
+
         var metrics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
+            ["dependency.metadata.candidate.count"] = candidates.Length.ToString(),
+            ["dependency.metadata.supported.count"] = packages.Length.ToString(),
+            ["dependency.metadata.unsupported.count"] = (candidates.Length - packages.Length).ToString(),
+            ["dependency.metadata.lookup.completed.count"] = lookupResults.CompletedCount.ToString(),
+            ["dependency.metadata.lookup.incomplete.count"] = (lookupResults.TotalCount - lookupResults.CompletedCount).ToString(),
             ["dependency.metadata.package.count"] = metadata.Count.ToString()
         };
         var artifact = new PackageMetadataArtifact(metadata, metrics);
         return AnalyzerResult.Completed([], [new AnalyzerArtifact(PackageMetadataArtifact.ArtifactKey, artifact)], metrics, warnings);
     }
 
-    private async Task<IReadOnlyList<PackageMetadataLookup>> QueryMetadataAsync(
+    private Task<BoundedLookupResult<PackageMetadataLookup>> QueryMetadataAsync(
         IReadOnlyList<DependencyPackageInfo> packages,
         CancellationToken cancellationToken)
     {
-        using var throttle = new SemaphoreSlim(MaxConcurrentMetadataLookups);
-
-        var tasks = packages.Select(async package =>
-        {
-            var client = clients.FirstOrDefault(client => client.Ecosystem == package.Ecosystem);
-            if (client is null)
+        return BoundedLookupRunner.RunAsync(
+            packages,
+            MaxConcurrentMetadataLookups,
+            lookupBudget,
+            async (package, lookupCancellationToken) =>
             {
-                return new PackageMetadataLookup(null, null);
-            }
-
-            await throttle.WaitAsync(cancellationToken);
-            try
-            {
-                if (await client.GetMetadataAsync(package, cancellationToken) is { } item)
+                var client = clients.First(client => client.Ecosystem == package.Ecosystem);
+                try
                 {
-                    return new PackageMetadataLookup(WithDependencyContext(item, package), null);
+                    if (await client.GetMetadataAsync(package, lookupCancellationToken) is { } item)
+                    {
+                        return new PackageMetadataLookup(WithDependencyContext(item, package), null);
+                    }
+
+                    return new PackageMetadataLookup(null, null);
                 }
-
-                return new PackageMetadataLookup(null, null);
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or FormatException)
-            {
-                return new PackageMetadataLookup(null, $"Could not parse metadata for {package.Ecosystem}:{package.Name}: {ex.Message}");
-            }
-            finally
-            {
-                throttle.Release();
-            }
-        });
-
-        return await Task.WhenAll(tasks);
+                catch (Exception ex) when (ex is InvalidOperationException or FormatException)
+                {
+                    return new PackageMetadataLookup(null, $"Could not parse metadata for {package.Ecosystem}:{package.Name}: {ex.Message}");
+                }
+            },
+            cancellationToken);
     }
 
     private static PackageRegistryMetadata WithDependencyContext(PackageRegistryMetadata metadata, DependencyPackageInfo package)

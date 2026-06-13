@@ -44,7 +44,7 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
-    public async Task PackageMetadataAnalyzer_DeduplicatesPackagesBeforeApplyingLookupLimit()
+    public async Task PackageMetadataAnalyzer_DeduplicatesPackagesWithoutLimitingDistinctLookups()
     {
         var packages = Enumerable.Range(0, 60)
             .Select(index => CreatePackage(DependencyEcosystem.Npm, "shared-lib", "1.0.0", manifestPath: $"module-{index}/package.json"))
@@ -58,6 +58,47 @@ public sealed class DependencyRiskAnalyzerTests
         var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == PackageMetadataArtifact.ArtifactKey);
         var metadata = Assert.IsType<PackageMetadataArtifact>(artifact.Value);
         Assert.Contains(metadata.Packages, package => package.Name == "target-lib");
+    }
+
+    [Fact]
+    public async Task PackageMetadataAnalyzer_QueriesAllSupportedDistinctPackagesBeyondPreviousLimit()
+    {
+        var packages = Enumerable.Range(0, 75)
+            .Select(index => CreatePackage(DependencyEcosystem.Npm, $"package-{index}", "1.0.0", manifestPath: $"module-{index}/package.json"))
+            .ToArray();
+        var context = CreateContextWithInventory(packages);
+        var client = new FakeMetadataClient(DependencyEcosystem.Npm);
+        var analyzer = new PackageMetadataAnalyzer([client]);
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == PackageMetadataArtifact.ArtifactKey);
+        var metadata = Assert.IsType<PackageMetadataArtifact>(artifact.Value);
+        Assert.Equal(75, metadata.Packages.Count);
+        Assert.Equal("75", result.Metrics!["dependency.metadata.lookup.completed.count"]);
+        Assert.Equal("0", result.Metrics["dependency.metadata.lookup.incomplete.count"]);
+    }
+
+    [Fact]
+    public async Task PackageMetadataAnalyzer_PreservesCompletedLookupsWhenSoftBudgetExpires()
+    {
+        var packages = Enumerable.Range(0, 12)
+            .Select(index => CreatePackage(DependencyEcosystem.Npm, $"package-{index}", "1.0.0", manifestPath: $"module-{index}/package.json"))
+            .ToArray();
+        var context = CreateContextWithInventory(packages);
+        var analyzer = new PackageMetadataAnalyzer(
+            [new PartialMetadataClient(DependencyEcosystem.Npm)],
+            TimeSpan.FromMilliseconds(100));
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == PackageMetadataArtifact.ArtifactKey);
+        var metadata = Assert.IsType<PackageMetadataArtifact>(artifact.Value);
+        Assert.Contains(metadata.Packages, package => package.Name == "package-0");
+        Assert.NotNull(result.Warnings);
+        Assert.Contains(result.Warnings, warning => warning.Contains("completed", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("12", result.Metrics!["dependency.metadata.supported.count"]);
+        Assert.NotEqual("0", result.Metrics["dependency.metadata.lookup.incomplete.count"]);
     }
 
     [Fact]
@@ -445,6 +486,35 @@ public sealed class DependencyRiskAnalyzerTests
             DependencyPackageInfo package,
             CancellationToken cancellationToken) =>
             throw new FormatException("bad registry payload");
+    }
+
+    private sealed class PartialMetadataClient(DependencyEcosystem ecosystem) : IPackageMetadataClient
+    {
+        public DependencyEcosystem Ecosystem { get; } = ecosystem;
+
+        public async Task<PackageRegistryMetadata?> GetMetadataAsync(
+            DependencyPackageInfo package,
+            CancellationToken cancellationToken)
+        {
+            if (package.Name != "package-0")
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+
+            return new PackageRegistryMetadata(
+                package.Ecosystem,
+                package.Name,
+                package.Version,
+                package.Version,
+                null,
+                false,
+                false,
+                "https://github.com/example/repo",
+                null,
+                "MIT",
+                null,
+                "fake");
+        }
     }
 
     private sealed class FakeOsvClient(IReadOnlyList<VulnerabilityAdvisory> advisories) : IOsvAdvisoryClient
