@@ -10,13 +10,13 @@ Repository Trust Doctor is strongest when a repository exposes dependency manife
 | .NET / C# | `.csproj`, `Directory.Packages.props`, NuGet lockfiles, direct package references, MSBuild property-based package versions, NuGet sources, NuGet metadata, OSV advisories |
 | Python | `requirements.txt`, `pyproject.toml`, `Pipfile`, common Python lockfiles, pinned requirement checks, documentation/test manifest suppression, PyPI metadata, OSV advisories |
 | Java / Spring Boot | Maven `pom.xml`, Gradle `build.gradle` and `build.gradle.kts`, Gradle version catalogs (`libs.versions.toml`), Maven Central metadata, OSV advisories, BOM/dependency-management version signals, Gradle wrapper checks, dynamic/SNAPSHOT version checks, Spring Boot Actuator exposure checks |
-| Go | `go.mod`, `go.sum` detection, replace directives, pseudo-version detection, prerelease/build metadata handling, version pinning |
-| Rust / Cargo | `Cargo.toml` (direct sections, target-specific sections, dependency subtables), same-directory and workspace-root `Cargo.lock` detection, Git source detection, repository-external path source detection, version pinning, prerelease checks |
-| PHP / Composer | `composer.json` (require/require-dev), `composer.lock` detection, version constraint analysis |
-| Ruby / Bundler | `Gemfile`, `.gemspec`, `Gemfile.lock` detection, lockfile-aware version constraint analysis, Git/path source detection |
-| Dart / Flutter | `pubspec.yaml` (dependencies/dev_dependencies with nested `sdk`, `path`, and `git` metadata handling), `pubspec.lock` detection, version constraint analysis |
-| Elixir / Hex | `mix.exs`, `mix.lock` detection, version constraint analysis, non-Hex source detection |
-| Swift / SPM | `Package.swift`, `Package.resolved` detection, branch-based dependency detection |
+| Go | `go.mod`, `go.sum` detection, replace directives, pseudo-version detection, prerelease/build metadata handling, version pinning, OSV advisories for resolved versions |
+| Rust / Cargo | `Cargo.toml` (direct sections, target-specific sections, dependency subtables), same-directory and workspace-root `Cargo.lock` detection, Git source detection, repository-external path source detection, version pinning, prerelease checks, OSV advisories for resolved versions |
+| PHP / Composer | `composer.json` (require/require-dev), `composer.lock` detection, version constraint analysis, OSV advisories for resolved versions |
+| Ruby / Bundler | `Gemfile`, `.gemspec`, `Gemfile.lock` detection, lockfile-aware version constraint analysis, Git/path source detection, OSV advisories for resolved versions |
+| Dart / Flutter | `pubspec.yaml` (dependencies/dev_dependencies with nested `sdk`, `path`, and `git` metadata handling), `pubspec.lock` detection, version constraint analysis, OSV advisories for resolved versions |
+| Elixir / Hex | `mix.exs`, `mix.lock` detection, version constraint analysis, non-Hex source detection, OSV advisories for resolved versions |
+| Swift / SPM | `Package.swift`, `Package.resolved` detection, branch-based dependency detection, OSV advisories for resolved versions |
 | C / C++ | `conanfile.txt`, `conanfile.py`, `vcpkg.json`, `CMakeLists.txt` (find_package/FetchContent) detection |
 
 ## Candidate Ecosystems For v2

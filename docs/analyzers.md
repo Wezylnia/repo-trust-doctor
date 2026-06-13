@@ -74,7 +74,7 @@ Consumes dependency inventory and safe package metadata/advisory clients:
 - package metadata collection for npm, NuGet, PyPI, and Maven Central with duplicate package lookup suppression, no fixed package-count cutoff, bounded concurrency, and partial-result preservation when the lookup time budget is exhausted,
 - dependency freshness checks,
 - deprecated or yanked package checks,
-- OSV advisory lookup for known vulnerabilities with duplicate package/advisory reporting suppression,
+- OSV advisory lookup for exact resolved versions across npm, NuGet, PyPI, Maven, Go, Cargo, Composer, RubyGems, Pub, Hex, and Swift packages; lookups have no fixed package-count cutoff, use 100-package batches with bounded concurrency, follow OSV pagination, and preserve completed batches when the lookup time budget is exhausted,
 - license metadata review,
 - package origin and repository URL comparison,
 - dependency confusion review signals for npm and NuGet source configuration.

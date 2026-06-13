@@ -253,7 +253,7 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
-    public async Task DependencyVulnerabilityAnalyzer_DeduplicatesPackagesBeforeApplyingLookupLimit()
+    public async Task DependencyVulnerabilityAnalyzer_DeduplicatesPackagesWithoutDroppingLaterPackages()
     {
         var packages = Enumerable.Range(0, 60)
             .Select(index => CreatePackage(DependencyEcosystem.Npm, "shared-lib", "1.0.0", manifestPath: $"module-{index}/package.json"))
@@ -270,9 +270,30 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
+    public async Task DependencyVulnerabilityAnalyzer_QueriesAllSupportedPackagesBeyondPreviousLimit()
+    {
+        var packages = Enumerable.Range(0, 175)
+            .Select(index => CreatePackage(
+                DependencyEcosystem.Npm,
+                $"package-{index}",
+                "1.0.0",
+                manifestPath: $"module-{index}/package.json"))
+            .ToArray();
+        var context = CreateContextWithInventory(packages);
+        var client = new TrackingOsvClient();
+        var analyzer = new DependencyVulnerabilityAnalyzer(client);
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Equal(175, client.QueryCount);
+        Assert.Equal("175", result.Metrics!["dependency.vulnerability.lookup.completed.count"]);
+        Assert.Equal("0", result.Metrics["dependency.vulnerability.lookup.incomplete.count"]);
+    }
+
+    [Fact]
     public async Task DependencyVulnerabilityAnalyzer_QueriesAdvisoriesWithBoundedParallelism()
     {
-        var packages = Enumerable.Range(0, 12)
+        var packages = Enumerable.Range(0, 220)
             .Select(index => CreatePackage(DependencyEcosystem.Npm, $"package-{index}", "1.0.0", manifestPath: $"module-{index}/package.json"))
             .ToArray();
         var context = CreateContextWithInventory(packages);
@@ -282,9 +303,66 @@ public sealed class DependencyRiskAnalyzerTests
         var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
 
         Assert.Empty(result.Findings);
-        Assert.Equal(12, client.QueryCount);
+        Assert.Equal(220, client.QueryCount);
         Assert.True(client.MaxObservedConcurrency > 1);
-        Assert.True(client.MaxObservedConcurrency <= 8);
+        Assert.True(client.MaxObservedConcurrency <= 4);
+    }
+
+    [Fact]
+    public async Task DependencyVulnerabilityAnalyzer_PreservesCompletedBatchesWhenSoftBudgetExpires()
+    {
+        var packages = Enumerable.Range(0, 250)
+            .Select(index => CreatePackage(
+                DependencyEcosystem.Npm,
+                $"package-{index}",
+                "1.0.0",
+                manifestPath: $"module-{index}/package.json"))
+            .ToArray();
+        var context = CreateContextWithInventory(packages);
+        var analyzer = new DependencyVulnerabilityAnalyzer(
+            new PartialBatchOsvClient(),
+            TimeSpan.FromMilliseconds(100));
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.NotNull(result.Warnings);
+        Assert.Contains(result.Warnings, warning => warning.Contains("completed", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("100", result.Metrics!["dependency.vulnerability.lookup.completed.count"]);
+        Assert.Equal("150", result.Metrics["dependency.vulnerability.lookup.incomplete.count"]);
+    }
+
+    [Fact]
+    public async Task DependencyVulnerabilityAnalyzer_ReportsUnsupportedEcosystemCoverage()
+    {
+        var context = CreateContextWithInventory([
+            CreatePackage(DependencyEcosystem.Npm, "supported", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Cpp, "unsupported", "1.0.0")
+        ]);
+        var analyzer = new DependencyVulnerabilityAnalyzer(new NpmOnlyOsvClient());
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Equal("2", result.Metrics!["dependency.vulnerability.candidate.count"]);
+        Assert.Equal("1", result.Metrics["dependency.vulnerability.supported.count"]);
+        Assert.Equal("1", result.Metrics["dependency.vulnerability.unsupported.count"]);
+    }
+
+    [Fact]
+    public async Task DependencyVulnerabilityAnalyzer_DoesNotReportVersionRangesAsChecked()
+    {
+        var package = CreatePackage(DependencyEcosystem.Npm, "range-package", "^1.0.0") with
+        {
+            IsVersionPinned = false
+        };
+        var context = CreateContextWithInventory([package]);
+        var client = new TrackingOsvClient();
+        var analyzer = new DependencyVulnerabilityAnalyzer(client);
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Equal(0, client.QueryCount);
+        Assert.Equal("1", result.Metrics!["dependency.vulnerability.unpinned.count"]);
+        Assert.Equal("0", result.Metrics["dependency.vulnerability.lookup.completed.count"]);
     }
 
     [Fact]
@@ -543,7 +621,7 @@ public sealed class DependencyRiskAnalyzerTests
 
             try
             {
-                await Task.Delay(50, cancellationToken);
+                await Task.Delay(5, cancellationToken);
                 return [];
             }
             finally
@@ -568,5 +646,39 @@ public sealed class DependencyRiskAnalyzerTests
                 }
             }
         }
+    }
+
+    private sealed class PartialBatchOsvClient : IOsvAdvisoryClient
+    {
+        public Task<IReadOnlyList<VulnerabilityAdvisory>> QueryAsync(
+            DependencyPackageInfo package,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<VulnerabilityAdvisory>>([]);
+
+        public async Task<OsvBatchQueryResult> QueryBatchAsync(
+            IReadOnlyList<DependencyPackageInfo> packages,
+            CancellationToken cancellationToken)
+        {
+            if (packages[0].Name != "package-0")
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+
+            return new OsvBatchQueryResult(
+                packages.Select(package => new OsvPackageQueryResult(package, [])).ToArray(),
+                true,
+                []);
+        }
+    }
+
+    private sealed class NpmOnlyOsvClient : IOsvAdvisoryClient
+    {
+        public bool SupportsEcosystem(DependencyEcosystem ecosystem) =>
+            ecosystem == DependencyEcosystem.Npm;
+
+        public Task<IReadOnlyList<VulnerabilityAdvisory>> QueryAsync(
+            DependencyPackageInfo package,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<VulnerabilityAdvisory>>([]);
     }
 }

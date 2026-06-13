@@ -244,10 +244,26 @@ public sealed class PackageFreshnessAnalyzer : IRepositoryAnalyzer
         scope.Equals(nameof(DependencyScope.Development), StringComparison.OrdinalIgnoreCase);
 }
 
-public sealed class DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient) : IRepositoryAnalyzer
+public sealed class DependencyVulnerabilityAnalyzer : IRepositoryAnalyzer
 {
-    private const int MaxLookupPackages = 50;
-    private const int MaxConcurrentOsvLookups = 8;
+    private const int OsvBatchSize = 100;
+    private const int MaxConcurrentOsvBatches = 4;
+    private static readonly TimeSpan DefaultLookupBudget = TimeSpan.FromSeconds(55);
+    private readonly IOsvAdvisoryClient osvClient;
+    private readonly TimeSpan lookupBudget;
+
+    public DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient)
+        : this(osvClient, DefaultLookupBudget)
+    {
+    }
+
+    internal DependencyVulnerabilityAnalyzer(
+        IOsvAdvisoryClient osvClient,
+        TimeSpan lookupBudget)
+    {
+        this.osvClient = osvClient;
+        this.lookupBudget = lookupBudget;
+    }
 
     public string Id => "dependency-risk-vulnerabilities";
     public string DisplayName => "Dependency Vulnerabilities";
@@ -255,7 +271,7 @@ public sealed class DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient
     public AnalysisDepth MinimumDepth => AnalysisDepth.Standard;
     public IReadOnlyCollection<string> DependsOn => [DependencyInventoryArtifact.ArtifactKey];
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.NetworkLookup;
-    public TimeSpan Timeout => TimeSpan.FromSeconds(30);
+    public TimeSpan Timeout => TimeSpan.FromSeconds(60);
     public IReadOnlyCollection<RuleMetadata> Rules =>
     [
         new("TRUST-VULN001", "Direct dependency has a known vulnerability", AnalysisCategory.Dependencies, Severity.High, Confidence.High, "OSV reports a known advisory for a direct dependency.", "Review the advisory and update the dependency to a fixed version when available."),
@@ -270,15 +286,37 @@ public sealed class DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient
             return new AnalyzerResult(ModuleStatus.Skipped, []);
         }
 
-        var packages = PackageMetadataAnalyzer.DistinctPackagesForLookup(inventory.Packages
+        var candidates = PackageMetadataAnalyzer.DistinctPackagesForLookup(inventory.Packages
                  .Where(package =>
                      !string.IsNullOrWhiteSpace(package.Version) &&
                      !DependencyRiskPathFilters.IsLikelyExampleOrTestManifest(package.ManifestPath))
                  .OrderByDescending(package => package.IsDirect))
-                 .Take(MaxLookupPackages)
                  .ToArray();
+        var pinnedCandidates = candidates
+            .Where(package => package.IsVersionPinned)
+            .ToArray();
+        var packages = pinnedCandidates
+            .Where(package => osvClient.SupportsEcosystem(package.Ecosystem))
+            .ToArray();
 
-        var lookupResults = await QueryAdvisoriesAsync(packages, cancellationToken);
+        var batchResults = await QueryAdvisoriesAsync(packages, cancellationToken);
+        var warnings = batchResults.Results
+            .SelectMany(result => result.Warnings)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var lookupResults = batchResults.Results
+            .SelectMany(result => result.Packages)
+            .ToArray();
+        var completedPackageCount = batchResults.Results
+            .Where(result => result.QuerySucceeded)
+            .Sum(result => result.Packages.Count);
+        var completedBatchCount = batchResults.Results.Count(result => result.QuerySucceeded);
+
+        if (batchResults.SoftBudgetExceeded)
+        {
+            warnings.Add(
+                $"OSV lookup completed {completedPackageCount} of {packages.Length} supported packages before the {lookupBudget.TotalSeconds:0}-second soft budget; completed vulnerability results were preserved.");
+        }
 
         var findings = new List<Finding>();
         var reported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -323,30 +361,37 @@ public sealed class DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient
             }
         }
 
-        return AnalyzerResult.Completed(findings);
+        var metrics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["dependency.vulnerability.candidate.count"] = candidates.Length.ToString(),
+            ["dependency.vulnerability.unpinned.count"] = (candidates.Length - pinnedCandidates.Length).ToString(),
+            ["dependency.vulnerability.supported.count"] = packages.Length.ToString(),
+            ["dependency.vulnerability.unsupported.count"] = (pinnedCandidates.Length - packages.Length).ToString(),
+            ["dependency.vulnerability.lookup.completed.count"] = completedPackageCount.ToString(),
+            ["dependency.vulnerability.lookup.incomplete.count"] = (packages.Length - completedPackageCount).ToString(),
+            ["dependency.vulnerability.batch.completed.count"] = completedBatchCount.ToString(),
+            ["dependency.vulnerability.batch.incomplete.count"] = (batchResults.TotalCount - completedBatchCount).ToString()
+        };
+
+        return AnalyzerResult.Completed(findings, metrics: metrics, warnings: warnings);
     }
 
-    private async Task<IReadOnlyList<PackageAdvisoryLookup>> QueryAdvisoriesAsync(
+    private Task<BoundedLookupResult<OsvBatchQueryResult>> QueryAdvisoriesAsync(
         IReadOnlyList<DependencyPackageInfo> packages,
         CancellationToken cancellationToken)
     {
-        using var throttle = new SemaphoreSlim(MaxConcurrentOsvLookups);
+        var batches = packages
+            .Chunk(OsvBatchSize)
+            .Select(batch => (IReadOnlyList<DependencyPackageInfo>)batch)
+            .ToArray();
 
-        var tasks = packages.Select(async package =>
-        {
-            await throttle.WaitAsync(cancellationToken);
-            try
-            {
-                var advisories = await osvClient.QueryAsync(package, cancellationToken);
-                return new PackageAdvisoryLookup(package, advisories);
-            }
-            finally
-            {
-                throttle.Release();
-            }
-        });
-
-        return await Task.WhenAll(tasks);
+        return BoundedLookupRunner.RunAsync(
+            batches,
+            MaxConcurrentOsvBatches,
+            lookupBudget,
+            (batch, lookupCancellationToken) =>
+                osvClient.QueryBatchAsync(batch, lookupCancellationToken),
+            cancellationToken);
     }
 
     private static Severity Downgrade(Severity severity) => severity switch
@@ -356,9 +401,6 @@ public sealed class DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient
         _ => severity
     };
 
-    private sealed record PackageAdvisoryLookup(
-        DependencyPackageInfo Package,
-        IReadOnlyList<VulnerabilityAdvisory> Advisories);
 }
 
 public sealed class DependencyLicenseAnalyzer : IRepositoryAnalyzer
