@@ -29,6 +29,62 @@ public sealed class GitHubActionsBasicAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_AggregatesRepeatedUnpinnedActionReferences()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v4
+              - uses: actions/checkout@v4
+        """);
+        File.WriteAllText(Path.Combine(workflowDirectory, "lint.yml"), """
+        name: lint
+        on: [push]
+        jobs:
+          lint:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v4
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-GHA005");
+        Assert.Contains("used 3 times", finding.Evidence[0].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_KeepsDifferentUnpinnedActionsAsSeparateFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v4
+              - uses: actions/setup-dotnet@v4
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Equal(2, result.Findings.Count(finding => finding.RuleId == "TRUST-GHA005"));
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ReportsSelfHostedRunner()
     {
         using var fixture = TemporaryRepository.Create();
@@ -92,6 +148,39 @@ public sealed class GitHubActionsBasicAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-GHA007" && finding.Confidence == Confidence.Medium);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_AggregatesUnsafeCheckoutReferences()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
+              - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
+        """);
+        File.WriteAllText(Path.Combine(workflowDirectory, "lint.yml"), """
+        name: lint
+        on: [push]
+        jobs:
+          lint:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-GHA007");
+        Assert.Contains("used 3 times", finding.Evidence[0].Message, StringComparison.Ordinal);
     }
 
     [Fact]

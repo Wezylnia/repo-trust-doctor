@@ -51,6 +51,8 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         }
 
         var findings = new List<Finding>();
+        var unpinnedActionUses = new List<UnpinnedActionUse>();
+        var unsafeCheckoutUses = new List<UnsafeCheckoutUse>();
         foreach (var file in RepositoryFileSystem.EnumerateFiles(workflowRoot, "*.*", SearchOption.TopDirectoryOnly)
                      .Where(file => file.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase)))
         {
@@ -92,7 +94,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
                 var version = match.Groups["version"].Value;
                 if (!IsPinnedToSha(version) && !action.StartsWith("./", StringComparison.Ordinal))
                 {
-                    AddFinding(findings, "TRUST-GHA005", "External action is not pinned by SHA", Severity.Medium, "Pin external GitHub Actions to a full commit SHA.", relativePath, $"Action '{action}@{version}' is not pinned to a full commit SHA.", GetLineNumber(content, match.Index));
+                    unpinnedActionUses.Add(new(action, version, relativePath, GetLineNumber(content, match.Index)));
                 }
             }
 
@@ -109,7 +111,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
                 {
                     if (!CheckoutStepSetsPersistCredentialsFalse(lines, i))
                     {
-                        AddFinding(findings, "TRUST-GHA007", "Checkout may persist credentials", Severity.Low, "Set persist-credentials: false when checkout is only used for building or testing.", relativePath, "actions/checkout is used without persist-credentials: false.", i + 1, Confidence.Medium);
+                        unsafeCheckoutUses.Add(new(relativePath, i + 1));
                     }
                 }
             }
@@ -126,7 +128,67 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
             CheckJobContainerLatest(content, relativePath, findings);
         }
 
+        AddUnpinnedActionFindings(findings, unpinnedActionUses);
+        AddUnsafeCheckoutFinding(findings, unsafeCheckoutUses);
+
         return AnalyzerResult.Completed(findings);
+    }
+
+    private static void AddUnpinnedActionFindings(List<Finding> findings, IReadOnlyList<UnpinnedActionUse> unpinnedActionUses)
+    {
+        foreach (var group in unpinnedActionUses
+                     .GroupBy(use => $"{use.Action}@{use.Version}", StringComparer.OrdinalIgnoreCase)
+                     .OrderByDescending(group => group.Count())
+                     .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            var first = group.First();
+            var actionReference = $"{first.Action}@{first.Version}";
+            var sampleLocations = string.Join(
+                ", ",
+                group.Take(3).Select(use => $"{use.FilePath}:{use.LineNumber.ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
+            var evidence = group.Count() == 1
+                ? $"Action '{actionReference}' is not pinned to a full commit SHA."
+                : $"Action '{actionReference}' is used {group.Count().ToString(System.Globalization.CultureInfo.InvariantCulture)} times without SHA pinning. First locations: {sampleLocations}.";
+
+            AddFinding(
+                findings,
+                "TRUST-GHA005",
+                "External action is not pinned by SHA",
+                Severity.Medium,
+                "Pin external GitHub Actions to a full commit SHA.",
+                first.FilePath,
+                evidence,
+                first.LineNumber);
+        }
+    }
+
+    private static void AddUnsafeCheckoutFinding(List<Finding> findings, IReadOnlyList<UnsafeCheckoutUse> unsafeCheckoutUses)
+    {
+        if (unsafeCheckoutUses.Count == 0)
+        {
+            return;
+        }
+
+        var first = unsafeCheckoutUses[0];
+        var sampleLocations = string.Join(
+            ", ",
+            unsafeCheckoutUses
+                .Take(5)
+                .Select(use => $"{use.FilePath}:{use.LineNumber.ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
+        var evidence = unsafeCheckoutUses.Count == 1
+            ? "actions/checkout is used without persist-credentials: false."
+            : $"actions/checkout is used {unsafeCheckoutUses.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)} times without persist-credentials: false. First locations: {sampleLocations}.";
+
+        AddFinding(
+            findings,
+            "TRUST-GHA007",
+            "Checkout may persist credentials",
+            Severity.Low,
+            "Set persist-credentials: false when checkout is only used for building or testing.",
+            first.FilePath,
+            evidence,
+            first.LineNumber,
+            Confidence.Medium);
     }
 
     private static bool CheckoutStepSetsPersistCredentialsFalse(string[] lines, int checkoutLineIndex)
@@ -186,6 +248,10 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
 
         return checkoutIndentation;
     }
+
+    private sealed record UnpinnedActionUse(string Action, string Version, string FilePath, int LineNumber);
+
+    private sealed record UnsafeCheckoutUse(string FilePath, int LineNumber);
 
 }
 
