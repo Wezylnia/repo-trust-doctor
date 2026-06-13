@@ -220,27 +220,27 @@ Collects structured dependency manifests across 12 ecosystems: npm, NuGet, Pytho
 
 | Rule ID | Title | Severity | Confidence |
 |---------|-------|----------|------------|
-| TRUST-DEP001 | npm uses unpinned dependency version | Medium | High |
-| TRUST-DEP002 | npm uses prerelease dependency | Low | High |
-| TRUST-DEP003 | npm uses direct Git dependency | Medium | High |
-| TRUST-DEP004 | npm uses direct URL dependency | Medium | High |
-| TRUST-DEP005 | npm has install scripts | Medium | High |
-| TRUST-DEP006 | NuGet uses unpinned dependency version | Medium | High |
-| TRUST-DEP007 | NuGet uses prerelease dependency | Low | High |
-| TRUST-DEP008 | Python uses unpinned dependency | Medium | High |
-| TRUST-DEP009 | Python uses prerelease dependency | Low | High |
-| TRUST-DEP010 | Python uses direct Git/URL dependency | Medium | High |
-| TRUST-DEP011 | Lockfile not found for package manifest | Low | Medium |
-| TRUST-DEP012 | NuGet uses floating version | Medium | High |
-| TRUST-DEP013 | npm uses ranged version | Low | Medium |
-| TRUST-DEP014 | Python uses ranged version | Low | Medium |
-| TRUST-DEP015 | NuGet has no lockfile | Low | Medium |
-| TRUST-DEP016 | npm has no lockfile | Low | Medium |
+| TRUST-DEP001 | npm manifest exists without lockfile | Medium | High |
+| TRUST-DEP002 | NuGet project does not use lockfile | Low | Medium |
+| TRUST-DEP003 | Python manifest has no recognized lockfile | Low | Medium |
+| TRUST-DEP004 | NuGet dependency uses floating or unpinned version | Medium | High |
+| TRUST-DEP005 | NuGet dependency uses prerelease version | Low | High |
+| TRUST-DEP006 | npm dependency uses range or unpinned version | Medium | High |
+| TRUST-DEP007 | npm dependency uses prerelease version | Low | High |
+| TRUST-DEP008 | npm install-time script requires review | Medium | Medium |
+| TRUST-DEP009 | Python requirement is unpinned | Medium | High |
+| TRUST-DEP010 | Python dependency uses prerelease version | Low | High |
+| TRUST-DEP011 | npm dependency uses direct remote source | Medium | High |
+| TRUST-DEP012 | npm dependency uses local file source | Low | High |
+| TRUST-DEP013 | NuGet package source uses insecure transport | High | High |
+| TRUST-DEP014 | NuGet package source uses local path | Low | Medium |
+| TRUST-DEP015 | Dependency appears outdated | Medium | Medium |
+| TRUST-DEP016 | Dependency package is deprecated or yanked | High | High |
 | TRUST-DEP017 | Java manifest without recognized lockfile | Low | Medium |
 | TRUST-DEP018 | Java uses unpinned/dynamic dependency | Medium | High |
 | TRUST-DEP019 | Java uses SNAPSHOT dependency | Low | High |
-| TRUST-DEP020 | Gradle wrapper is missing | Medium | High |
-| TRUST-DEP021 | Spring Boot Actuator exposes all endpoints | High | High |
+| TRUST-DEP020 | Gradle wrapper is missing | Low | Medium |
+| TRUST-DEP021 | Spring Boot Actuator exposes broad endpoint access | High | Medium |
 | TRUST-DEP022 | Go module has no go.sum lockfile | Medium | High |
 | TRUST-DEP023 | Go module uses replace directive | Low | High |
 | TRUST-DEP024 | Go dependency uses non-exact version | Medium | High |

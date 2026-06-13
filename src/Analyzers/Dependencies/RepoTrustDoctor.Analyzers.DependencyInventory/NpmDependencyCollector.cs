@@ -113,7 +113,17 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
                     ["sourceKind"] = sourceKind.Kind
                 }));
 
-            AddVersionFindings(dependency.Name, sectionName, normalizedVersion, pinned, prerelease, sourceKind, manifestPath, coveringLockfiles.Length > 0, state);
+            AddVersionFindings(
+                dependency.Name,
+                sectionName,
+                normalizedVersion,
+                pinned,
+                prerelease,
+                sourceKind,
+                manifestPath,
+                coveringLockfiles.Length > 0,
+                IsLowSignalPrereleaseManifest(manifestPath),
+                state);
         }
     }
 
@@ -126,6 +136,7 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
         NpmSourceKind sourceKind,
         string manifestPath,
         bool hasCoveringLockfile,
+        bool suppressPrereleaseFinding,
         DependencyInventoryState state)
     {
         if (!pinned && !hasCoveringLockfile)
@@ -142,7 +153,7 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
                 "Use exact dependency versions together with a committed lockfile for reproducible installs."));
         }
 
-        if (prerelease)
+        if (prerelease && !suppressPrereleaseFinding)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP007",
@@ -160,6 +171,19 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
         {
             AddSourceFinding(name, sectionName, version, sourceKind, manifestPath, state);
         }
+    }
+
+    private static bool IsLowSignalPrereleaseManifest(string manifestPath)
+    {
+        var classification = RepositoryPathClassifier.Classify(manifestPath);
+        return classification.HasAny(
+            RepositoryPathClassification.Test |
+            RepositoryPathClassification.Fixture |
+            RepositoryPathClassification.Example |
+            RepositoryPathClassification.Documentation |
+            RepositoryPathClassification.Generated |
+            RepositoryPathClassification.Template |
+            RepositoryPathClassification.Tooling);
     }
 
     private static void AddSourceFinding(string name, string sectionName, string? version, NpmSourceKind sourceKind, string manifestPath, DependencyInventoryState state)

@@ -78,7 +78,7 @@ Recommendation: use exact dependency versions or commit a package-manager lockfi
 - Default severity: Low
 - Default confidence: High
 
-Detects npm dependencies with prerelease version labels.
+Detects npm dependencies with prerelease version labels. Prerelease packages in common tooling, generated, test, fixture, example, and documentation manifests are still recorded in the dependency inventory but do not emit this finding.
 
 Why it matters: prerelease packages may be appropriate for testing, but they deserve manual review before production dependency use.
 

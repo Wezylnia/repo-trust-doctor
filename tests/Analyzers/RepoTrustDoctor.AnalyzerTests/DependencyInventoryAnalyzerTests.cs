@@ -392,6 +392,28 @@ public sealed class DependencyInventoryAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_NpmPrereleaseInToolingManifest_IsRecordedWithoutFinding()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "pnpm-lock.yaml"), "");
+        var toolingDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "build", "vite"));
+        File.WriteAllText(Path.Combine(toolingDirectory.FullName, "package.json"), """
+        {
+          "dependencies": {
+            "preview-tool": "1.0.0-beta.1"
+          }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, package => package.Name == "preview-tool" && package.IsPrerelease);
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DEP007");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_NpmDirectAndLocalSources_AreRecordedAndReported()
     {
         using var fixture = TemporaryRepository.Create();
