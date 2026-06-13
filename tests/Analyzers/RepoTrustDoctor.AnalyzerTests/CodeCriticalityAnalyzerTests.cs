@@ -311,12 +311,14 @@ public sealed class CodeCriticalityAnalyzerTests
         var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE014");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE017");
         var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
         Assert.DoesNotContain(artifact.Files, file => file.Reasons.Contains(CodeCriticalityReason.Deserialization));
+        Assert.DoesNotContain(artifact.Files, file => file.Reasons.Contains(CodeCriticalityReason.JavaSerializationHook));
     }
 
     [Fact]
-    public async Task CodeCriticalityAnalyzer_ReportsJavaReadObjectAtUsageLine()
+    public async Task CodeCriticalityAnalyzer_ReportsJavaReadObjectAsSerializationHookAtUsageLine()
     {
         using var fixture = TemporaryRepository.Create();
         var directory = Path.Combine(fixture.Path, "src", "java");
@@ -338,11 +340,39 @@ public sealed class CodeCriticalityAnalyzerTests
 
         var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
 
-        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-CODE014");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE014");
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-CODE017");
+        Assert.Equal(Severity.Medium, finding.Severity);
         Assert.Equal(8, Assert.Single(finding.Evidence).LineNumber);
         var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
         var file = Assert.Single(artifact.Files);
-        Assert.Equal(8, file.RelevantLines![CodeCriticalityReason.Deserialization]);
+        Assert.Equal(8, file.RelevantLines![CodeCriticalityReason.JavaSerializationHook]);
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotDuplicateJavaSerializationHookWhenUnsafeDeserializationIsReported()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "java");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "UnsafeDeserializer.java"), """
+        package sample;
+
+        import java.io.InputStream;
+        import java.io.ObjectInputStream;
+
+        public final class UnsafeDeserializer {
+            Object deserialize(InputStream input) throws Exception {
+                return new ObjectInputStream(input).readObject();
+            }
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-CODE014");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE017");
     }
 
     [Fact]
@@ -485,7 +515,7 @@ public sealed class CodeCriticalityAnalyzerTests
 
         var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
 
-        Assert.DoesNotContain(result.Findings, finding => finding.RuleId is "TRUST-CODE014" or "TRUST-CODE015");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId is "TRUST-CODE014" or "TRUST-CODE015" or "TRUST-CODE017");
         var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
         Assert.Empty(artifact.Files);
     }

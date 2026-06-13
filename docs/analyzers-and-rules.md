@@ -402,6 +402,7 @@ Collects structured dependency manifests across 12 ecosystems: npm, NuGet, Pytho
 | TRUST-CODE014 | Deserialization in critical code | High | Medium |
 | TRUST-CODE015 | Command execution in critical code | High | Medium |
 | TRUST-CODE016 | Dynamic code evaluation in critical code | Medium | Medium |
+| TRUST-CODE017 | Java serialization hook in critical code | Medium | Medium |
 
 ### Coverage Criticality
 

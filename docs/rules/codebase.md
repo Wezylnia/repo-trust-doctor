@@ -95,7 +95,7 @@ Recommendation: add targeted unit or integration tests for the critical code pat
 - Default severity: `High`
 - Default confidence: `Medium`
 
-A critical source file uses high-risk deserialization APIs or hooks such as `BinaryFormatter`, `TypeNameHandling`, Java `readObject(...)`, Python `pickle.load`, or `yaml.unsafe_load`. Simple Java serialization imports or `Serializable` marker interfaces are not enough to trigger this rule.
+A critical source file uses high-risk deserialization APIs such as `BinaryFormatter`, `TypeNameHandling`, `new ObjectInputStream(...)`, Python `pickle.load`, or `yaml.unsafe_load`. Simple Java serialization imports, `Serializable` marker interfaces, and custom `readObject(...)` hooks are not enough to trigger this high-severity rule.
 
 Recommendation: use safe deserialization methods, restrict allowed types, and validate deserialized input.
 
@@ -118,6 +118,16 @@ Recommendation: avoid shell execution for untrusted input. Prefer purpose-built 
 A critical source file dynamically evaluates code at runtime, for example with JavaScript `eval(...)` or `new Function(...)`. This is separate from `TRUST-CODE015`: dynamic code evaluation is risky, but it is not reported as operating-system command execution.
 
 Recommendation: avoid eval-style APIs for untrusted input and keep any intentional dynamic module loading tightly bounded.
+
+### `TRUST-CODE017` - Java serialization hook in critical code
+
+- Category: `Codebase`
+- Default severity: `Medium`
+- Default confidence: `Medium`
+
+A critical Java source file defines a custom `readObject(...)` serialization hook. This is tracked separately from `TRUST-CODE014` because many framework classes use the hook only to restore transient state after default Java serialization.
+
+Recommendation: review custom serialization hooks and validate any data restored during deserialization.
 
 ## Public API
 

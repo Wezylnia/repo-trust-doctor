@@ -9,6 +9,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 {
     private const int LargeFileLineThreshold = 400;
     private const int FindingLimit = 12;
+    private const int JavaSerializationHookFindingLimit = 6;
     private const int BroadExceptionLookaheadLines = 24;
     private const int MaxAnalyzedSourceFiles = 6000;
 
@@ -24,9 +25,10 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         new(CodeCriticalityReason.Network, ["httpclient", "httpcontext", "httpget", "httppost", "fetch(", "axios", "socket", "webhook"]),
         new(CodeCriticalityReason.Cryptography, ["encrypt", "decrypt", "sha256", "sha512", "hmac", "rsa", "aes", "crypto"]),
         new(CodeCriticalityReason.Secrets, ["secret", "password", "access_token", "refresh_token", "bearer", "apikey", "api_key", "credential"]),
-        new(CodeCriticalityReason.Deserialization, ["binaryformatter", "typenamehandling", "new objectinputstream", "pickle.load", "yaml.unsafe_load", "readobject("]),
+        new(CodeCriticalityReason.Deserialization, ["binaryformatter", "typenamehandling", "new objectinputstream", "pickle.load", "yaml.unsafe_load"]),
         new(CodeCriticalityReason.CommandExecution, ["process.start(", "runtime.exec(", "runtime.getruntime().exec(", "new processbuilder(", "subprocess.run(", "subprocess.popen(", "subprocess.call(", "subprocess.check_call(", "subprocess.check_output(", "os.system(", "os.popen(", "child_process.exec", "child_process.spawn", "execsync(", "spawnsync(", "command::new(", "popen("]),
-        new(CodeCriticalityReason.DynamicCodeEvaluation, ["eval(", "new function("])
+        new(CodeCriticalityReason.DynamicCodeEvaluation, ["eval(", "new function("]),
+        new(CodeCriticalityReason.JavaSerializationHook, ["readobject("])
     ];
 
     public string Id => "codebase-02-criticality";
@@ -92,7 +94,15 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             Severity.Medium,
             Confidence.Medium,
             "A source file dynamically evaluates code at runtime.",
-            "Avoid eval-style APIs for untrusted input and keep dynamic module loading tightly bounded.")
+            "Avoid eval-style APIs for untrusted input and keep dynamic module loading tightly bounded."),
+        new(
+            "TRUST-CODE017",
+            "Java serialization hook in critical code",
+            AnalysisCategory.Codebase,
+            Severity.Medium,
+            Confidence.Medium,
+            "A Java source file defines a custom readObject serialization hook in critical code.",
+            "Review custom serialization hooks and validate any data restored during deserialization.")
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -118,7 +128,8 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             if (analyzed.Score >= 30 ||
                 analyzed.Reasons.Contains(CodeCriticalityReason.CommandExecution) ||
                 analyzed.Reasons.Contains(CodeCriticalityReason.DynamicCodeEvaluation) ||
-                analyzed.Reasons.Contains(CodeCriticalityReason.Deserialization))
+                analyzed.Reasons.Contains(CodeCriticalityReason.Deserialization) ||
+                analyzed.Reasons.Contains(CodeCriticalityReason.JavaSerializationHook))
             {
                 criticalFiles.Add(analyzed);
             }
@@ -199,6 +210,19 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 file,
                 "Avoid eval-style APIs for untrusted input and keep dynamic module loading tightly bounded.")));
 
+        findings.AddRange(ordered
+            .Where(file => file.Reasons.Contains(CodeCriticalityReason.JavaSerializationHook) &&
+                           !file.Reasons.Contains(CodeCriticalityReason.Deserialization))
+            .Take(JavaSerializationHookFindingLimit)
+            .Select(file => CreateCriticalityFinding(
+                "TRUST-CODE017",
+                Severity.Medium,
+                "Java serialization hook in critical code",
+                $"{file.FilePath} defines a Java readObject serialization hook in critical code.",
+                "code.java_serialization_hook",
+                file,
+                "Review custom serialization hooks and validate any data restored during deserialization.")));
+
         var artifact = new CodeCriticalityArtifact(
             ordered,
             new Dictionary<string, string>
@@ -212,7 +236,8 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 ["code.criticality.broad_exception.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.BroadExceptionHandling)).ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.deserialization.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.Deserialization)).ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.command_execution.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.CommandExecution)).ToString(CultureInfo.InvariantCulture),
-                ["code.criticality.dynamic_code_evaluation.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.DynamicCodeEvaluation)).ToString(CultureInfo.InvariantCulture)
+                ["code.criticality.dynamic_code_evaluation.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.DynamicCodeEvaluation)).ToString(CultureInfo.InvariantCulture),
+                ["code.criticality.java_serialization_hook.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.JavaSerializationHook)).ToString(CultureInfo.InvariantCulture)
             });
 
         var warnings = sourceFiles.Length > analyzedFiles.Length
@@ -299,6 +324,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         CodeCriticalityReason.Deserialization => 30,
         CodeCriticalityReason.CommandExecution => 30,
         CodeCriticalityReason.DynamicCodeEvaluation => 22,
+        CodeCriticalityReason.JavaSerializationHook => 18,
         CodeCriticalityReason.Authentication or
         CodeCriticalityReason.Authorization or
         CodeCriticalityReason.Payments or
@@ -453,6 +479,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             "code.deserialization" => CodeCriticalityReason.Deserialization,
             "code.command_execution" => CodeCriticalityReason.CommandExecution,
             "code.dynamic_evaluation" => CodeCriticalityReason.DynamicCodeEvaluation,
+            "code.java_serialization_hook" => CodeCriticalityReason.JavaSerializationHook,
             _ => default(CodeCriticalityReason?)
         };
 

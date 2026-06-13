@@ -20,7 +20,8 @@ public enum CodeCriticalityReason
     BroadExceptionHandling,
     Deserialization,
     CommandExecution,
-    DynamicCodeEvaluation
+    DynamicCodeEvaluation,
+    JavaSerializationHook
 }
 
 public sealed record CoverageArtifact(
