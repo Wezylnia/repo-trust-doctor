@@ -454,4 +454,24 @@ public sealed class CodeCriticalityAnalyzerTests
         var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
         Assert.Empty(artifact.Files);
     }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotLetToolingFilesFillGeneralCriticalityFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var filePath = Path.Combine(fixture.Path, ".github", "skills", "release", "publish.ts");
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        var lines = Enumerable.Repeat(
+            "try { child_process.execSync(token); authenticate(password); } catch (err) { }",
+            405);
+        File.WriteAllText(filePath, string.Join(Environment.NewLine, lines));
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId is "TRUST-CODE004" or "TRUST-CODE005" or "TRUST-CODE006");
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Contains(artifact.Files, file => file.FilePath == ".github/skills/release/publish.ts");
+    }
 }

@@ -114,7 +114,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 
         var findings = new List<Finding>();
         findings.AddRange(ordered
-            .Where(file => file.Score >= 50)
+            .Where(file => file.Score >= 50 && !IsToolingOrAnalyzerPath(file.FilePath))
             .Take(FindingLimit)
             .Select(file => CreateCriticalityFinding(
                 "TRUST-CODE004",
@@ -125,7 +125,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 file)));
 
         findings.AddRange(ordered
-            .Where(file => file.LineCount > LargeFileLineThreshold && file.Reasons.Contains(CodeCriticalityReason.LargeFile))
+            .Where(file => file.LineCount > LargeFileLineThreshold && file.Reasons.Contains(CodeCriticalityReason.LargeFile) && !IsToolingOrAnalyzerPath(file.FilePath))
             .Take(FindingLimit)
             .Select(file => CreateCriticalityFinding(
                 "TRUST-CODE005",
@@ -136,7 +136,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 file)));
 
         findings.AddRange(ordered
-            .Where(file => file.Reasons.Contains(CodeCriticalityReason.BroadExceptionHandling))
+            .Where(file => file.Reasons.Contains(CodeCriticalityReason.BroadExceptionHandling) && !IsToolingOrAnalyzerPath(file.FilePath))
             .Take(FindingLimit)
             .Select(file => CreateCriticalityFinding(
                 "TRUST-CODE006",
@@ -285,6 +285,11 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         var relativePath = Path.GetRelativePath(root, filePath).Replace('\\', '/');
         return RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath);
     }
+
+    private static bool IsToolingOrAnalyzerPath(string relativePath) =>
+        RepositoryPathClassifier.Classify(relativePath).HasAny(
+            RepositoryPathClassification.Tooling |
+            RepositoryPathClassification.AnalyzerImplementation);
 
     private static void SuppressStaticAnalyzerVocabulary(
         string root,

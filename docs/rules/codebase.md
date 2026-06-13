@@ -51,6 +51,8 @@ A source file appears to contain security-sensitive or operationally critical lo
 
 Static analyzer implementation files suppress rule-vocabulary matches such as `Secret`, `Permission`, or regex helper names so analyzer rule text is not treated as application-critical code. Dangerous APIs such as command execution and unsafe deserialization are still reported.
 
+Tooling and automation paths such as `.github/`, `build/`, `scripts/`, and `tools/` are retained in the criticality artifact, but they are not allowed to fill the general security-sensitive, large-critical-file, or broad-exception finding lists. Dangerous API findings such as command execution and unsafe deserialization still apply to those files.
+
 Source files under common `tests`, `test`, `testdata`, `testassets`, `docs`, `examples`, `samples`, `fixtures`, `integration-test`, `intTest`, `smoke-test`, `dockerTest`, `testFixtures`, `generated`, `gen`, `perf`, benchmark, project template, item template, and `playground` paths are skipped for criticality findings so example, generated, benchmark, template, and fixture code is not treated as production-critical code. Vendored/static library paths such as `vendor`, `wwwroot/lib`, `node_modules`, and bundled jQuery are also skipped.
 
 Recommendation: prioritize review and tests for these files.

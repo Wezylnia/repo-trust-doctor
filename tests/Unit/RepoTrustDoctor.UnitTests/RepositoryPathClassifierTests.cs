@@ -13,6 +13,8 @@ public sealed class RepositoryPathClassifierTests
     [InlineData("packages/app/src/generated/client.ts", RepositoryPathClassification.Generated)]
     [InlineData("src/DefaultBuilder/samples/SampleApp/Dockerfile", RepositoryPathClassification.Example)]
     [InlineData("src/Analyzers/Security/SecretQuickScanAnalyzer.cs", RepositoryPathClassification.AnalyzerImplementation)]
+    [InlineData("scripts/release/package.ts", RepositoryPathClassification.Tooling)]
+    [InlineData("extensions/copilot/script/generateReport.ts", RepositoryPathClassification.Tooling)]
     public void Classify_ReturnsExpectedFlags(string path, RepositoryPathClassification expected)
     {
         var classification = RepositoryPathClassifier.Classify(path);
