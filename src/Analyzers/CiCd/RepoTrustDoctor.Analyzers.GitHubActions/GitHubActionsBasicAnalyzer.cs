@@ -107,18 +107,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
                 var line = lines[i];
                 if (UsesCheckoutPattern().IsMatch(line))
                 {
-                    var hasPersistCredentialsFalse = false;
-                    var checkLimit = Math.Min(i + 9, lines.Length);
-                    for (int j = i + 1; j < checkLimit; j++)
-                    {
-                        if (PersistCredentialsFalsePattern().IsMatch(lines[j]))
-                        {
-                            hasPersistCredentialsFalse = true;
-                            break;
-                        }
-                    }
-
-                    if (!hasPersistCredentialsFalse)
+                    if (!CheckoutStepSetsPersistCredentialsFalse(lines, i))
                     {
                         AddFinding(findings, "TRUST-GHA007", "Checkout may persist credentials", Severity.Low, "Set persist-credentials: false when checkout is only used for building or testing.", relativePath, "actions/checkout is used without persist-credentials: false.", i + 1, Confidence.Medium);
                     }
@@ -138,6 +127,64 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         }
 
         return AnalyzerResult.Completed(findings);
+    }
+
+    private static bool CheckoutStepSetsPersistCredentialsFalse(string[] lines, int checkoutLineIndex)
+    {
+        var baseIndentation = GetCheckoutStepBaseIndentation(lines, checkoutLineIndex);
+        for (var index = checkoutLineIndex + 1; index < lines.Length; index++)
+        {
+            var line = lines[index];
+            if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith("#", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (GetIndentation(line) <= baseIndentation)
+            {
+                break;
+            }
+
+            if (PersistCredentialsFalsePattern().IsMatch(line))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static int GetCheckoutStepBaseIndentation(string[] lines, int checkoutLineIndex)
+    {
+        var checkoutIndentation = GetIndentation(lines[checkoutLineIndex]);
+        if (lines[checkoutLineIndex].TrimStart().StartsWith("-", StringComparison.Ordinal))
+        {
+            return checkoutIndentation;
+        }
+
+        for (var index = checkoutLineIndex - 1; index >= 0; index--)
+        {
+            var line = lines[index];
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var indentation = GetIndentation(line);
+            if (indentation >= checkoutIndentation)
+            {
+                continue;
+            }
+
+            if (line.TrimStart().StartsWith("-", StringComparison.Ordinal))
+            {
+                return indentation;
+            }
+
+            break;
+        }
+
+        return checkoutIndentation;
     }
 
 }

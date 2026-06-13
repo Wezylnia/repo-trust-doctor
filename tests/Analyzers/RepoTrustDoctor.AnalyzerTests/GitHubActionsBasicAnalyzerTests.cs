@@ -119,6 +119,63 @@ public sealed class GitHubActionsBasicAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_DoesNotReportSafeCheckoutWhenPersistCredentialsIsDeepInWithBlock()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - name: Checkout
+                uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
+                with:
+                  repository: owner/repository
+                  ref: main
+                  path: source
+                  fetch-depth: 0
+                  submodules: recursive
+                  lfs: true
+                  clean: true
+                  persist-credentials: false
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-GHA007");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotBorrowPersistCredentialsFromLaterCheckoutStep()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
+              - uses: actions/checkout@2541b1294d2704b0964813337f33b291d3f8596b
+                with:
+                  persist-credentials: false
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-GHA007");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ReportsShellInjection()
     {
         using var fixture = TemporaryRepository.Create();

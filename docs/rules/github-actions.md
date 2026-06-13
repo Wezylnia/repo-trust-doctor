@@ -78,7 +78,7 @@ Recommendation: ensure self-hosted runners are isolated and do not run untrusted
 - Default severity: Low
 - Default confidence: Medium
 
-Detects `uses: actions/checkout@...` steps that do not specify `persist-credentials: false` in the nearby lines.
+Detects `uses: actions/checkout@...` steps that do not specify `persist-credentials: false` within the same checkout step.
 
 Why it matters: by default, `actions/checkout` persists the GitHub token in the local git configuration. If subsequent steps run untrusted code or upload artifacts, they might read or expose this token.
 
