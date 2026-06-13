@@ -20,7 +20,7 @@ Reviews `.github/workflows/*.yml` and `.yaml` files for common CI/CD trust risks
 - broad workflow permissions,
 - self-hosted runners,
 - `pull_request_target` usage,
-- unpinned third-party actions,
+- unpinned external actions,
 - checkout credential persistence,
 - script injection patterns using event data,
 - release workflows without visible test dependencies,

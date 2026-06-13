@@ -48,17 +48,17 @@ Why it matters: remote scripts can change without a repository change and may ex
 
 Recommendation: download scripts separately, verify integrity, and avoid piping remote content directly into a shell.
 
-## TRUST-GHA005: Third-Party Action Is Not Pinned by SHA
+## TRUST-GHA005: External Action Is Not Pinned by SHA
 
 - Category: CI/CD
 - Default severity: Medium
 - Default confidence: High
 
-Detects `uses: owner/action@tag` references that are not pinned to a full commit SHA.
+Detects external `uses: owner/action@tag` references that are not pinned to a full commit SHA. Local repository actions such as `uses: ./path/to/action` are ignored.
 
 Why it matters: tags can move or be compromised, causing workflows to execute different code without a repository change.
 
-Recommendation: pin third-party GitHub Actions to a full commit SHA.
+Recommendation: pin external GitHub Actions to a full commit SHA.
 
 ## TRUST-GHA006: Workflow Uses Self-Hosted Runner
 

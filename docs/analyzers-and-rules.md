@@ -88,7 +88,7 @@ Analyzers implement `IRepositoryAnalyzer` and produce `Finding` records with rul
 | TRUST-GHA002 | Workflow uses `permissions: write-all` | High | High |
 | TRUST-GHA003 | Workflow uses `pull_request_target` | High | High |
 | TRUST-GHA004 | Workflow pipes downloaded scripts into a shell | High | High |
-| TRUST-GHA005 | Third-party action is not pinned by SHA | Medium | High |
+| TRUST-GHA005 | External action is not pinned by SHA | Medium | High |
 | TRUST-GHA006 | Workflow uses self-hosted runner | Medium | High |
 | TRUST-GHA007 | Checkout may persist credentials | Low | Medium |
 | TRUST-GHA008 | Workflow interpolates GitHub event data in shell | High | Medium |

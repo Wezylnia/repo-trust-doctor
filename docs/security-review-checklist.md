@@ -46,7 +46,7 @@ Use this checklist for changes that touch repository intake, analysis, reporting
 
 ## Action Pinning
 
-- [ ] Pin third-party GitHub Actions to full commit SHAs.
+- [ ] Pin external GitHub Actions to full commit SHAs.
 - [ ] Review action updates before changing pinned SHAs.
 - [ ] Keep Dependabot or equivalent update visibility for pinned actions.
 
