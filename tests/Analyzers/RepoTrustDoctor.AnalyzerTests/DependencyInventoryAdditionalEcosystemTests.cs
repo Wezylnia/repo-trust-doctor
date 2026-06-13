@@ -92,6 +92,50 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_GoModWithRepositoryLocalReplace_DoesNotReportDep023()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "internal", "lib"));
+        File.WriteAllText(Path.Combine(fixture.Path, "go.sum"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), """
+        module example.com/mymodule
+
+        go 1.22
+
+        require example.com/mymodule/internal/lib v0.0.0-00010101000000-000000000000
+
+        replace example.com/mymodule/internal/lib => ./internal/lib
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP023");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GoModWithLocalReplacePseudoVersion_DoesNotReportDep025()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "internal", "lib"));
+        File.WriteAllText(Path.Combine(fixture.Path, "go.sum"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), """
+        module example.com/mymodule
+
+        go 1.22
+
+        require example.com/mymodule/internal/lib v0.0.0-00010101000000-000000000000
+
+        replace example.com/mymodule/internal/lib => ./internal/lib
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP025");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_GoModExactPinnedVersions_AreRecorded()
     {
         using var fixture = TemporaryRepository.Create();

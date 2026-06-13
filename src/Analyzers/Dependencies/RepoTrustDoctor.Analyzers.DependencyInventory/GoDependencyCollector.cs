@@ -44,6 +44,7 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
         var inRequireBlock = false;
         string? modulePath = null;
         var replaceDirectives = new List<string>();
+        var localReplacementModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var directPseudoVersions = new List<(string ModulePath, string Version)>();
 
         foreach (var rawLine in lines)
@@ -86,12 +87,25 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
 
             if (line.StartsWith("replace ", StringComparison.Ordinal))
             {
+                var replace = ParseReplaceDirective(line);
+                if (replace is not null &&
+                    IsLocalReplacementInsideRepository(context.RepositoryPath, filePath, replace.Target))
+                {
+                    localReplacementModules.Add(replace.ModulePath);
+                    continue;
+                }
+
                 replaceDirectives.Add(line);
             }
         }
 
         AddReplaceDirectiveFinding(relativePath, replaceDirectives, state);
-        AddPseudoVersionFinding(relativePath, directPseudoVersions, state);
+        AddPseudoVersionFinding(
+            relativePath,
+            directPseudoVersions
+                .Where(dependency => !localReplacementModules.Contains(dependency.ModulePath))
+                .ToArray(),
+            state);
 
         if (modulePath != null && ModuleLooksPseudoVersion(modulePath, lines))
         {
@@ -110,6 +124,83 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
         var goSumPath = Path.Combine(directory, "go.sum");
         return File.Exists(goSumPath);
     }
+
+    private static GoReplaceDirective? ParseReplaceDirective(string line)
+    {
+        var body = line["replace ".Length..].Trim();
+        var split = body.Split(["=>"], StringSplitOptions.TrimEntries);
+        if (split.Length != 2)
+        {
+            return null;
+        }
+
+        var leftParts = split[0].Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var rightParts = split[1].Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (leftParts.Length == 0 || rightParts.Length == 0)
+        {
+            return null;
+        }
+
+        return new GoReplaceDirective(leftParts[0], rightParts[0]);
+    }
+
+    private static bool IsLocalReplacementInsideRepository(string repositoryPath, string goModPath, string target)
+    {
+        if (!LooksLikeLocalPath(target))
+        {
+            return false;
+        }
+
+        var manifestDirectory = Path.GetDirectoryName(goModPath);
+        if (manifestDirectory is null)
+        {
+            return false;
+        }
+
+        var resolvedTarget = Path.GetFullPath(
+            Path.IsPathRooted(target)
+                ? target
+                : Path.Combine(manifestDirectory, target));
+        var resolvedRepository = Path.GetFullPath(repositoryPath);
+
+        return IsSameOrChildPath(resolvedTarget, resolvedRepository);
+    }
+
+    private static bool LooksLikeLocalPath(string target) =>
+        target is "." or ".." ||
+        target.StartsWith("./", StringComparison.Ordinal) ||
+        target.StartsWith("../", StringComparison.Ordinal) ||
+        target.StartsWith(".\\", StringComparison.Ordinal) ||
+        target.StartsWith("..\\", StringComparison.Ordinal) ||
+        Path.IsPathRooted(target);
+
+    private static bool IsSameOrChildPath(string path, string parent)
+    {
+        var normalizedPath = TrimTrailingDirectorySeparators(path);
+        var normalizedParent = TrimTrailingDirectorySeparators(parent);
+        return string.Equals(normalizedPath, normalizedParent, PathComparison) ||
+               normalizedPath.StartsWith(EnsureTrailingDirectorySeparator(normalizedParent), PathComparison);
+    }
+
+    private static string EnsureTrailingDirectorySeparator(string path) =>
+        path.EndsWith(Path.DirectorySeparatorChar) || path.EndsWith(Path.AltDirectorySeparatorChar)
+            ? path
+            : path + Path.DirectorySeparatorChar;
+
+    private static string TrimTrailingDirectorySeparators(string path)
+    {
+        var root = Path.GetPathRoot(path) ?? string.Empty;
+        while (path.Length > root.Length &&
+               (path[^1] == Path.DirectorySeparatorChar || path[^1] == Path.AltDirectorySeparatorChar))
+        {
+            path = path[..^1];
+        }
+
+        return path;
+    }
+
+    private static StringComparison PathComparison =>
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     private static void ParseSingleRequire(
         string manifestPath,
@@ -250,4 +341,6 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
 
     [GeneratedRegex(@"^v\d+\.\d+\.\d+-[0-9]{14}-[0-9a-f]{12}", RegexOptions.CultureInvariant)]
     private static partial Regex PseudoVersionPattern();
+
+    private sealed record GoReplaceDirective(string ModulePath, string Target);
 }

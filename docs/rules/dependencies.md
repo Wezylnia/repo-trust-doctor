@@ -342,7 +342,7 @@ Recommendation: run `go mod tidy` and commit `go.sum` to the repository for repr
 - Default severity: Low
 - Default confidence: High
 
-Detects `replace` directives in `go.mod`. Multiple `replace` directives in the same manifest are aggregated into one finding with sample evidence so large Go workspaces do not flood reports with one finding per line.
+Detects `replace` directives in `go.mod`. Multiple `replace` directives in the same manifest are aggregated into one finding with sample evidence so large Go workspaces do not flood reports with one finding per line. Local replacements that resolve inside the scanned repository are treated as monorepo wiring and are recorded in the inventory without emitting this finding.
 
 Why it matters: replace directives override resolved module versions and can point to forks, local paths, or different module paths. They bypass normal module resolution and deserve manual review.
 
@@ -366,7 +366,7 @@ Recommendation: use exact versions with a committed `go.sum` for reproducible Go
 - Default severity: Low
 - Default confidence: High
 
-Detects direct Go module dependencies that reference a pseudo-version (e.g. `v0.0.0-20240115120000-abcdef123456`). Multiple direct pseudo-version dependencies in the same manifest are aggregated into one finding with sample evidence. Indirect pseudo-version dependencies are still recorded in the dependency inventory, but they do not emit this finding because they are transitive resolution evidence rather than direct dependency choices.
+Detects direct Go module dependencies that reference a pseudo-version (e.g. `v0.0.0-20240115120000-abcdef123456`). Multiple direct pseudo-version dependencies in the same manifest are aggregated into one finding with sample evidence. Indirect pseudo-version dependencies are still recorded in the dependency inventory, but they do not emit this finding because they are transitive resolution evidence rather than direct dependency choices. Direct pseudo-versions whose module path is replaced by a local path inside the scanned repository are also recorded without emitting this finding because the local replacement is the effective source.
 
 Why it matters: direct pseudo-versions point to unreleased commits and can be less stable or intentionally temporary. They may also bypass normal release review processes.
 
