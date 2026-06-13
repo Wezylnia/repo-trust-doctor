@@ -8,7 +8,9 @@
 
 Detects repositories with Dockerfiles but no root `.dockerignore`.
 
-Docker generator templates and fixture/test Dockerfiles such as `.tt`, `.tmpl`, `.template`, `.test`, `fixtures`, `templates`, `integration-test`, `smoke-test`, `dockerTest`, and `testFixtures` paths are ignored by runtime Docker hygiene rules.
+Docker generator templates and fixture/test Dockerfiles such as `.tt`, `.tmpl`, `.template`, `.test`, `fixtures`, `templates`, `integration-test`, `smoke-test`, `dockerTest`, and `testFixtures` paths are ignored by Docker hygiene rules.
+
+CI/toolchain build images under paths such as `src/ci/docker` and `.github/actions/.../Dockerfile` are still scanned for concrete content risks such as `latest` tags, secret-like `ENV` values, `ADD` misuse, separated `apt-get update`, `sudo`, and broad `EXPOSE` ranges. Runtime-only application-image expectations such as root `.dockerignore`, non-root `USER`, `HEALTHCHECK`, multi-stage build, and dependency-restore copy ordering are not reported for those CI/build-support Dockerfiles.
 
 Why it matters: large or sensitive files may be copied into the Docker build context unintentionally.
 

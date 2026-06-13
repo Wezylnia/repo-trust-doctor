@@ -48,6 +48,8 @@ Reviews Dockerfiles and common container files for build and runtime hygiene:
 - missing multi-stage builds,
 - broad build context and cache-layering risks.
 
+Runtime-only Dockerfile checks are applied to application/runtime image candidates. CI and toolchain build images under paths such as `src/ci/docker` and `.github/actions/.../Dockerfile` keep content-risk checks, but do not receive runtime-service findings for missing `USER`, `HEALTHCHECK`, root `.dockerignore`, multi-stage build, or dependency-restore copy ordering.
+
 Container checks apply automatically when container files are present.
 
 ## Dependency Inventory

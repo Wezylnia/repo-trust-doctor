@@ -38,7 +38,9 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var dockerfiles = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "Dockerfile*")
-            .Where(file => !IsNonRuntimeDockerfile(context.RepositoryPath, file))
+            .Select(file => CreateDockerfileCandidate(context.RepositoryPath, file))
+            .Where(candidate => candidate is not null)
+            .Select(candidate => candidate!)
             .ToArray();
 
         if (dockerfiles.Length == 0)
@@ -47,7 +49,8 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         }
 
         var findings = new List<Finding>();
-        if (!File.Exists(Path.Combine(context.RepositoryPath, ".dockerignore")))
+        if (dockerfiles.Any(candidate => !candidate.IsBuildSupport) &&
+            !File.Exists(Path.Combine(context.RepositoryPath, ".dockerignore")))
         {
             findings.Add(CreateFinding("TRUST-DOCKER001", "Dockerfile exists but .dockerignore is missing", Severity.Medium, ".dockerignore", "No .dockerignore file was found at repository root."));
         }
@@ -55,43 +58,25 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         foreach (var dockerfile in dockerfiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!RepositoryFileSystem.CanReadAsText(dockerfile))
+            if (!RepositoryFileSystem.CanReadAsText(dockerfile.FullPath))
             {
                 continue;
             }
 
-            var content = await File.ReadAllTextAsync(dockerfile, cancellationToken);
-            var relativePath = Path.GetRelativePath(context.RepositoryPath, dockerfile);
+            var content = await File.ReadAllTextAsync(dockerfile.FullPath, cancellationToken);
+            var relativePath = dockerfile.RelativePath;
 
             if (LatestImagePattern().IsMatch(content))
             {
                 findings.Add(CreateFinding("TRUST-DOCKER002", "Docker base image uses latest tag", Severity.Medium, relativePath, "A FROM instruction uses the latest tag."));
             }
 
-            if (!UserPattern().IsMatch(content))
+            if (!dockerfile.IsBuildSupport)
             {
-                findings.Add(CreateFinding("TRUST-DOCKER003", "Dockerfile does not declare a non-root USER", Severity.Medium, relativePath, "No USER instruction was found."));
+                CheckRuntimeHardening(content, relativePath, findings);
+                CheckCopyBeforeRestore(content, relativePath, findings);
             }
 
-            if (!HealthcheckPattern().IsMatch(content))
-            {
-                findings.Add(CreateFinding("TRUST-DOCKER004", "Dockerfile does not declare HEALTHCHECK", Severity.Low, relativePath, "No HEALTHCHECK instruction was found."));
-            }
-
-            var fromCount = FromInstructionPattern().Matches(content).Count;
-            if (fromCount == 1)
-            {
-                findings.Add(CreateFinding(
-                    "TRUST-DOCKER006",
-                    "Dockerfile does not appear to use multi-stage build",
-                    Severity.Low,
-                    relativePath,
-                    "Dockerfile has only one FROM instruction.",
-                    Confidence.Medium,
-                    "Use multi-stage builds to reduce image size and improve security by separating build dependencies from the runtime image."));
-            }
-
-            CheckCopyBeforeRestore(content, relativePath, findings);
             CheckAptGetLayering(content, relativePath, findings);
             CheckAddVsCopy(content, relativePath, findings);
             CheckSudoUsage(content, relativePath, findings);
@@ -115,6 +100,32 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         }
 
         return AnalyzerResult.Completed(findings);
+    }
+
+    private static void CheckRuntimeHardening(string content, string relativePath, List<Finding> findings)
+    {
+        if (!UserPattern().IsMatch(content))
+        {
+            findings.Add(CreateFinding("TRUST-DOCKER003", "Dockerfile does not declare a non-root USER", Severity.Medium, relativePath, "No USER instruction was found."));
+        }
+
+        if (!HealthcheckPattern().IsMatch(content))
+        {
+            findings.Add(CreateFinding("TRUST-DOCKER004", "Dockerfile does not declare HEALTHCHECK", Severity.Low, relativePath, "No HEALTHCHECK instruction was found."));
+        }
+
+        var fromCount = FromInstructionPattern().Matches(content).Count;
+        if (fromCount == 1)
+        {
+            findings.Add(CreateFinding(
+                "TRUST-DOCKER006",
+                "Dockerfile does not appear to use multi-stage build",
+                Severity.Low,
+                relativePath,
+                "Dockerfile has only one FROM instruction.",
+                Confidence.Medium,
+                "Use multi-stage builds to reduce image size and improve security by separating build dependencies from the runtime image."));
+        }
     }
 
     private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, Confidence confidence = Confidence.High, string recommendationText = "Review the Dockerfile for reproducibility and runtime hardening.")
@@ -143,9 +154,19 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         return line;
     }
 
-    private static bool IsNonRuntimeDockerfile(string repositoryPath, string filePath)
+    private static DockerfileCandidate? CreateDockerfileCandidate(string repositoryPath, string filePath)
     {
         var relativePath = Path.GetRelativePath(repositoryPath, filePath).Replace('\\', '/');
+        if (IsIgnoredDockerfile(relativePath))
+        {
+            return null;
+        }
+
+        return new DockerfileCandidate(filePath, relativePath, IsBuildSupportDockerfile(relativePath));
+    }
+
+    private static bool IsIgnoredDockerfile(string relativePath)
+    {
         var fileName = Path.GetFileName(relativePath);
 
         return fileName.EndsWith(".tt", StringComparison.OrdinalIgnoreCase) ||
@@ -169,6 +190,15 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
                relativePath.Contains("dockertest", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("testfixtures", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool IsBuildSupportDockerfile(string relativePath) =>
+        HasPathSegment(relativePath, "ci") ||
+        HasPathSegment(relativePath, ".github") ||
+        HasPathSegment(relativePath, ".circleci") ||
+        HasPathSegment(relativePath, ".azure-pipelines");
+
+    private static bool HasPathSegment(string relativePath, string segment) =>
+        relativePath.Split('/').Contains(segment, StringComparer.OrdinalIgnoreCase);
 
     private static void CheckCopyBeforeRestore(string content, string relativePath, List<Finding> findings)
     {
@@ -330,4 +360,6 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?mi)^\s*EXPOSE\s+(?<start>\d+)-(?<end>\d+)")]
     private static partial Regex ExposePortRangePattern();
+
+    private sealed record DockerfileCandidate(string FullPath, string RelativePath, bool IsBuildSupport);
 }

@@ -281,4 +281,27 @@ public sealed class DockerBasicAnalyzerTests
 
         Assert.Empty(result.Findings);
     }
+
+    [Theory]
+    [InlineData("src/ci/docker/x86_64-unknown-linux-gnu/Dockerfile")]
+    [InlineData("library/stdarch/ci/docker/x86_64-unknown-linux-gnu/Dockerfile")]
+    [InlineData(".github/actions/github-release/Dockerfile")]
+    public async Task AnalyzeAsync_BuildSupportDockerfiles_SkipRuntimeOnlyHygiene(string relativePath)
+    {
+        using var fixture = TemporaryRepository.Create();
+        var filePath = Path.Combine(fixture.Path, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, """
+        FROM alpine:latest
+        ENV TOKEN=example-token
+        RUN apk add --no-cache curl
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DOCKER002");
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DOCKER005");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId is "TRUST-DOCKER001" or "TRUST-DOCKER003" or "TRUST-DOCKER004" or "TRUST-DOCKER006" or "TRUST-DOCKER007");
+    }
 }
