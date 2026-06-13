@@ -322,6 +322,27 @@ public sealed class CodeCriticalityAnalyzerTests
     }
 
     [Fact]
+    public async Task CodeCriticalityAnalyzer_ReportsToolingCommandExecutionAsMediumSeverity()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "build", "scripts");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "build.py"), """
+        import subprocess
+
+        def run_build(target):
+            subprocess.run(["ninja", target], check=True)
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
+        Assert.Equal(Severity.Medium, finding.Severity);
+        Assert.Equal("Command execution in build or tooling code", finding.Title);
+    }
+
+    [Fact]
     public async Task CodeCriticalityAnalyzer_IgnoresNonCriticalSmallFiles()
     {
         using var fixture = TemporaryRepository.Create();

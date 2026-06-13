@@ -188,14 +188,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         findings.AddRange(ordered
             .Where(file => file.Reasons.Contains(CodeCriticalityReason.CommandExecution))
             .Take(FindingLimit)
-            .Select(file => CreateCriticalityFinding(
-                "TRUST-CODE015",
-                Severity.High,
-                "Command execution in critical code",
-                $"{file.FilePath} invokes command execution APIs that can run operating-system commands.",
-                "code.command_execution",
-                file,
-                "Avoid shell execution for untrusted input; use safe APIs, allowlists, and explicit argument boundaries.")));
+            .Select(CreateCommandExecutionFinding));
 
         findings.AddRange(ordered
             .Where(file => file.Reasons.Contains(CodeCriticalityReason.DynamicCodeEvaluation))
@@ -493,17 +486,35 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         string message,
         string evidenceKind,
         CodeCriticalityFile file,
-        string recommendation = "Review critical code files with extra care and ensure their behavior is covered by targeted tests.") =>
+        string recommendation = "Review critical code files with extra care and ensure their behavior is covered by targeted tests.",
+        Confidence confidence = Confidence.Medium) =>
         new(
             ruleId,
             title,
             AnalysisCategory.Codebase,
             severity,
-            Confidence.Medium,
+            confidence,
             message,
             [new Evidence(evidenceKind, message, file.FilePath, GetRelevantLine(file, evidenceKind))],
             new Recommendation(recommendation),
             Tags: ["codebase", "criticality"]);
+
+    private static Finding CreateCommandExecutionFinding(CodeCriticalityFile file)
+    {
+        var isTooling = IsToolingOrAnalyzerPath(file.FilePath);
+        return CreateCriticalityFinding(
+            "TRUST-CODE015",
+            isTooling ? Severity.Medium : Severity.High,
+            isTooling ? "Command execution in build or tooling code" : "Command execution in critical code",
+            isTooling
+                ? $"{file.FilePath} invokes command execution APIs in build or tooling code."
+                : $"{file.FilePath} invokes command execution APIs that can run operating-system commands.",
+            "code.command_execution",
+            file,
+            isTooling
+                ? "Review build and tooling command execution for fixed commands, explicit arguments, and untrusted input boundaries."
+                : "Avoid shell execution for untrusted input; use safe APIs, allowlists, and explicit argument boundaries.");
+    }
 
     private static int? GetRelevantLine(CodeCriticalityFile file, string evidenceKind)
     {

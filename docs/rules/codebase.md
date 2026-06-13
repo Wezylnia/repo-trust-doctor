@@ -109,6 +109,8 @@ Recommendation: use safe deserialization methods, restrict allowed types, and va
 
 A critical source file invokes operating-system command execution APIs such as `Process.Start(...)`, `Runtime.exec(...)`, `ProcessBuilder(...)`, Python `subprocess.run(...)`/`Popen(...)`, `os.system(...)`, Node `child_process.exec(...)`/`spawn(...)`, `execSync(...)`, `spawnSync(...)`, Rust `Command::new(...)`, or `popen(...)`. Imports, comments, and generic “command line” wording are not enough to trigger this rule.
 
+When the same signal appears under build, CI, scripts, or other tooling paths, the finding is still reported because tooling often runs with repository or release credentials, but the title and severity are softened to `Command execution in build or tooling code` with `Medium` severity.
+
 Recommendation: avoid shell execution for untrusted input. Prefer purpose-built APIs, strict allowlists, and explicit argument passing that does not interpolate user-controlled strings into a shell command.
 
 ### `TRUST-CODE016` - Dynamic code evaluation in critical code
