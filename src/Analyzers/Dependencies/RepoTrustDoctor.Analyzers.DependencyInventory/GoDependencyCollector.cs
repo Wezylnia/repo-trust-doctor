@@ -18,10 +18,11 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
     private static void AnalyzeGoMod(AnalysisContext context, string filePath, DependencyInventoryState state)
     {
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
+        var suppressManifestHygieneFindings = IsLowSignalGoManifest(relativePath);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Go, relativePath, "go.mod"));
 
         var hasGoSum = HasGoSum(context, filePath);
-        if (!hasGoSum)
+        if (!hasGoSum && !suppressManifestHygieneFindings)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP022",
@@ -76,13 +77,13 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
 
             if (line.StartsWith("require ", StringComparison.Ordinal))
             {
-                ParseSingleRequire(relativePath, line["require ".Length..].Trim(), state, directPseudoVersions);
+                ParseSingleRequire(relativePath, line["require ".Length..].Trim(), state, directPseudoVersions, suppressManifestHygieneFindings);
                 continue;
             }
 
             if (inRequireBlock)
             {
-                ParseSingleRequire(relativePath, line, state, directPseudoVersions);
+                ParseSingleRequire(relativePath, line, state, directPseudoVersions, suppressManifestHygieneFindings);
             }
 
             if (line.StartsWith("replace ", StringComparison.Ordinal))
@@ -99,13 +100,16 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
             }
         }
 
-        AddReplaceDirectiveFinding(relativePath, replaceDirectives, state);
-        AddPseudoVersionFinding(
-            relativePath,
-            directPseudoVersions
-                .Where(dependency => !localReplacementModules.Contains(dependency.ModulePath))
-                .ToArray(),
-            state);
+        if (!suppressManifestHygieneFindings)
+        {
+            AddReplaceDirectiveFinding(relativePath, replaceDirectives, state);
+            AddPseudoVersionFinding(
+                relativePath,
+                directPseudoVersions
+                    .Where(dependency => !localReplacementModules.Contains(dependency.ModulePath))
+                    .ToArray(),
+                state);
+        }
 
         if (modulePath != null && ModuleLooksPseudoVersion(modulePath, lines))
         {
@@ -124,6 +128,10 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
         var goSumPath = Path.Combine(directory, "go.sum");
         return File.Exists(goSumPath);
     }
+
+    private static bool IsLowSignalGoManifest(string relativePath) =>
+        DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath) ||
+        RepositoryPathClassifier.Normalize(relativePath).Contains("/cryptotest/", StringComparison.OrdinalIgnoreCase);
 
     private static GoReplaceDirective? ParseReplaceDirective(string line)
     {
@@ -206,7 +214,8 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
         string manifestPath,
         string line,
         DependencyInventoryState state,
-        List<(string ModulePath, string Version)> directPseudoVersions)
+        List<(string ModulePath, string Version)> directPseudoVersions,
+        bool suppressManifestHygieneFindings)
     {
         // Format: module/path [version]
         // or: module/path v1.2.3
@@ -255,7 +264,7 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
             false,
             metadata.Count > 0 ? metadata : null));
 
-        if (!isPinned && version != null)
+        if (!isPinned && version != null && !suppressManifestHygieneFindings)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP024",
@@ -269,7 +278,7 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
                 "Use exact versions with a committed go.sum for reproducible Go builds."));
         }
 
-        if (isPseudoVersion && !isIndirect && version is not null)
+        if (isPseudoVersion && !isIndirect && version is not null && !suppressManifestHygieneFindings)
         {
             directPseudoVersions.Add((modulePath, version));
         }

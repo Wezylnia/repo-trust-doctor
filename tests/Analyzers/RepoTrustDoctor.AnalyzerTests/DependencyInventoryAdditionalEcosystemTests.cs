@@ -46,6 +46,66 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_GoTestdataManifest_DoesNotReportManifestHygieneFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var manifestPath = Path.Combine(
+            fixture.Path,
+            "src",
+            "cmd",
+            "vet",
+            "testdata",
+            "stdversion",
+            "go.mod");
+        Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
+        File.WriteAllText(manifestPath, """
+        module example.com/testfixture
+
+        go 1.22
+
+        require (
+            example.com/nonexact latest
+            example.com/pseudo v0.0.0-20260507013755-92041b743c96
+        )
+
+        replace example.com/nonexact => example.com/fork/nonexact v1.2.3
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId is "TRUST-DEP022" or "TRUST-DEP023" or "TRUST-DEP024" or "TRUST-DEP025");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GoCryptotestManifest_DoesNotReportManifestHygieneFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var manifestPath = Path.Combine(
+            fixture.Path,
+            "src",
+            "crypto",
+            "internal",
+            "cryptotest",
+            "wycheproof",
+            "_schema",
+            "go.mod");
+        Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
+        File.WriteAllText(manifestPath, """
+        module crypto/internal/cryptotest/wycheproof/_schema
+
+        go 1.22
+
+        require github.com/c2sp/wycheproof v0.0.0-20260606153636-6d7cccd0fcb1
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId is "TRUST-DEP022" or "TRUST-DEP025");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_GoModWithReplaceDirective_ReportsDep023()
     {
         using var fixture = TemporaryRepository.Create();

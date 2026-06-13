@@ -330,6 +330,8 @@ Recommendation: verify whether the package should come from a private registry.
 - Default severity: Medium
 - Default confidence: High
 
+Go manifest hygiene findings (`TRUST-DEP022`, `TRUST-DEP023`, `TRUST-DEP024`, and `TRUST-DEP025`) are suppressed for low-signal fixture, testdata, example, documentation, and Go crypto test-vector paths. Those `go.mod` files are still recorded in the dependency inventory, but they are not treated as production dependency management decisions.
+
 Detects Go repositories with `go.mod` but no `go.sum` alongside it.
 
 Why it matters: without `go.sum`, Go module builds are not cryptographically verifiable and dependency versions can change without detection.
