@@ -42,6 +42,8 @@ Existing report files are not overwritten unless `--force` is supplied.
 
 Trust profile values are normalized by the CLI. Active values are `Personal`, `ProductionDependency`, and `SecuritySensitiveDependency`; common aliases such as `production`, `enterprise`, and `security` are also accepted. Legacy `ci-cd` and `container` aliases remain accepted for compatibility and map to `ProductionDependency`.
 
+For larger false-positive and false-negative validation passes, use the repeatable benchmark workflow in [Quality Validation](quality-validation.md).
+
 ## Local API Smoke Test
 
 ```powershell
