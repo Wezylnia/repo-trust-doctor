@@ -32,7 +32,7 @@ The analyzer is static-only and does not run workflow jobs.
 
 Searches candidate text/config/source files for high-signal secret-like patterns and sensitive files. Evidence is redacted so reports do not become a new secret exposure path.
 
-The scanner avoids binary files, oversized text files, and common generated, vendored, fixture, example, test, and documentation paths. Sensitive files such as `.env`, `.npmrc`, `.pypirc`, private-key extensions, and credential files are still surfaced when they appear in production paths.
+The scanner avoids binary files, oversized text files, and common generated, vendored, fixture, example, test, and documentation paths. Sensitive files such as `.env`, private-key extensions, and credential files are still surfaced when they appear in production paths. Registry config files such as `.npmrc` and `.pypirc` are scanned for token values without being reported solely for existing.
 
 For very large repositories, the quick scan prioritizes sensitive filenames and configuration files, then scans a bounded number of lower-priority source files. When that source budget is reached, the module completes with a warning and metrics instead of timing out.
 

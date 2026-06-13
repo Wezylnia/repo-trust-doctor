@@ -539,6 +539,36 @@ public sealed class SecretQuickScanAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_NpmrcWithoutToken_DoesNotReportSensitiveFile()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".npmrc"), """
+        legacy-peer-deps=true
+        registry=https://registry.npmjs.org/
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-SECRET001");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-SECRET011");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PypiRegistryCallSite_DoesNotReportRegistryToken()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "commands.ts"), """
+        const response = await fetch(url, { method: 'GET', callSite: 'mcp-pypi-registry' });
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-SECRET011");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ReportsGenericApiKey()
     {
         using var fixture = TemporaryRepository.Create();

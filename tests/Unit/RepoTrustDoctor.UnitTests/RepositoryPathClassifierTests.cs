@@ -23,6 +23,7 @@ public sealed class RepositoryPathClassifierTests
     [InlineData(".citools/src/golangci-lint/go.mod", RepositoryPathClassification.Tooling)]
     [InlineData(".azure-pipelines/templates/test.yml", RepositoryPathClassification.Tooling)]
     [InlineData("third_party/go/pkg/client.go", RepositoryPathClassification.Vendored)]
+    [InlineData("deps/openssl/openssl/apps/server.pem", RepositoryPathClassification.Vendored)]
     public void Classify_ReturnsExpectedFlags(string path, RepositoryPathClassification expected)
     {
         var classification = RepositoryPathClassifier.Classify(path);

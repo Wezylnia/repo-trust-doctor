@@ -128,6 +128,7 @@ public static class RepositoryPathClassifier
         }
 
         if (HasSegment(normalized, "vendor") ||
+            HasSegment(normalized, "deps") ||
             HasSegment(normalized, "third_party") ||
             HasSegment(normalized, "third-party") ||
             HasSegment(normalized, "thirdparty") ||

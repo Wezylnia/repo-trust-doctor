@@ -7,7 +7,8 @@ namespace RepoTrustDoctor.Analyzers.Secrets;
 public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 {
     private const int DefaultMaxSourceContentScanFiles = 2500;
-    private static readonly string[] SensitiveFileNames = [".env", ".env.local", ".env.production", ".env.development", ".npmrc", ".pypirc", "id_rsa", ".git-credentials", ".netrc"];
+    private static readonly string[] SensitiveFileNames = [".env", ".env.local", ".env.production", ".env.development", "id_rsa", ".git-credentials", ".netrc"];
+    private static readonly string[] CredentialConfigFileNames = [".npmrc", ".pypirc"];
     private static readonly string[] SensitiveExtensions = [".pem", ".key", ".ppk", ".p12", ".pfx"];
     private static readonly string[] SourceCodeExtensions =
     [
@@ -254,7 +255,8 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             {
                 yield return new SecretCandidateFile(file, relativePath, fileName, extension, SecretCandidateKind.Sensitive);
             }
-            else if (CandidateTextExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            else if (CredentialConfigFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) ||
+                     CandidateTextExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
             {
                 yield return new SecretCandidateFile(
                     file,
@@ -541,7 +543,7 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}")]
     private static partial Regex JwtTokenPattern();
 
-    [GeneratedRegex(@"(?i)(npm_[A-Za-z0-9]{36}|pypi-[A-Za-z0-9]+)")]
+    [GeneratedRegex(@"(?i)(npm_[A-Za-z0-9]{36}|pypi-[A-Za-z0-9_.-]{32,})")]
     private static partial Regex RegistryTokenPattern();
 
     [GeneratedRegex(@"(?i)(api[_-]?key|api[_-]?secret|apikey)\s*[:=]\s*['""]?[A-Za-z0-9_\-]{16,}['""]?")]

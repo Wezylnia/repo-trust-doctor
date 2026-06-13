@@ -88,7 +88,7 @@ Recommendation: manually verify the finding, revoke or rotate the webhook URL if
 
 ## Candidate Files And False-Positive Suppression
 
-The secret scanner reads likely text/config/source candidates rather than every repository file. It always considers sensitive filenames and key/certificate extensions, plus common source and configuration formats such as `.cs`, `.js`, `.ts`, `.py`, `.go`, `.java`, `.php`, `.rb`, `.yml`, `.yaml`, `.json`, `.toml`, `.properties`, `.tf`, `.sh`, `.ps1`, `.cmd`, `.gradle`, and `.txt`.
+The secret scanner reads likely text/config/source candidates rather than every repository file. It always considers sensitive filenames and key/certificate extensions, registry config files such as `.npmrc` and `.pypirc`, plus common source and configuration formats such as `.cs`, `.js`, `.ts`, `.py`, `.go`, `.java`, `.php`, `.rb`, `.yml`, `.yaml`, `.json`, `.toml`, `.properties`, `.tf`, `.sh`, `.ps1`, `.cmd`, `.gradle`, and `.txt`.
 
 Large repositories are scanned in priority order. Sensitive filenames and configuration files are analyzed before general source files. Source-file content scanning is bounded for the quick scan; if the budget is reached, the analyzer returns `CompletedWithWarnings` with `secret.source.content.scanned.count` and `secret.source.content.skipped.count` metrics. This keeps broad repository scans responsive while preserving the highest-signal secret locations.
 
@@ -127,7 +127,7 @@ To avoid noise in automated testing, vendored code, generated files, and documen
 - `external/`
 - `node_modules/`
 
-Markdown files under `docs/` also suppress JWT-token examples, because many security tutorials include sample JWTs. Text documentation files under `docs/` and `documentation/` suppress private-key block examples when they are clearly documentation content. Sensitive-looking certificate or environment filenames under documentation paths are also suppressed to avoid flagging committed tutorial artifacts such as sample `.p12` files. Note that files under these paths are still checked for general repository metadata or container settings where appropriate, but secret rules will not fire.
+Markdown files under `docs/` also suppress JWT-token examples, because many security tutorials include sample JWTs. Text documentation files under `docs` and `documentation` suppress private-key block examples when they are clearly documentation content. Sensitive-looking certificate or environment filenames under documentation paths are also suppressed to avoid flagging committed tutorial artifacts such as sample `.p12` files. `.npmrc` and `.pypirc` are scanned for real registry token patterns but do not trigger `TRUST-SECRET001` merely because the config file exists. Note that files under these paths are still checked for general repository metadata or container settings where appropriate, but secret rules will not fire.
 
 ## Generic API Key Filtering (TRUST-SECRET012)
 
