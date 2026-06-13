@@ -237,9 +237,12 @@ public sealed partial class GitHubActionsBasicAnalyzer
         value.Contains("changeme", StringComparison.OrdinalIgnoreCase) ||
         value.Contains("replace-me", StringComparison.OrdinalIgnoreCase);
 
-    private static void CheckPrTargetSecretsExposure(string content, string relativePath, List<Finding> findings)
+    private static bool CheckPrTargetSecretsExposure(string content, string relativePath, List<Finding> findings)
     {
-        if (!PullRequestTargetPattern().IsMatch(content)) return;
+        if (!PullRequestTargetPattern().IsMatch(content))
+        {
+            return false;
+        }
 
         // Flag if PR target also checks out code or uses secrets
         var hasCheckout = UsesCheckoutPattern().IsMatch(content);
@@ -251,7 +254,10 @@ public sealed partial class GitHubActionsBasicAnalyzer
             AddFinding(findings, "TRUST-GHA015", "pull_request_target exposes secrets",
                 Severity.High, "Avoid checking out untrusted PR code or using secrets in pull_request_target workflows.",
                 relativePath, "pull_request_target workflow checks out code or uses secrets.");
+            return true;
         }
+
+        return false;
     }
 
     private static void CheckWorkflowWritePermissions(string content, string relativePath, List<Finding> findings)

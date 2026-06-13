@@ -79,6 +79,8 @@ A critical source file uses broad exception handling such as `catch (Exception)`
 
 Recommendation: catch specific exception types and preserve diagnostic context.
 
+Noise control: handlers that immediately rethrow, wrap the exception into a domain-specific failure, log with exception context, or explicitly fail a module command are treated as bounded diagnostic boundaries instead of hidden failures.
+
 ### `TRUST-CODE007` - Critical code has low or missing coverage
 
 - Category: `Codebase`

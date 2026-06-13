@@ -130,6 +130,81 @@ public sealed class CodeCriticalityAnalyzerTests
     }
 
     [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotReportWrappedRethrowAsBroad()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "auth");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "BeanFactory.java"), """
+        public final class BeanFactory {
+            public Object authenticate(String password) {
+                try {
+                    return createBean(password);
+                }
+                catch (Throwable ex) {
+                    throw new BeanCreationException("Authentication bean failed", ex);
+                }
+            }
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE006");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.DoesNotContain(Assert.Single(artifact.Files).Reasons, reason => reason == CodeCriticalityReason.BroadExceptionHandling);
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotReportPythonLoggerExceptionAsBroad()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "auth");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "password_reset.py"), """
+        def send_password_reset_email(password):
+            try:
+                authenticate(password)
+                mailer.send(password)
+            except Exception:
+                logger.exception("Failed to send password reset email")
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE006");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.DoesNotContain(Assert.Single(artifact.Files).Reasons, reason => reason == CodeCriticalityReason.BroadExceptionHandling);
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotReportExplicitModuleFailureAsBroad()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "modules");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "git.py"), """
+        def read_token_file(path, module):
+            try:
+                with open(path) as handle:
+                    access_token = handle.read()
+                    database.save(access_token)
+                    return access_token
+            except Exception:
+                module.fail_json(msg="Unable to read access_token file")
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE006");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.DoesNotContain(Assert.Single(artifact.Files).Reasons, reason => reason == CodeCriticalityReason.BroadExceptionHandling);
+    }
+
+    [Fact]
     public async Task CodeCriticalityAnalyzer_DoesNotTreatInfrastructureTypeNamesAsSecretOrCryptoSignals()
     {
         using var fixture = TemporaryRepository.Create();

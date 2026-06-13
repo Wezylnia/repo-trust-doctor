@@ -36,6 +36,8 @@ Why it matters: this trigger can run with elevated repository context and can be
 
 Recommendation: review usage carefully and avoid running untrusted pull request code with repository privileges.
 
+Noise control: when the same workflow also checks out pull request code or uses secrets in a risky run context, the analyzer reports the more specific `TRUST-GHA015` finding instead of also emitting this general trigger finding.
+
 ## TRUST-GHA004: Workflow Pipes Downloaded Scripts Into a Shell
 
 - Category: CI/CD

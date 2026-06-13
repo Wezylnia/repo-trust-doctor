@@ -479,9 +479,11 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 .Skip(catchLineIndex)
                 .Take(BroadExceptionLookaheadLines));
 
-        return block.Contains("throw;", StringComparison.OrdinalIgnoreCase) ||
-               block.Contains("logerror", StringComparison.OrdinalIgnoreCase) ||
-               block.Contains("scanlifecyclestate.failed", StringComparison.OrdinalIgnoreCase);
+        return ThrowsOrReraisesExceptionPattern().IsMatch(block) ||
+               DiagnosticExceptionLoggingPattern().IsMatch(block) ||
+               block.Contains("scanlifecyclestate.failed", StringComparison.OrdinalIgnoreCase) ||
+               block.Contains("fail_json(", StringComparison.OrdinalIgnoreCase) ||
+               block.Contains("response_for_exception", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Finding CreateCriticalityFinding(
@@ -526,6 +528,12 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"catch\s*\(\s*(Exception|System\.Exception|Throwable|Error)\b|except\s+(Exception|BaseException)\b|catch\s*\(\s*err\s*\)", RegexOptions.IgnoreCase)]
     private static partial Regex BroadExceptionRegex();
+
+    [GeneratedRegex(@"^\s*(?:throw\s*(?:;|new\b|[A-Za-z_][\w.]*\s*;)|raise(?:\s|$))", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex ThrowsOrReraisesExceptionPattern();
+
+    [GeneratedRegex(@"\b(?:logger|logging|log)\.exception\s*\(|\blogger\.logerror\s*\(|\blogerror\s*\(", RegexOptions.IgnoreCase)]
+    private static partial Regex DiagnosticExceptionLoggingPattern();
 
     [GeneratedRegex("\"\"\"[\\s\\S]*?\"\"\"|@\"(?:[^\"]|\"\")*\"|\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|`(?:\\\\.|[^`\\\\])*`", RegexOptions.Multiline)]
     private static partial Regex QuotedTextRegex();

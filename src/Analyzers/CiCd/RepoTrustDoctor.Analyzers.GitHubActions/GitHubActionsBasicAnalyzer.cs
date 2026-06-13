@@ -75,10 +75,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
                 AddFinding(findings, "TRUST-GHA002", "Workflow uses permissions: write-all", Severity.High, "Replace write-all with the narrowest permissions required by each job.", relativePath, "permissions: write-all was found.", GetLineNumber(content, writeAllMatch.Index));
             }
 
-            if (PullRequestTargetPattern().Match(content) is { Success: true } pullRequestTargetMatch)
-            {
-                AddFinding(findings, "TRUST-GHA003", "Workflow uses pull_request_target", Severity.High, "Review pull_request_target usage carefully and avoid running untrusted pull request code with repository privileges.", relativePath, "pull_request_target trigger was found.", GetLineNumber(content, pullRequestTargetMatch.Index));
-            }
+            var pullRequestTargetMatch = PullRequestTargetPattern().Match(content);
 
             var curlPipeShellMatch = CurlPipeShellPattern().Match(content);
             var wgetPipeShellMatch = WgetPipeShellPattern().Match(content);
@@ -122,7 +119,11 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
             CheckTokenScope(content, relativePath, findings);
             CheckHardcodedSecretsInEnv(content, relativePath, findings);
             CheckMatrixInjection(content, relativePath, findings);
-            CheckPrTargetSecretsExposure(content, relativePath, findings);
+            var hasSpecificPrTargetFinding = CheckPrTargetSecretsExposure(content, relativePath, findings);
+            if (pullRequestTargetMatch.Success && !hasSpecificPrTargetFinding)
+            {
+                AddFinding(findings, "TRUST-GHA003", "Workflow uses pull_request_target", Severity.High, "Review pull_request_target usage carefully and avoid running untrusted pull request code with repository privileges.", relativePath, "pull_request_target trigger was found.", GetLineNumber(content, pullRequestTargetMatch.Index));
+            }
             CheckWorkflowWritePermissions(content, relativePath, findings);
             CheckBroadCachePaths(content, relativePath, findings);
             CheckJobContainerLatest(content, relativePath, findings);
