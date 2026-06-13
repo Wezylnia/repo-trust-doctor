@@ -227,6 +227,48 @@ public sealed class DependencyInventoryAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_NuGetMsBuildPropertyExpansion_IsBounded()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var longValue = new string('1', 512);
+        var expandingValue = string.Concat(Enumerable.Repeat("$(LongVersion)", 8));
+        File.WriteAllText(Path.Combine(fixture.Path, "packages.lock.json"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "Versions.props"), $"""
+        <Project>
+          <PropertyGroup>
+            <SafeVersion>2.9.3</SafeVersion>
+            <LongVersion>{longValue}</LongVersion>
+            <ExplosiveVersion>{expandingValue}</ExplosiveVersion>
+          </PropertyGroup>
+        </Project>
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "Directory.Packages.props"), """
+        <Project>
+          <ItemGroup>
+            <PackageVersion Include="Safe.Package" Version="$(SafeVersion)" />
+            <PackageVersion Include="Generated.Package" Version="$(ExplosiveVersion)" />
+          </ItemGroup>
+        </Project>
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "Project.csproj"), """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <ItemGroup>
+            <PackageReference Include="Safe.Package" />
+            <PackageReference Include="Generated.Package" />
+          </ItemGroup>
+        </Project>
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(inventory.Packages, package => package.Name == "Safe.Package" && package.Version == "2.9.3" && package.IsVersionPinned);
+        Assert.Contains(inventory.Packages, package => package.Name == "Generated.Package" && package.Version == "$(ExplosiveVersion)" && !package.IsVersionPinned);
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DEP004" && finding.Message.Contains("Generated.Package", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_NuGetDynamicPackageReferenceNames_AreNotRecordedAsPackages()
     {
         using var fixture = TemporaryRepository.Create();

@@ -1,5 +1,6 @@
-using System.Xml.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
 
@@ -7,6 +8,11 @@ namespace RepoTrustDoctor.Analyzers.DependencyInventory;
 
 internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
 {
+    private const int MaxResolvedMsBuildValueLength = 2048;
+    private static readonly Regex MsBuildPropertyReferencePattern = new(
+        @"\$\((?<name>[A-Za-z_][A-Za-z0-9_.-]*)\)",
+        RegexOptions.CultureInvariant);
+
     public void Collect(AnalysisContext context, DependencyInventoryState state, CancellationToken cancellationToken)
     {
         var projects = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.csproj").ToArray();
@@ -252,12 +258,17 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
 
             var name = property.Name.LocalName;
             var value = property.Value.Trim();
-            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(value))
+            if (string.IsNullOrWhiteSpace(name) ||
+                string.IsNullOrWhiteSpace(value) ||
+                value.Length > MaxResolvedMsBuildValueLength)
             {
                 continue;
             }
 
-            properties[name] = ResolveMsBuildValue(value, properties) ?? value;
+            if (ResolveMsBuildValue(value, properties) is { Length: <= MaxResolvedMsBuildValueLength } resolved)
+            {
+                properties[name] = resolved;
+            }
         }
     }
 
@@ -271,10 +282,18 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
         var resolved = value.Trim();
         for (var i = 0; i < 5; i++)
         {
-            var updated = Regex.Replace(
-                resolved,
-                @"\$\((?<name>[A-Za-z_][A-Za-z0-9_.-]*)\)",
-                match => properties.TryGetValue(match.Groups["name"].Value, out var replacement) ? replacement : match.Value);
+            if (resolved.Length > MaxResolvedMsBuildValueLength ||
+                !resolved.Contains("$(", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            var updated = ExpandMsBuildPropertiesOnce(resolved, properties);
+            if (updated is null)
+            {
+                return value.Trim();
+            }
+
             if (string.Equals(updated, resolved, StringComparison.Ordinal))
             {
                 break;
@@ -284,6 +303,43 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
         }
 
         return resolved;
+    }
+
+    private static string? ExpandMsBuildPropertiesOnce(string value, IReadOnlyDictionary<string, string> properties)
+    {
+        var builder = new StringBuilder(value.Length);
+        var lastIndex = 0;
+        var changed = false;
+        foreach (Match match in MsBuildPropertyReferencePattern.Matches(value))
+        {
+            builder.Append(value, lastIndex, match.Index - lastIndex);
+            var propertyName = match.Groups["name"].Value;
+            if (properties.TryGetValue(propertyName, out var replacement) &&
+                replacement.Length <= MaxResolvedMsBuildValueLength)
+            {
+                builder.Append(replacement);
+                changed = true;
+            }
+            else
+            {
+                builder.Append(match.Value);
+            }
+
+            if (builder.Length > MaxResolvedMsBuildValueLength)
+            {
+                return null;
+            }
+
+            lastIndex = match.Index + match.Length;
+        }
+
+        builder.Append(value, lastIndex, value.Length - lastIndex);
+        if (!changed)
+        {
+            return value;
+        }
+
+        return builder.Length <= MaxResolvedMsBuildValueLength ? builder.ToString() : null;
     }
 
     private static void ReadNuGetSources(AnalysisContext context, string configPath, DependencyInventoryState state)
