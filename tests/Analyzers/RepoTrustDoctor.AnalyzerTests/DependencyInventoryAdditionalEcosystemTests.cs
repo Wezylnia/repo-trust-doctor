@@ -129,6 +129,65 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_GoModWithLocalReplaceBlock_DoesNotReportDep023()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var manifestPath = Path.Combine(fixture.Path, "staging", "src", "k8s.io", "api", "go.mod");
+        Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(manifestPath)!, "go.sum"), "");
+        File.WriteAllText(manifestPath, """
+        module k8s.io/api
+
+        go 1.22
+
+        require k8s.io/apimachinery v0.0.0
+
+        replace (
+            k8s.io/apimachinery => ../apimachinery
+            k8s.io/streaming => ../streaming
+        )
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP023");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GoModWithMixedReplaceBlock_ReportsOnlyExternalReplaces()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var manifestDirectory = Path.Combine(fixture.Path, "modules", "app");
+        Directory.CreateDirectory(manifestDirectory);
+        File.WriteAllText(Path.Combine(manifestDirectory, "go.sum"), "");
+        File.WriteAllText(Path.Combine(manifestDirectory, "go.mod"), """
+        module example.com/app
+
+        go 1.22
+
+        require (
+            github.com/gin-gonic/gin v1.9.1
+            example.com/local v0.0.0
+        )
+
+        replace (
+            github.com/gin-gonic/gin => github.com/fork/gin v1.9.1-patched
+            example.com/local => ../local
+        )
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP023");
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Contains("github.com/gin-gonic/gin => github.com/fork/gin", evidence.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("replace (", evidence.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("example.com/local", evidence.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_GoModWithMultipleReplaceDirectives_AggregatesDep023PerManifest()
     {
         using var fixture = TemporaryRepository.Create();

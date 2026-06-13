@@ -43,6 +43,7 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
 
         var lines = DependencyInventorySupport.SplitLines(content);
         var inRequireBlock = false;
+        var inReplaceBlock = false;
         string? modulePath = null;
         var replaceDirectives = new List<string>();
         var localReplacementModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -69,6 +70,18 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
                 continue;
             }
 
+            if (line is "replace (" or "replace(")
+            {
+                inReplaceBlock = true;
+                continue;
+            }
+
+            if (inReplaceBlock && line == ")")
+            {
+                inReplaceBlock = false;
+                continue;
+            }
+
             if (line.StartsWith("module ", StringComparison.Ordinal))
             {
                 modulePath = line["module ".Length..].Trim();
@@ -86,17 +99,15 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
                 ParseSingleRequire(relativePath, line, state, directPseudoVersions, suppressManifestHygieneFindings);
             }
 
+            if (inReplaceBlock)
+            {
+                AddReplaceDirective(context.RepositoryPath, filePath, line, replaceDirectives, localReplacementModules);
+                continue;
+            }
+
             if (line.StartsWith("replace ", StringComparison.Ordinal))
             {
-                var replace = ParseReplaceDirective(line);
-                if (replace is not null &&
-                    IsLocalReplacementInsideRepository(context.RepositoryPath, filePath, replace.Target))
-                {
-                    localReplacementModules.Add(replace.ModulePath);
-                    continue;
-                }
-
-                replaceDirectives.Add(line);
+                AddReplaceDirective(context.RepositoryPath, filePath, line["replace ".Length..].Trim(), replaceDirectives, localReplacementModules);
             }
         }
 
@@ -133,9 +144,32 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
         DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath) ||
         RepositoryPathClassifier.Normalize(relativePath).Contains("/cryptotest/", StringComparison.OrdinalIgnoreCase);
 
-    private static GoReplaceDirective? ParseReplaceDirective(string line)
+    private static void AddReplaceDirective(
+        string repositoryPath,
+        string goModPath,
+        string directiveBody,
+        List<string> replaceDirectives,
+        HashSet<string> localReplacementModules)
     {
-        var body = line["replace ".Length..].Trim();
+        var normalizedBody = StripGoLineComment(directiveBody).Trim();
+        if (normalizedBody.Length == 0)
+        {
+            return;
+        }
+
+        var replace = ParseReplaceDirectiveBody(normalizedBody);
+        if (replace is not null &&
+            IsLocalReplacementInsideRepository(repositoryPath, goModPath, replace.Target))
+        {
+            localReplacementModules.Add(replace.ModulePath);
+            return;
+        }
+
+        replaceDirectives.Add(normalizedBody);
+    }
+
+    private static GoReplaceDirective? ParseReplaceDirectiveBody(string body)
+    {
         var split = body.Split(["=>"], StringSplitOptions.TrimEntries);
         if (split.Length != 2)
         {
@@ -150,6 +184,12 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
         }
 
         return new GoReplaceDirective(leftParts[0], rightParts[0]);
+    }
+
+    private static string StripGoLineComment(string line)
+    {
+        var commentIndex = line.IndexOf("//", StringComparison.Ordinal);
+        return commentIndex >= 0 ? line[..commentIndex] : line;
     }
 
     private static bool IsLocalReplacementInsideRepository(string repositoryPath, string goModPath, string target)

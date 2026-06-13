@@ -344,7 +344,7 @@ Recommendation: run `go mod tidy` and commit `go.sum` to the repository for repr
 - Default severity: Low
 - Default confidence: High
 
-Detects `replace` directives in `go.mod`. Multiple `replace` directives in the same manifest are aggregated into one finding with sample evidence so large Go workspaces do not flood reports with one finding per line. Local replacements that resolve inside the scanned repository are treated as monorepo wiring and are recorded in the inventory without emitting this finding.
+Detects `replace` directives in `go.mod`, including single-line directives and multi-line `replace (...)` blocks. Multiple `replace` directives in the same manifest are aggregated into one finding with sample evidence so large Go workspaces do not flood reports with one finding per line. Local replacements that resolve inside the scanned repository are treated as monorepo wiring and are recorded in the inventory without emitting this finding.
 
 Why it matters: replace directives override resolved module versions and can point to forks, local paths, or different module paths. They bypass normal module resolution and deserve manual review.
 
