@@ -142,6 +142,7 @@ public sealed class ScanOrchestrator
         var modules = new List<ScanModule>();
         var findings = new List<Finding>();
 
+        using var fileIndex = RepositoryFileSystem.UseFileIndex(repositoryPath);
         foreach (var analyzer in analyzers.Where(analyzer => analyzer.MinimumDepth <= depth))
         {
             var execution = await executor.ExecuteAsync(analyzer, context, cancellationToken);
