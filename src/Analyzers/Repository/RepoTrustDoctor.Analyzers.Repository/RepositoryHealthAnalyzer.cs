@@ -42,7 +42,7 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
     {
         var findings = new List<Finding>();
 
-        CheckRequiredFile(context.RepositoryPath, ["README.md", "README"], "TRUST-REPO001", "README is missing", "Add a README that explains the project purpose, installation, and basic usage.", findings, Severity.Medium);
+        CheckRequiredFile(context.RepositoryPath, ["README.md", "README.rst", "README.adoc", "README.txt", "README"], "TRUST-REPO001", "README is missing", "Add a README that explains the project purpose, installation, and basic usage.", findings, Severity.Medium);
         CheckRequiredFile(context.RepositoryPath, ["LICENSE", "LICENSE.md"], "TRUST-REPO002", "LICENSE is missing", "Add a license file so users can understand whether and how the project can be used.", findings, Severity.High);
         CheckRequiredFile(context.RepositoryPath, ["SECURITY.md", ".github/SECURITY.md"], "TRUST-REPO003", "SECURITY.md is missing", "Add SECURITY.md to explain how vulnerabilities should be reported.", findings, Severity.Low);
         CheckRequiredFile(context.RepositoryPath, ["CONTRIBUTING.md", ".github/CONTRIBUTING.md"], "TRUST-REPO004", "CONTRIBUTING.md is missing", "Add contribution guidance for maintainers and contributors.", findings, Severity.Info);
@@ -50,8 +50,8 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         CheckRequiredFile(context.RepositoryPath, [".github/CODEOWNERS", "CODEOWNERS"], "TRUST-REPO006", "CODEOWNERS is missing", "Add CODEOWNERS when ownership review should be explicit.", findings, Severity.Info);
         CheckRequiredFile(context.RepositoryPath, [".github/ISSUE_TEMPLATE", ".github/ISSUE_TEMPLATE.md"], "TRUST-REPO007", "Issue template is missing", "Add issue templates to collect enough information from users.", findings, Severity.Info);
         CheckRequiredFile(context.RepositoryPath, [".github/PULL_REQUEST_TEMPLATE.md", "PULL_REQUEST_TEMPLATE.md"], "TRUST-REPO008", "Pull request template is missing", "Add a pull request template to make review expectations clear.", findings, Severity.Info);
-        CheckRequiredFile(context.RepositoryPath, ["CHANGELOG.md", "CHANGELOG", "HISTORY.md", "RELEASES.md"], "TRUST-REPO009", "CHANGELOG is missing", "Add a changelog to document user-facing changes in each release.", findings, Severity.Info);
-        CheckRequiredFile(context.RepositoryPath, ["docs"], "TRUST-REPO013", "Documentation folder is missing", "Add a docs folder for architecture, usage, configuration, or operations documentation as the project grows.", findings, Severity.Info);
+        CheckRequiredFile(context.RepositoryPath, ["CHANGELOG.md", "CHANGELOG.rst", "CHANGES.md", "CHANGES.rst", "CHANGELOG", "HISTORY.md", "HISTORY.rst", "RELEASES.md"], "TRUST-REPO009", "CHANGELOG is missing", "Add a changelog to document user-facing changes in each release.", findings, Severity.Info);
+        CheckRequiredFile(context.RepositoryPath, ["docs", "doc", "documentation", "guides"], "TRUST-REPO013", "Documentation folder is missing", "Add a docs folder for architecture, usage, configuration, or operations documentation as the project grows.", findings, Severity.Info);
 
         var readmePath = MatchReadme(context.RepositoryPath);
         if (readmePath != null && RepositoryFileSystem.CanReadAsText(readmePath))
@@ -66,7 +66,7 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
 
     private static string? MatchReadme(string root)
     {
-        var paths = new[] { "README.md", "README" };
+        var paths = new[] { "README.md", "README.rst", "README.adoc", "README.txt", "README" };
         foreach (var p in paths)
         {
             var fullPath = Path.Combine(root, p);

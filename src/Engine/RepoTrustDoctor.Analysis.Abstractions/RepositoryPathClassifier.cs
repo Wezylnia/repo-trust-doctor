@@ -58,6 +58,9 @@ public static class RepositoryPathClassifier
             HasSegment(normalized, "testfiles") ||
             HasSegment(normalized, "testassets") ||
             HasSegment(normalized, "testcertificates") ||
+            HasSegment(normalized, "mock") ||
+            HasSegment(normalized, "mocks") ||
+            HasSegment(normalized, "_mock") ||
             ContainsToken(normalized, "fixture"))
         {
             classification |= RepositoryPathClassification.Fixture;
@@ -67,13 +70,17 @@ public static class RepositoryPathClassifier
             HasSegment(normalized, "example") ||
             HasSegment(normalized, "samples") ||
             HasSegment(normalized, "sample") ||
+            HasSegment(normalized, "guestbook") ||
             HasSegment(normalized, "playground"))
         {
             classification |= RepositoryPathClassification.Example;
         }
 
         if (HasSegment(normalized, "docs") ||
-            HasSegment(normalized, "documentation"))
+            HasSegment(normalized, "doc") ||
+            HasSegment(normalized, "documentation") ||
+            HasSegment(normalized, "changelogs") ||
+            HasSegment(normalized, "guides"))
         {
             classification |= RepositoryPathClassification.Documentation;
         }
@@ -82,6 +89,7 @@ public static class RepositoryPathClassifier
             HasSegment(normalized, "gen") ||
             HasSegment(normalized, "out") ||
             HasSegment(normalized, "dist") ||
+            HasSegment(normalized, "artifacts") ||
             ContainsToken(normalized, "generated"))
         {
             classification |= RepositoryPathClassification.Generated;
@@ -112,6 +120,7 @@ public static class RepositoryPathClassifier
             HasSegment(normalized, "build") ||
             HasSegment(normalized, "ci") ||
             HasSegment(normalized, ".github") ||
+            HasSegment(normalized, ".azure-pipelines") ||
             HasSegment(normalized, "build-tools") ||
             HasSegment(normalized, "build-tools-internal"))
         {
@@ -119,6 +128,10 @@ public static class RepositoryPathClassifier
         }
 
         if (HasSegment(normalized, "vendor") ||
+            HasSegment(normalized, "third_party") ||
+            HasSegment(normalized, "third-party") ||
+            HasSegment(normalized, "thirdparty") ||
+            HasSegment(normalized, "external") ||
             HasSegment(normalized, "node_modules") ||
             normalized.Contains("/wwwroot/lib/", StringComparison.OrdinalIgnoreCase) ||
             normalized.Contains("/lib/jquery/", StringComparison.OrdinalIgnoreCase))

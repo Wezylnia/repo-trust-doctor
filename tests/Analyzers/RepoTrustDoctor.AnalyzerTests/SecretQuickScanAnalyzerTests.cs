@@ -161,6 +161,23 @@ public sealed class SecretQuickScanAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_SkipsSecretFindings_InVendoredPaths()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var fakeToken = "ghp_" + "abcdefghijklmnopqrstuvwxyz123456";
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "vendor", "pkg"));
+        File.WriteAllText(Path.Combine(fixture.Path, "vendor", "pkg", "config.txt"), $"""
+        token={fakeToken}
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-SECRET003");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_SkipsSensitiveFileNames_InExampleFixturePaths()
     {
         using var fixture = TemporaryRepository.Create();

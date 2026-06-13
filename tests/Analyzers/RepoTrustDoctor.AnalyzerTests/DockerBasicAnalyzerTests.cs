@@ -262,6 +262,8 @@ public sealed class DockerBasicAnalyzerTests
     [Theory]
     [InlineData("railties/lib/rails/generators/rails/app/templates/Dockerfile.tt")]
     [InlineData("railties/test/fixtures/Dockerfile.test")]
+    [InlineData(".devcontainer/Dockerfile")]
+    [InlineData("tools/devcontainer/Dockerfile")]
     [InlineData("integration-test/app/Dockerfile")]
     [InlineData("smoke-test/app/Dockerfile")]
     public async Task AnalyzeAsync_SkipsTemplateAndFixtureDockerfiles(string relativePath)

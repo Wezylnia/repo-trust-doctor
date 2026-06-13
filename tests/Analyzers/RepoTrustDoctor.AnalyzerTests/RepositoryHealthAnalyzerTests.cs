@@ -19,6 +19,18 @@ public sealed class RepositoryHealthAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_DoesNotReportMissingReadme_WhenReadmeRstExists()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "README.rst"), "Project\n=======\n\nGetting started and usage.");
+
+        var analyzer = new RepositoryHealthAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REPO001");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ReportsMissingChangelog()
     {
         using var fixture = TemporaryRepository.Create();
@@ -99,6 +111,19 @@ public sealed class RepositoryHealthAnalyzerTests
     {
         using var fixture = TemporaryRepository.Create();
         Directory.CreateDirectory(Path.Combine(fixture.Path, "docs"));
+        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), "# Project\n## Getting Started\nInstall and use.");
+
+        var analyzer = new RepositoryHealthAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REPO013");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportMissingDocsFolder_WhenGuidesExists()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "guides"));
         File.WriteAllText(Path.Combine(fixture.Path, "README.md"), "# Project\n## Getting Started\nInstall and use.");
 
         var analyzer = new RepositoryHealthAnalyzer();

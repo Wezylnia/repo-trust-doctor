@@ -6,8 +6,19 @@ namespace RepoTrustDoctor.Analyzers.Secrets;
 
 public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 {
-    private static readonly string[] SensitiveFileNames = [".env", ".env.production", "id_rsa", ".git-credentials", ".netrc"];
+    private static readonly string[] SensitiveFileNames = [".env", ".env.local", ".env.production", ".env.development", ".npmrc", ".pypirc", "id_rsa", ".git-credentials", ".netrc"];
     private static readonly string[] SensitiveExtensions = [".pem", ".key", ".ppk", ".p12", ".pfx"];
+    private static readonly string[] CandidateTextExtensions =
+    [
+        ".cs", ".fs", ".vb",
+        ".js", ".jsx", ".ts", ".tsx",
+        ".py", ".go", ".java", ".kt", ".rs", ".rb", ".php", ".swift",
+        ".yml", ".yaml", ".json", ".toml", ".xml", ".props", ".targets",
+        ".properties", ".ini", ".conf", ".config", ".cfg", ".txt",
+        ".tf", ".tfvars", ".hcl",
+        ".sh", ".bash", ".zsh", ".ps1", ".cmd", ".bat",
+        ".gradle", ".kts"
+    ];
 
     public string Id => "secret-quick-scan";
 
@@ -65,7 +76,6 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
                 }
 
                 findings.Add(CreateFinding("TRUST-SECRET001", "Sensitive-looking file is committed", Severity.High, Confidence.High, relativePath, $"Sensitive-looking file '{fileName}' exists."));
-                continue;
             }
 
             if (!RepositoryFileSystem.CanReadAsText(file))
@@ -161,7 +171,23 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 
     private static IEnumerable<string> EnumerateCandidateFiles(string root)
     {
-        return RepositoryFileSystem.EnumerateFiles(root);
+        foreach (var file in RepositoryFileSystem.EnumerateFiles(root))
+        {
+            var relativePath = Path.GetRelativePath(root, file).Replace('\\', '/');
+            if (RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath))
+            {
+                continue;
+            }
+
+            var fileName = Path.GetFileName(file);
+            var extension = Path.GetExtension(file);
+            if (SensitiveFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) ||
+                SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase) ||
+                CandidateTextExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            {
+                yield return file;
+            }
+        }
     }
 
     private static int GetLineNumber(string content, int matchIndex)

@@ -160,6 +160,10 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
                relativePath.StartsWith("fixtures/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("/templates/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.StartsWith("templates/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith(".devcontainer/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/.devcontainer/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.StartsWith("devcontainer/", StringComparison.OrdinalIgnoreCase) ||
+               relativePath.Contains("/devcontainer/", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("integration-test", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("smoke-test", StringComparison.OrdinalIgnoreCase) ||
                relativePath.Contains("dockertest", StringComparison.OrdinalIgnoreCase) ||

@@ -69,6 +69,29 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_GoModWithMultipleReplaceDirectives_AggregatesDep023PerManifest()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.sum"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), """
+        module example.com/mymodule
+
+        go 1.22
+
+        replace github.com/gin-gonic/gin => github.com/fork/gin v1.9.1-patched
+        replace github.com/example/one => ../one
+        replace github.com/example/two => ../two
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP023");
+        Assert.Contains("3 replace directives", finding.Message, StringComparison.Ordinal);
+        Assert.Contains("github.com/gin-gonic/gin", finding.Evidence[0].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_GoModExactPinnedVersions_AreRecorded()
     {
         using var fixture = TemporaryRepository.Create();
@@ -115,6 +138,30 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
         Assert.Contains("github.com/example/lib", finding.Message, StringComparison.Ordinal);
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP024");
         Assert.Contains(GetInventory(result).Packages, p => p.Name == "github.com/example/lib" && p.IsVersionPinned);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GoModWithMultipleDirectPseudoVersions_AggregatesDep025PerManifest()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.sum"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), """
+        module example.com/mymodule
+
+        go 1.22
+
+        require (
+            github.com/example/lib v0.0.0-20240115120000-abcdef123456
+            github.com/example/other v1.2.3-20240115120000-bbcdef123456
+        )
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP025");
+        Assert.Contains("2 direct dependencies", finding.Message, StringComparison.Ordinal);
+        Assert.Contains("github.com/example/lib", finding.Evidence[0].Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -452,6 +499,7 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
         using var fixture = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fixture.Path, "composer.json"), """
         {
+            "type": "project",
             "require": {
                 "php": ">=8.1",
                 "monolog/monolog": "^3.0"
@@ -488,12 +536,60 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
     }
 
     [Fact]
-    public async Task AnalyzeAsync_ComposerNonExactConstraint_ReportsDep032()
+    public async Task AnalyzeAsync_ComposerLibraryWithoutComposerLock_DoesNotReportApplicationLockFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.json"), """
+        {
+            "name": "vendor/library",
+            "require": {
+                "monolog/monolog": "^3.0"
+            }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId is "TRUST-DEP031" or "TRUST-DEP032");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ComposerNonExactConstraintsWithoutLock_AggregatesDep032()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.json"), """
+        {
+            "type": "project",
+            "require": {
+                "php": ">=8.1",
+                "ext-json": "*",
+                "monolog/monolog": "^3.0"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "~10.0"
+            }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP032");
+        var evidence = Assert.Single(finding.Evidence);
+        Assert.Contains("monolog/monolog", evidence.Message, StringComparison.Ordinal);
+        Assert.Contains("phpunit/phpunit", evidence.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("ext-json", evidence.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ComposerNonExactConstraintsWithLock_DoNotReportDep032()
     {
         using var fixture = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fixture.Path, "composer.lock"), "{}");
         File.WriteAllText(Path.Combine(fixture.Path, "composer.json"), """
         {
+            "type": "project",
             "require": {
                 "monolog/monolog": "^3.0"
             },
@@ -506,8 +602,7 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
         var analyzer = new DependencyInventoryAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
 
-        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP032" && f.Message.Contains("monolog/monolog", StringComparison.Ordinal));
-        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP032" && f.Message.Contains("phpunit/phpunit", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP032");
     }
 
     [Fact]

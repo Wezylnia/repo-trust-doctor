@@ -43,6 +43,8 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
         var lines = DependencyInventorySupport.SplitLines(content);
         var inRequireBlock = false;
         string? modulePath = null;
+        var replaceDirectives = new List<string>();
+        var directPseudoVersions = new List<(string ModulePath, string Version)>();
 
         foreach (var rawLine in lines)
         {
@@ -73,29 +75,23 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
 
             if (line.StartsWith("require ", StringComparison.Ordinal))
             {
-                ParseSingleRequire(relativePath, line["require ".Length..].Trim(), state);
+                ParseSingleRequire(relativePath, line["require ".Length..].Trim(), state, directPseudoVersions);
                 continue;
             }
 
             if (inRequireBlock)
             {
-                ParseSingleRequire(relativePath, line, state);
+                ParseSingleRequire(relativePath, line, state, directPseudoVersions);
             }
 
             if (line.StartsWith("replace ", StringComparison.Ordinal))
             {
-                state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
-                    "TRUST-DEP023",
-                    "Go module uses replace directive",
-                    Severity.Low,
-                    Confidence.High,
-                    "The go.mod file contains a replace directive.",
-                    "go-replace-directive",
-                    line,
-                    relativePath,
-                    "Review replace directives because they override resolved module versions."));
+                replaceDirectives.Add(line);
             }
         }
+
+        AddReplaceDirectiveFinding(relativePath, replaceDirectives, state);
+        AddPseudoVersionFinding(relativePath, directPseudoVersions, state);
 
         if (modulePath != null && ModuleLooksPseudoVersion(modulePath, lines))
         {
@@ -115,7 +111,11 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
         return File.Exists(goSumPath);
     }
 
-    private static void ParseSingleRequire(string manifestPath, string line, DependencyInventoryState state)
+    private static void ParseSingleRequire(
+        string manifestPath,
+        string line,
+        DependencyInventoryState state,
+        List<(string ModulePath, string Version)> directPseudoVersions)
     {
         // Format: module/path [version]
         // or: module/path v1.2.3
@@ -178,19 +178,64 @@ internal sealed partial class GoDependencyCollector : IDependencyInventoryCollec
                 "Use exact versions with a committed go.sum for reproducible Go builds."));
         }
 
-        if (isPseudoVersion && !isIndirect)
+        if (isPseudoVersion && !isIndirect && version is not null)
         {
-            state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
-                "TRUST-DEP025",
-                "Direct Go dependency uses a pseudo-version",
-                Severity.Low,
-                Confidence.High,
-                $"Go dependency '{modulePath}' references a pseudo-version.",
-                "go-pseudo-version",
-                $"Module '{modulePath}' has pseudo-version '{version}'.",
-                manifestPath,
-                "Prefer tagged releases over pseudo-versions and review pseudo-version origins."));
+            directPseudoVersions.Add((modulePath, version));
         }
+    }
+
+    private static void AddReplaceDirectiveFinding(
+        string manifestPath,
+        IReadOnlyList<string> replaceDirectives,
+        DependencyInventoryState state)
+    {
+        if (replaceDirectives.Count == 0)
+        {
+            return;
+        }
+
+        var sample = string.Join("; ", replaceDirectives.Take(3));
+        state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
+            "TRUST-DEP023",
+            "Go module uses replace directive",
+            Severity.Low,
+            Confidence.High,
+            replaceDirectives.Count == 1
+                ? "The go.mod file contains a replace directive."
+                : $"The go.mod file contains {replaceDirectives.Count} replace directives.",
+            "go-replace-directive",
+            replaceDirectives.Count == 1 ? sample : $"First replace directives: {sample}",
+            manifestPath,
+            "Review replace directives because they override resolved module versions."));
+    }
+
+    private static void AddPseudoVersionFinding(
+        string manifestPath,
+        IReadOnlyList<(string ModulePath, string Version)> directPseudoVersions,
+        DependencyInventoryState state)
+    {
+        if (directPseudoVersions.Count == 0)
+        {
+            return;
+        }
+
+        var sample = string.Join(
+            "; ",
+            directPseudoVersions
+                .Take(3)
+                .Select(dependency => $"{dependency.ModulePath}@{dependency.Version}"));
+        state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
+            "TRUST-DEP025",
+            "Direct Go dependency uses a pseudo-version",
+            Severity.Low,
+            Confidence.High,
+            directPseudoVersions.Count == 1
+                ? $"Go dependency '{directPseudoVersions[0].ModulePath}' references a pseudo-version."
+                : $"go.mod contains {directPseudoVersions.Count} direct dependencies that reference pseudo-versions.",
+            "go-pseudo-version",
+            directPseudoVersions.Count == 1 ? sample : $"First pseudo-version dependencies: {sample}",
+            manifestPath,
+            "Prefer tagged releases over pseudo-versions and review pseudo-version origins."));
     }
 
     private static bool IsPseudoVersion(string version) =>

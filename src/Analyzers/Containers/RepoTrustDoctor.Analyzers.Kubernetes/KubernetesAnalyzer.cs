@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Text;
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
 
@@ -6,6 +7,8 @@ namespace RepoTrustDoctor.Analyzers.Kubernetes;
 
 public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
 {
+    private const int ManifestProbeBytes = 16 * 1024;
+
     public string Id => "kubernetes-security";
 
     public string DisplayName => "Kubernetes Manifest Security";
@@ -59,11 +62,15 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
-            var content = await File.ReadAllTextAsync(file, cancellationToken);
-            if (!LooksLikeKubernetesManifest(content))
+            var probe = await ReadManifestProbeAsync(file, cancellationToken);
+            if (!LooksLikeKubernetesManifest(probe))
             {
                 continue;
             }
+
+            var content = new FileInfo(file).Length <= ManifestProbeBytes
+                ? probe
+                : await File.ReadAllTextAsync(file, cancellationToken);
 
             if (HasPodTemplateOrContainerSpec(content))
             {
@@ -131,12 +138,18 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
 
     private static void CheckHostPathVolumes(string content, string relativePath, List<Finding> findings)
     {
-        foreach (Match match in HostPathPattern().Matches(content))
+        var matches = HostPathPattern().Matches(content);
+        if (matches.Count == 0)
         {
-            findings.Add(CreateFinding("TRUST-K8S006", "Kubernetes manifest uses hostPath volume",
-                Severity.High, relativePath, "A workload mounts a hostPath volume. Prefer PVCs or projected volumes.",
-                GetLineNumber(content, match.Index)));
+            return;
         }
+
+        var message = matches.Count == 1
+            ? "A workload mounts a hostPath volume. Prefer PVCs or projected volumes."
+            : $"A workload mounts {matches.Count} hostPath volumes. Prefer PVCs or projected volumes.";
+        findings.Add(CreateFinding("TRUST-K8S006", "Kubernetes manifest uses hostPath volume",
+            Severity.High, relativePath, message,
+            GetLineNumber(content, matches[0].Index)));
     }
 
     private static void CheckCapabilityAdds(string content, string relativePath, List<Finding> findings)
@@ -180,12 +193,28 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
         ApiVersionPattern().IsMatch(content) &&
         KubernetesKindPattern().IsMatch(content);
 
+    private static async Task<string> ReadManifestProbeAsync(string file, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[ManifestProbeBytes];
+        await using var stream = File.OpenRead(file);
+        var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+        return Encoding.UTF8.GetString(buffer, 0, read);
+    }
+
     private static bool HasPodTemplateOrContainerSpec(string content) =>
         ContainerSpecPattern().IsMatch(content) &&
         WorkloadKindPattern().IsMatch(content);
 
     private static bool IsExampleFixturePath(string relativePath) =>
-        RepositoryPathClassifier.IsTestFixtureExampleOrDocumentationPath(relativePath);
+        RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath) ||
+        IsKubernetesApiFixturePath(relativePath);
+
+    private static bool IsKubernetesApiFixturePath(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/');
+        return normalized.Contains("/pkg/util/managedfields/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Contains("/pkg/endpoints/handlers/fieldmanager/", StringComparison.OrdinalIgnoreCase);
+    }
 
     [GeneratedRegex(@"privileged\s*:\s*true", RegexOptions.IgnoreCase)]
     private static partial Regex PrivilegedPattern();

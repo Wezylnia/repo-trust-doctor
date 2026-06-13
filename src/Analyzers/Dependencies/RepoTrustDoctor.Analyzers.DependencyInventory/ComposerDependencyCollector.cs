@@ -30,21 +30,6 @@ internal sealed class ComposerDependencyCollector : IDependencyInventoryCollecto
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Composer, relativePath, "composer.json"));
 
-        var hasComposerLock = HasComposerLock(context, filePath);
-        if (!hasComposerLock)
-        {
-            state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
-                "TRUST-DEP031",
-                "Composer project does not have a composer.lock file",
-                Severity.Medium,
-                Confidence.High,
-                "A composer.json file exists but no composer.lock was found alongside it.",
-                "package-manifest",
-                "No composer.lock file was found alongside composer.json.",
-                relativePath,
-                "Run 'composer install' and commit composer.lock to the repository for reproducible builds."));
-        }
-
         if (!DependencyInventorySupport.TryReadText(filePath, out var content, state.Warnings, relativePath))
         {
             return;
@@ -59,9 +44,30 @@ internal sealed class ComposerDependencyCollector : IDependencyInventoryCollecto
             });
 
             var root = document.RootElement;
+            var hasComposerLock = HasComposerLock(filePath);
+            var isApplicationManifest = IsApplicationManifest(relativePath, root);
+            if (isApplicationManifest && !hasComposerLock)
+            {
+                state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
+                    "TRUST-DEP031",
+                    "Composer application does not have a composer.lock file",
+                    Severity.Medium,
+                    Confidence.High,
+                    "A Composer application manifest exists but no composer.lock was found alongside it.",
+                    "package-manifest",
+                    "No composer.lock file was found alongside the application composer.json.",
+                    relativePath,
+                    "Run 'composer install' and commit composer.lock to the repository for reproducible application builds."));
+            }
 
-            ParseDependencySection(root, "require", relativePath, DependencyScope.Production, state);
-            ParseDependencySection(root, "require-dev", relativePath, DependencyScope.Development, state);
+            var nonExactConstraints = new List<ComposerConstraint>();
+            ParseDependencySection(root, "require", relativePath, DependencyScope.Production, state, nonExactConstraints);
+            ParseDependencySection(root, "require-dev", relativePath, DependencyScope.Development, state, nonExactConstraints);
+
+            if (isApplicationManifest && !hasComposerLock && nonExactConstraints.Count > 0)
+            {
+                AddAggregatedNonExactFinding(relativePath, nonExactConstraints, state);
+            }
         }
         catch (JsonException ex)
         {
@@ -74,7 +80,8 @@ internal sealed class ComposerDependencyCollector : IDependencyInventoryCollecto
         string sectionName,
         string manifestPath,
         DependencyScope scope,
-        DependencyInventoryState state)
+        DependencyInventoryState state,
+        List<ComposerConstraint> nonExactConstraints)
     {
         if (!root.TryGetProperty(sectionName, out var section) || section.ValueKind != JsonValueKind.Object)
         {
@@ -91,8 +98,7 @@ internal sealed class ComposerDependencyCollector : IDependencyInventoryCollecto
                 continue;
             }
 
-            // Skip php version constraint
-            if (packageName.Equals("php", StringComparison.OrdinalIgnoreCase))
+            if (IsComposerPlatformRequirement(packageName))
             {
                 continue;
             }
@@ -114,16 +120,7 @@ internal sealed class ComposerDependencyCollector : IDependencyInventoryCollecto
 
             if (!isPinned)
             {
-                state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
-                    "TRUST-DEP032",
-                    "Composer dependency uses a non-exact version constraint",
-                    Severity.Medium,
-                    Confidence.High,
-                    $"Composer dependency '{packageName}' uses a version constraint '{versionConstraint}' instead of an exact version.",
-                    "composer-require",
-                    $"Package '{packageName}' has version constraint '{versionConstraint}'.",
-                    manifestPath,
-                    "Use exact version constraints or commit composer.lock for reproducible installs."));
+                nonExactConstraints.Add(new ComposerConstraint(packageName, versionConstraint));
             }
 
             if (isPrerelease)
@@ -142,7 +139,33 @@ internal sealed class ComposerDependencyCollector : IDependencyInventoryCollecto
         }
     }
 
-    private static bool HasComposerLock(AnalysisContext context, string composerJsonPath)
+    private static void AddAggregatedNonExactFinding(
+        string manifestPath,
+        IReadOnlyList<ComposerConstraint> nonExactConstraints,
+        DependencyInventoryState state)
+    {
+        var samples = nonExactConstraints
+            .Take(5)
+            .Select(constraint => $"{constraint.PackageName} ({constraint.VersionConstraint})")
+            .ToArray();
+        var suffix = nonExactConstraints.Count > samples.Length
+            ? $" and {nonExactConstraints.Count - samples.Length} more"
+            : string.Empty;
+        var sampleText = string.Join(", ", samples) + suffix;
+
+        state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
+            "TRUST-DEP032",
+            "Composer application has unlocked version constraints",
+            Severity.Medium,
+            Confidence.High,
+            $"Composer application manifest has {nonExactConstraints.Count} non-exact dependency constraints without a lockfile.",
+            "composer-require",
+            $"Non-exact constraints without composer.lock: {sampleText}.",
+            manifestPath,
+            "Commit composer.lock for applications; reusable Composer libraries can intentionally publish version ranges without a lockfile."));
+    }
+
+    private static bool HasComposerLock(string composerJsonPath)
     {
         var directory = Path.GetDirectoryName(composerJsonPath);
         if (directory == null)
@@ -153,6 +176,46 @@ internal sealed class ComposerDependencyCollector : IDependencyInventoryCollecto
         var composerLockPath = Path.Combine(directory, "composer.lock");
         return File.Exists(composerLockPath);
     }
+
+    private static bool IsApplicationManifest(string relativePath, JsonElement root)
+    {
+        if (!relativePath.Equals("composer.json", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (TryGetString(root, "type", out var type))
+        {
+            return type.Equals("project", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (TryGetString(root, "name", out var name) && name.Contains('/', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryGetString(JsonElement root, string propertyName, out string value)
+    {
+        value = string.Empty;
+        if (!root.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        value = property.GetString() ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(value);
+    }
+
+    private static bool IsComposerPlatformRequirement(string packageName) =>
+        packageName.Equals("php", StringComparison.OrdinalIgnoreCase) ||
+        packageName.Equals("composer-runtime-api", StringComparison.OrdinalIgnoreCase) ||
+        packageName.Equals("composer-plugin-api", StringComparison.OrdinalIgnoreCase) ||
+        packageName.StartsWith("ext-", StringComparison.OrdinalIgnoreCase) ||
+        packageName.StartsWith("lib-", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsExactVersion(string versionConstraint)
     {
@@ -168,4 +231,6 @@ internal sealed class ComposerDependencyCollector : IDependencyInventoryCollecto
                !versionConstraint.Contains("||", StringComparison.Ordinal) &&
                char.IsDigit(versionConstraint[0]);
     }
+
+    private sealed record ComposerConstraint(string PackageName, string VersionConstraint);
 }

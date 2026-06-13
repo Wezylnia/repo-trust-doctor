@@ -123,6 +123,50 @@ public sealed class KubernetesAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_SkipsVendoredManifests()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "vendor", "charts"));
+        File.WriteAllText(Path.Combine(fixture.Path, "vendor", "charts", "deployment.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                securityContext:
+                  privileged: true
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_SkipsKubernetesApiFixtureManifests()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "staging", "src", "k8s.io", "apiserver", "pkg", "endpoints", "handlers", "fieldmanager");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "pod.yaml"), """
+        apiVersion: v1
+        kind: Pod
+        spec:
+          containers:
+          - name: app
+            image: nginx
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_SecurePod_NoPrivilegedOrHostNamespace()
     {
         using var fixture = TemporaryRepository.Create();
@@ -195,6 +239,35 @@ public sealed class KubernetesAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-K8S006");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_AggregatesHostPathVolumesPerManifest()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx
+              volumes:
+              - name: host-data
+                hostPath:
+                  path: /var/run
+              - name: host-logs
+                hostPath:
+                  path: /var/log
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-K8S006");
+        Assert.Contains("2 hostPath", Assert.Single(finding.Evidence).Message, StringComparison.Ordinal);
     }
 
     [Fact]
