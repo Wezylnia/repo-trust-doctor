@@ -10,6 +10,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
     private const int LargeFileLineThreshold = 400;
     private const int FindingLimit = 12;
     private const int BroadExceptionLookaheadLines = 24;
+    private const int MaxAnalyzedSourceFiles = 6000;
 
     private static readonly string[] SourceExtensions = [".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".java", ".kt", ".rs"];
 
@@ -23,8 +24,9 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         new(CodeCriticalityReason.Network, ["httpclient", "httpcontext", "httpget", "httppost", "fetch(", "axios", "socket", "webhook"]),
         new(CodeCriticalityReason.Cryptography, ["encrypt", "decrypt", "sha256", "sha512", "hmac", "rsa", "aes", "crypto"]),
         new(CodeCriticalityReason.Secrets, ["secret", "password", "access_token", "refresh_token", "bearer", "apikey", "api_key", "credential"]),
-        new(CodeCriticalityReason.Deserialization, ["binaryformatter", "typenamehandling", "objectinputstream", "pickle.load", "yaml.unsafe_load", "readobject"]),
-        new(CodeCriticalityReason.CommandExecution, ["process.start", "runtime.exec", "subprocess.", "os.system", "child_process", "execsync", "spawnsync", "command::new", "eval(", "popen"])
+        new(CodeCriticalityReason.Deserialization, ["binaryformatter", "typenamehandling", "new objectinputstream", "pickle.load", "yaml.unsafe_load", "readobject("]),
+        new(CodeCriticalityReason.CommandExecution, ["process.start(", "runtime.exec(", "runtime.getruntime().exec(", "new processbuilder(", "subprocess.run(", "subprocess.popen(", "subprocess.call(", "subprocess.check_call(", "subprocess.check_output(", "os.system(", "os.popen(", "child_process.exec", "child_process.spawn", "execsync(", "spawnsync(", "command::new(", "popen("]),
+        new(CodeCriticalityReason.DynamicCodeEvaluation, ["eval(", "new function("])
     ];
 
     public string Id => "codebase-02-criticality";
@@ -82,14 +84,28 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             Severity.High,
             Confidence.Medium,
             "A source file invokes command execution APIs that can run operating-system commands.",
-            "Avoid shell execution for untrusted input; use safe APIs, allowlists, and explicit argument boundaries.")
+            "Avoid shell execution for untrusted input; use safe APIs, allowlists, and explicit argument boundaries."),
+        new(
+            "TRUST-CODE016",
+            "Dynamic code evaluation in critical code",
+            AnalysisCategory.Codebase,
+            Severity.Medium,
+            Confidence.Medium,
+            "A source file dynamically evaluates code at runtime.",
+            "Avoid eval-style APIs for untrusted input and keep dynamic module loading tightly bounded.")
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var criticalFiles = new List<CodeCriticalityFile>();
 
-        foreach (var file in EnumerateSourceFiles(context.RepositoryPath))
+        var sourceFiles = EnumerateSourceFiles(context.RepositoryPath)
+            .OrderBy(file => GetSourcePriority(context.RepositoryPath, file))
+            .ThenBy(file => file, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var analyzedFiles = sourceFiles.Take(MaxAnalyzedSourceFiles).ToArray();
+
+        foreach (var file in analyzedFiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!RepositoryFileSystem.CanReadAsText(file))
@@ -101,6 +117,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             var analyzed = AnalyzeFile(context.RepositoryPath, file, text);
             if (analyzed.Score >= 30 ||
                 analyzed.Reasons.Contains(CodeCriticalityReason.CommandExecution) ||
+                analyzed.Reasons.Contains(CodeCriticalityReason.DynamicCodeEvaluation) ||
                 analyzed.Reasons.Contains(CodeCriticalityReason.Deserialization))
             {
                 criticalFiles.Add(analyzed);
@@ -170,19 +187,42 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 file,
                 "Avoid shell execution for untrusted input; use safe APIs, allowlists, and explicit argument boundaries.")));
 
+        findings.AddRange(ordered
+            .Where(file => file.Reasons.Contains(CodeCriticalityReason.DynamicCodeEvaluation))
+            .Take(FindingLimit)
+            .Select(file => CreateCriticalityFinding(
+                "TRUST-CODE016",
+                Severity.Medium,
+                "Dynamic code evaluation in critical code",
+                $"{file.FilePath} dynamically evaluates code at runtime.",
+                "code.dynamic_evaluation",
+                file,
+                "Avoid eval-style APIs for untrusted input and keep dynamic module loading tightly bounded.")));
+
         var artifact = new CodeCriticalityArtifact(
             ordered,
             new Dictionary<string, string>
             {
+                ["code.criticality.source_file.count"] = sourceFiles.Length.ToString(CultureInfo.InvariantCulture),
+                ["code.criticality.analyzed_file.count"] = analyzedFiles.Length.ToString(CultureInfo.InvariantCulture),
+                ["code.criticality.truncated"] = (sourceFiles.Length > analyzedFiles.Length).ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.file.count"] = ordered.Length.ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.highest_score"] = (ordered.FirstOrDefault()?.Score ?? 0).ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.large_file.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.LargeFile)).ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.broad_exception.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.BroadExceptionHandling)).ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.deserialization.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.Deserialization)).ToString(CultureInfo.InvariantCulture),
-                ["code.criticality.command_execution.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.CommandExecution)).ToString(CultureInfo.InvariantCulture)
+                ["code.criticality.command_execution.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.CommandExecution)).ToString(CultureInfo.InvariantCulture),
+                ["code.criticality.dynamic_code_evaluation.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.DynamicCodeEvaluation)).ToString(CultureInfo.InvariantCulture)
             });
 
-        return AnalyzerResult.Completed(findings, [new AnalyzerArtifact(CodeCriticalityArtifact.ArtifactKey, artifact)]);
+        var warnings = sourceFiles.Length > analyzedFiles.Length
+            ? new[]
+            {
+                $"Code criticality analyzed the first {analyzedFiles.Length.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} source files after low-signal filtering."
+            }
+            : [];
+
+        return AnalyzerResult.Completed(findings, [new AnalyzerArtifact(CodeCriticalityArtifact.ArtifactKey, artifact)], warnings: warnings);
     }
 
     private static IEnumerable<string> EnumerateSourceFiles(string root) =>
@@ -190,10 +230,20 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             .Where(file => SourceExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
             .Where(file => !IsTestSource(root, file));
 
+    private static int GetSourcePriority(string root, string filePath)
+    {
+        var relativePath = Path.GetRelativePath(root, filePath).Replace('\\', '/');
+        var classification = RepositoryPathClassifier.Classify(relativePath);
+        return classification.HasAny(RepositoryPathClassification.Tooling | RepositoryPathClassification.AnalyzerImplementation)
+            ? 1
+            : 0;
+    }
+
     private static CodeCriticalityFile AnalyzeFile(string repositoryPath, string filePath, string text)
     {
         var reasons = new HashSet<CodeCriticalityReason>();
         var firstRelevantLine = default(int?);
+        var relevantLines = new Dictionary<CodeCriticalityReason, int>();
         var searchableText = RemoveAnalyzerVocabulary(RemoveComments(RemoveQuotedText(text)));
         var lower = searchableText.ToLowerInvariant();
         var lines = searchableText.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
@@ -208,8 +258,14 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 
             if (group.Keywords.Any(keyword => lower.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
             {
+                var line = FindFirstLine(lines, group.Keywords);
                 reasons.Add(group.Reason);
-                firstRelevantLine ??= FindFirstLine(lines, group.Keywords);
+                if (line is not null)
+                {
+                    relevantLines[group.Reason] = line.Value;
+                }
+
+                firstRelevantLine ??= line;
             }
         }
 
@@ -222,6 +278,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         if (firstBroadExceptionLine is not null)
         {
             reasons.Add(CodeCriticalityReason.BroadExceptionHandling);
+            relevantLines[CodeCriticalityReason.BroadExceptionHandling] = firstBroadExceptionLine.Value;
             firstRelevantLine ??= firstBroadExceptionLine;
         }
 
@@ -233,13 +290,15 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             score,
             lines.Length,
             reasons.OrderBy(reason => reason.ToString(), StringComparer.OrdinalIgnoreCase).ToArray(),
-            firstRelevantLine);
+            firstRelevantLine,
+            relevantLines);
     }
 
     private static int ScoreReason(CodeCriticalityReason reason) => reason switch
     {
         CodeCriticalityReason.Deserialization => 30,
         CodeCriticalityReason.CommandExecution => 30,
+        CodeCriticalityReason.DynamicCodeEvaluation => 22,
         CodeCriticalityReason.Authentication or
         CodeCriticalityReason.Authorization or
         CodeCriticalityReason.Payments or
@@ -382,9 +441,26 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             severity,
             Confidence.Medium,
             message,
-            [new Evidence(evidenceKind, message, file.FilePath, file.FirstRelevantLine)],
+            [new Evidence(evidenceKind, message, file.FilePath, GetRelevantLine(file, evidenceKind))],
             new Recommendation(recommendation),
             Tags: ["codebase", "criticality"]);
+
+    private static int? GetRelevantLine(CodeCriticalityFile file, string evidenceKind)
+    {
+        var reason = evidenceKind switch
+        {
+            "code.broad_exception" => CodeCriticalityReason.BroadExceptionHandling,
+            "code.deserialization" => CodeCriticalityReason.Deserialization,
+            "code.command_execution" => CodeCriticalityReason.CommandExecution,
+            "code.dynamic_evaluation" => CodeCriticalityReason.DynamicCodeEvaluation,
+            _ => default(CodeCriticalityReason?)
+        };
+
+        return reason is not null &&
+               file.RelevantLines?.TryGetValue(reason.Value, out var line) == true
+            ? line
+            : file.FirstRelevantLine;
+    }
 
     private static string FormatReasons(IReadOnlyList<CodeCriticalityReason> reasons) =>
         string.Join(", ", reasons.Select(reason => reason.ToString()));

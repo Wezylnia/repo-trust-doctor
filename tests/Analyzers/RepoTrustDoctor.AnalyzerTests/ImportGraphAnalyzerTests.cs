@@ -93,6 +93,31 @@ public sealed class ImportGraphAnalyzerTests
     }
 
     [Fact]
+    public async Task ImportGraphAnalyzer_SkipsTestFixtureAndDocumentationSources()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var testDirectory = Path.Combine(fixture.Path, "tests");
+        Directory.CreateDirectory(testDirectory);
+        File.WriteAllText(Path.Combine(testDirectory, "Common.ts"), "export class Common {}");
+
+        for (var index = 1; index <= 12; index++)
+        {
+            File.WriteAllText(
+                Path.Combine(testDirectory, $"Fixture{index}.ts"),
+                "import { Common } from './Common';");
+        }
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new ImportGraphAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE010");
+        var artifact = Assert.Single(result.Artifacts!, art => art.Key == ImportGraphArtifact.ArtifactKey);
+        var graph = Assert.IsType<ImportGraphArtifact>(artifact.Value);
+        Assert.Empty(graph.Edges);
+        Assert.Empty(graph.CentralFiles);
+    }
+
+    [Fact]
     public async Task ImportGraphAnalyzer_DoesNotReportMissingCoverageWhenNoCoverageReportWasImported()
     {
         using var fixture = TemporaryRepository.Create();

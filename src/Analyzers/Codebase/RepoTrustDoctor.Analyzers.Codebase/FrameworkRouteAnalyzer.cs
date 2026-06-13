@@ -10,6 +10,7 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
     private const int UnauthFindingLimit = 15;
     private const int RouteFindingLimit = 20;
     private const int MaxRouteStatementLength = 1200;
+    private const int MaxAnalyzedSourceFiles = 6000;
 
     private static readonly IReadOnlyList<FrameworkDefinition> Frameworks =
     [
@@ -88,7 +89,12 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
     {
         var detectedRoutes = new List<FrameworkRouteInfo>();
 
-        foreach (var file in EnumerateSourceFiles(context.RepositoryPath))
+        var sourceFiles = EnumerateSourceFiles(context.RepositoryPath)
+            .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var analyzedFiles = sourceFiles.Take(MaxAnalyzedSourceFiles).ToArray();
+
+        foreach (var file in analyzedFiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -197,6 +203,9 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 
         var metrics = new Dictionary<string, string>
         {
+            ["route.source_file.count"] = sourceFiles.Length.ToString(CultureInfo.InvariantCulture),
+            ["route.analyzed_file.count"] = analyzedFiles.Length.ToString(CultureInfo.InvariantCulture),
+            ["route.truncated"] = (sourceFiles.Length > analyzedFiles.Length).ToString(CultureInfo.InvariantCulture),
             ["route.total.count"] = ordered.Length.ToString(CultureInfo.InvariantCulture),
             ["route.unauthenticated.count"] = unauthCount.ToString(CultureInfo.InvariantCulture),
             ["route.frameworks"] = string.Join(", ", frameworkCounts.Select(
@@ -215,10 +224,18 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 
         var artifact = new FrameworkRouteArtifact(routeEntries, metrics);
 
+        var warnings = sourceFiles.Length > analyzedFiles.Length
+            ? new[]
+            {
+                $"Framework route detection analyzed the first {analyzedFiles.Length.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} candidate source files after low-signal filtering."
+            }
+            : [];
+
         return AnalyzerResult.Completed(
             findings,
             [new AnalyzerArtifact(FrameworkRouteArtifact.ArtifactKey, artifact)],
-            metrics);
+            metrics,
+            warnings);
     }
 
     private static IEnumerable<string> EnumerateSourceFiles(string root) =>

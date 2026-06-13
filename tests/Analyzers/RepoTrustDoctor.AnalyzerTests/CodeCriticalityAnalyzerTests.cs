@@ -291,6 +291,61 @@ public sealed class CodeCriticalityAnalyzerTests
     }
 
     [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotTreatJavaSerializationImportsAsDeserializationUsage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "java");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "SerializableType.java"), """
+        package sample;
+
+        import java.io.ObjectInputStream;
+        import java.io.Serializable;
+
+        public final class SerializableType implements Serializable {
+            private String value;
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE014");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.DoesNotContain(artifact.Files, file => file.Reasons.Contains(CodeCriticalityReason.Deserialization));
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_ReportsJavaReadObjectAtUsageLine()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "java");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "SerializableType.java"), """
+        package sample;
+
+        import java.io.IOException;
+        import java.io.ObjectInputStream;
+        import java.io.Serializable;
+
+        public final class SerializableType implements Serializable {
+            private void readObject(ObjectInputStream input) throws IOException, ClassNotFoundException {
+                value = (String) input.readObject();
+            }
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-CODE014");
+        Assert.Equal(8, Assert.Single(finding.Evidence).LineNumber);
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        var file = Assert.Single(artifact.Files);
+        Assert.Equal(8, file.RelevantLines![CodeCriticalityReason.Deserialization]);
+    }
+
+    [Fact]
     public async Task CodeCriticalityAnalyzer_DetectsCommandExecutionWithoutOtherSignals()
     {
         using var fixture = TemporaryRepository.Create();
@@ -313,6 +368,70 @@ public sealed class CodeCriticalityAnalyzerTests
         var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
         var file = Assert.Single(artifact.Files);
         Assert.Contains(CodeCriticalityReason.CommandExecution, file.Reasons);
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotTreatSubprocessImportAsCommandExecution()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "tools");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "helper.py"), """
+        import subprocess
+
+        def describe():
+            return "helper"
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.DoesNotContain(artifact.Files, file => file.Reasons.Contains(CodeCriticalityReason.CommandExecution));
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_ReportsSubprocessInvocationAtCallLine()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "tools");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "runner.py"), """
+        import subprocess
+
+        def run(args):
+            return subprocess.Popen(args)
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
+        Assert.Equal(4, Assert.Single(finding.Evidence).LineNumber);
+    }
+
+    [Fact]
+    public async Task CodeCriticalityAnalyzer_ReportsEvalAsDynamicEvaluationNotCommandExecution()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "assets");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "CryptoLoader.js"), """
+        export function loadCrypto() {
+          return eval("require('crypto')");
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-CODE016");
+        var artifact = Assert.IsType<CodeCriticalityArtifact>(Assert.Single(result.Artifacts!).Value);
+        var file = Assert.Single(artifact.Files);
+        Assert.Contains(CodeCriticalityReason.DynamicCodeEvaluation, file.Reasons);
+        Assert.DoesNotContain(CodeCriticalityReason.CommandExecution, file.Reasons);
     }
 
     [Fact]

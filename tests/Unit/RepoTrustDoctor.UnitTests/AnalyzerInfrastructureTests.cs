@@ -89,6 +89,19 @@ public sealed class AnalyzerInfrastructureTests
     }
 
     [Fact]
+    public async Task AnalyzerExecutor_WarningResult_ReturnsCompletedWithWarningsAndModuleMessage()
+    {
+        var analyzer = new WarningAnalyzer();
+        var executor = new AnalyzerExecutor();
+        var context = new AnalysisContext(".", ".", AnalysisDepth.Fast);
+
+        var result = await executor.ExecuteAsync(analyzer, context, CancellationToken.None);
+
+        Assert.Equal(ModuleStatus.CompletedWithWarnings, result.Module.Status);
+        Assert.Contains("scope was truncated", result.Module.ErrorMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AllAnalyzers_HavePositiveTimeout()
     {
         var analyzers = DefaultRepositoryScanRunner.CreateAnalyzers();
@@ -186,5 +199,23 @@ public sealed class AnalyzerInfrastructureTests
             await Task.Delay(delayMs, cancellationToken);
             return AnalyzerResult.Completed([]);
         }
+    }
+
+    private sealed class WarningAnalyzer : IRepositoryAnalyzer
+    {
+        public string Id => "warning-analyzer";
+        public string DisplayName => "Warning Analyzer";
+        public AnalysisCategory Category => AnalysisCategory.Codebase;
+        public AnalysisDepth MinimumDepth => AnalysisDepth.Fast;
+        public IReadOnlyCollection<string> DependsOn => [];
+        public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
+        public TimeSpan Timeout => TimeSpan.FromSeconds(10);
+        public IReadOnlyCollection<RuleMetadata> Rules =>
+        [
+            new("TRUST-WARN001", "Warning rule", AnalysisCategory.Codebase, Severity.Info, Confidence.High, "Warning", "Review")
+        ];
+
+        public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken) =>
+            Task.FromResult(AnalyzerResult.Completed([], warnings: ["scope was truncated"]));
     }
 }

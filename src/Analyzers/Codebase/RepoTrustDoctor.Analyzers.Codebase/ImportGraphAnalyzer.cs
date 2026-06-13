@@ -10,6 +10,7 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
     private const double TopPercentile = 0.05;
     private const int MaxCentralFindings = 10;
     private const int MaxCoverageFindings = 8;
+    private const int MaxAnalyzedSourceFiles = 6000;
     private const double LowCoverageThreshold = 0.60;
 
     private static readonly string[] SourceExtensions =
@@ -53,12 +54,16 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
     {
         var adjacency = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         var inDegree = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var sourceFiles = EnumerateSourceFiles(context.RepositoryPath).ToArray();
-        var allFiles = sourceFiles
+        var sourceFiles = EnumerateSourceFiles(context.RepositoryPath)
+            .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var analyzedSourceFiles = sourceFiles.Take(MaxAnalyzedSourceFiles).ToArray();
+        var allFiles = analyzedSourceFiles
             .Select(file => ToRepoRelative(context.RepositoryPath, file))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var fileIndex = new ImportGraphFileIndex(allFiles);
 
-        foreach (var file in sourceFiles)
+        foreach (var file in analyzedSourceFiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -71,7 +76,7 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
 
             var text = await File.ReadAllTextAsync(file, cancellationToken);
             var extension = Path.GetExtension(file).ToLowerInvariant();
-            var imports = ParseImports(text, extension, relativePath, allFiles);
+            var imports = ParseImports(text, extension, relativePath, fileIndex);
 
             if (imports.Count > 0)
             {
@@ -187,18 +192,36 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
             new Dictionary<string, string>
             {
                 ["import.graph.file.count"] = allFiles.Count.ToString(CultureInfo.InvariantCulture),
+                ["import.graph.source_file.count"] = sourceFiles.Length.ToString(CultureInfo.InvariantCulture),
+                ["import.graph.analyzed_file.count"] = analyzedSourceFiles.Length.ToString(CultureInfo.InvariantCulture),
+                ["import.graph.truncated"] = (sourceFiles.Length > analyzedSourceFiles.Length).ToString(CultureInfo.InvariantCulture),
                 ["import.graph.edge.count"] = adjacency.Values.Sum(v => v.Count).ToString(CultureInfo.InvariantCulture),
                 ["import.graph.central_file.count"] = centralFiles.Count.ToString(CultureInfo.InvariantCulture)
             });
 
+        var warnings = sourceFiles.Length > analyzedSourceFiles.Length
+            ? new[]
+            {
+                $"Import graph analyzed the first {analyzedSourceFiles.Length.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} source files after low-signal filtering."
+            }
+            : [];
+
         return AnalyzerResult.Completed(
             findings,
-            [new AnalyzerArtifact(ImportGraphArtifact.ArtifactKey, artifact)]);
+            [new AnalyzerArtifact(ImportGraphArtifact.ArtifactKey, artifact)],
+            warnings: warnings);
     }
 
     private static IEnumerable<string> EnumerateSourceFiles(string root) =>
         RepositoryFileSystem.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-            .Where(file => SourceExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase));
+            .Where(file => SourceExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
+            .Where(file => !IsLowSignalSource(root, file));
+
+    private static bool IsLowSignalSource(string root, string filePath)
+    {
+        var relativePath = Path.GetRelativePath(root, filePath).Replace('\\', '/');
+        return RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath);
+    }
 
     private static string ToRepoRelative(string repositoryPath, string filePath) =>
         Path.GetRelativePath(repositoryPath, filePath).Replace('\\', '/');

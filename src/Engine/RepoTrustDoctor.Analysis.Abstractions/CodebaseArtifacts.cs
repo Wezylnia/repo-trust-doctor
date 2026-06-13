@@ -19,7 +19,8 @@ public enum CodeCriticalityReason
     LargeFile,
     BroadExceptionHandling,
     Deserialization,
-    CommandExecution
+    CommandExecution,
+    DynamicCodeEvaluation
 }
 
 public sealed record CoverageArtifact(
@@ -61,7 +62,8 @@ public sealed record CodeCriticalityFile(
     int Score,
     int LineCount,
     IReadOnlyList<CodeCriticalityReason> Reasons,
-    int? FirstRelevantLine);
+    int? FirstRelevantLine,
+    IReadOnlyDictionary<CodeCriticalityReason, int>? RelevantLines = null);
 
 public sealed record CodePublicApiArtifact(
     IReadOnlyList<string> Symbols,

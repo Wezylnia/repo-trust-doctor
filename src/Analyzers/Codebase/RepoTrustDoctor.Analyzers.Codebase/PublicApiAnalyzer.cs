@@ -7,6 +7,8 @@ namespace RepoTrustDoctor.Analyzers.Codebase;
 
 public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
 {
+    private const int MaxAnalyzedSourceFiles = 6000;
+
     private static readonly string[] BaselinePaths =
     [
         Path.Combine(".repo-trust", "public-api-baseline.txt"),
@@ -36,7 +38,7 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
             AnalysisCategory.Codebase,
             Severity.Info,
             Confidence.Medium,
-            "Public .NET API symbols were detected, but no baseline file was found for conservative compatibility comparison.",
+            "Public API symbols were detected, but no baseline file was found for conservative compatibility comparison.",
             "Commit a reviewed public API baseline when the repository exposes a library or reusable package."),
         new(
             "TRUST-CODE009",
@@ -52,9 +54,12 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
     {
         var symbols = new SortedSet<string>(StringComparer.Ordinal);
         var extensions = new[] { ".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".go", ".rs" };
-        var files = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*", SearchOption.AllDirectories)
+        var sourceFiles = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*", SearchOption.AllDirectories)
             .Where(file => extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
-            .Where(file => !IsTestSource(context.RepositoryPath, file));
+            .Where(file => !IsLowSignalSource(context.RepositoryPath, file))
+            .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var files = sourceFiles.Take(MaxAnalyzedSourceFiles).ToArray();
 
         foreach (var file in files)
         {
@@ -97,7 +102,7 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
                 AnalysisCategory.Codebase,
                 Severity.Info,
                 Confidence.Medium,
-                $"Detected {symbols.Count.ToString(CultureInfo.InvariantCulture)} public .NET API symbols but no baseline file.",
+                $"Detected {symbols.Count.ToString(CultureInfo.InvariantCulture)} public API symbols but no baseline file.",
                 [new Evidence("code.public_api_baseline", "No public API baseline file was found.")],
                 new Recommendation("Add .repo-trust/public-api-baseline.txt for packages with a stable public API."),
                 Tags: ["codebase", "public-api"]));
@@ -128,13 +133,23 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
             removed,
             new Dictionary<string, string>
             {
+                ["code.public_api.source_file.count"] = sourceFiles.Length.ToString(CultureInfo.InvariantCulture),
+                ["code.public_api.analyzed_file.count"] = files.Length.ToString(CultureInfo.InvariantCulture),
+                ["code.public_api.truncated"] = (sourceFiles.Length > files.Length).ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.symbol.count"] = symbols.Count.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.added.count"] = added.Length.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.removed.count"] = removed.Length.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.baseline.present"] = (baseline is not null).ToString(CultureInfo.InvariantCulture)
             });
 
-        return AnalyzerResult.Completed(findings, [new AnalyzerArtifact(CodePublicApiArtifact.ArtifactKey, artifact)]);
+        var warnings = sourceFiles.Length > files.Length
+            ? new[]
+            {
+                $"Public API analysis processed the first {files.Length.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} source files after low-signal filtering."
+            }
+            : [];
+
+        return AnalyzerResult.Completed(findings, [new AnalyzerArtifact(CodePublicApiArtifact.ArtifactKey, artifact)], warnings: warnings);
     }
 
     public static IReadOnlyList<string> ExtractSymbols(string source)
@@ -180,17 +195,10 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
         return symbols.ToArray();
     }
 
-    private static bool IsTestSource(string root, string filePath)
+    private static bool IsLowSignalSource(string root, string filePath)
     {
         var relativePath = Path.GetRelativePath(root, filePath).Replace('\\', '/');
-        var fileName = Path.GetFileNameWithoutExtension(relativePath);
-        return relativePath.StartsWith("tests/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/tests/", StringComparison.OrdinalIgnoreCase) ||
-               relativePath.Contains("/test/", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith("Tests", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith("Test", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith(".spec", StringComparison.OrdinalIgnoreCase) ||
-               fileName.EndsWith(".test", StringComparison.OrdinalIgnoreCase);
+        return RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath);
     }
 
     private static async Task<ApiBaseline?> ReadBaselineAsync(string repositoryPath, CancellationToken cancellationToken)

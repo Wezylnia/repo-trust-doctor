@@ -8,7 +8,7 @@ public sealed partial class ImportGraphAnalyzer
         string text,
         string extension,
         string sourceRelativePath,
-        IReadOnlySet<string> knownFiles)
+        ImportGraphFileIndex fileIndex)
     {
         var imports = new List<string>();
 
@@ -21,22 +21,22 @@ public sealed partial class ImportGraphAnalyzer
             switch (extension)
             {
                 case ".cs":
-                    ParseCSharpImport(trimmed, imports, knownFiles);
+                    ParseCSharpImport(trimmed, imports, fileIndex);
                     break;
                 case ".ts" or ".tsx" or ".js" or ".jsx":
-                    ParseJavaScriptImport(trimmed, imports, sourceRelativePath, knownFiles);
+                    ParseJavaScriptImport(trimmed, imports, sourceRelativePath, fileIndex);
                     break;
                 case ".py":
-                    ParsePythonImport(trimmed, imports, knownFiles);
+                    ParsePythonImport(trimmed, imports, fileIndex);
                     break;
                 case ".java":
-                    ParseJavaImport(trimmed, imports, knownFiles);
+                    ParseJavaImport(trimmed, imports, fileIndex);
                     break;
                 case ".go":
-                    ParseGoImport(trimmed, imports, knownFiles);
+                    ParseGoImport(trimmed, imports, fileIndex);
                     break;
                 case ".rs":
-                    ParseRustImport(trimmed, imports, knownFiles);
+                    ParseRustImport(trimmed, imports, fileIndex);
                     break;
             }
         }
@@ -44,7 +44,7 @@ public sealed partial class ImportGraphAnalyzer
         return imports;
     }
 
-    private static void ParseCSharpImport(string line, List<string> imports, IReadOnlySet<string> knownFiles)
+    private static void ParseCSharpImport(string line, List<string> imports, ImportGraphFileIndex fileIndex)
     {
         if (!line.StartsWith("using ", StringComparison.Ordinal))
         {
@@ -64,14 +64,14 @@ public sealed partial class ImportGraphAnalyzer
             return;
         }
 
-        var resolved = ResolveSuffixPath(ns.Replace('.', '/'), knownFiles);
+        var resolved = fileIndex.ResolveSuffixPath(ns.Replace('.', '/'));
         if (resolved is not null)
         {
             imports.Add(resolved);
         }
     }
 
-    private static void ParseJavaScriptImport(string line, List<string> imports, string sourceRelativePath, IReadOnlySet<string> knownFiles)
+    private static void ParseJavaScriptImport(string line, List<string> imports, string sourceRelativePath, ImportGraphFileIndex fileIndex)
     {
         Match? match = null;
 
@@ -104,7 +104,7 @@ public sealed partial class ImportGraphAnalyzer
             return;
         }
 
-        var resolved = ResolveRelativePath(sourceRelativePath, path, knownFiles);
+        var resolved = ResolveRelativePath(sourceRelativePath, path, fileIndex);
         if (resolved is not null)
         {
             imports.Add(resolved);
@@ -115,14 +115,14 @@ public sealed partial class ImportGraphAnalyzer
         line.StartsWith("import type ", StringComparison.Ordinal) ||
         JsTypeOnlyNamedImportRegex().IsMatch(line);
 
-    private static void ParsePythonImport(string line, List<string> imports, IReadOnlySet<string> knownFiles)
+    private static void ParsePythonImport(string line, List<string> imports, ImportGraphFileIndex fileIndex)
     {
         if (line.StartsWith("from ", StringComparison.Ordinal))
         {
             var match = PythonFromImportRegex().Match(line);
             if (match.Success)
             {
-                AddResolvedModule(match.Groups["module"].Value, knownFiles, imports);
+                AddResolvedModule(match.Groups["module"].Value, fileIndex, imports);
             }
         }
         else if (line.StartsWith("import ", StringComparison.Ordinal))
@@ -130,12 +130,12 @@ public sealed partial class ImportGraphAnalyzer
             var match = PythonImportRegex().Match(line);
             if (match.Success)
             {
-                AddResolvedModule(match.Groups["module"].Value, knownFiles, imports);
+                AddResolvedModule(match.Groups["module"].Value, fileIndex, imports);
             }
         }
     }
 
-    private static void ParseJavaImport(string line, List<string> imports, IReadOnlySet<string> knownFiles)
+    private static void ParseJavaImport(string line, List<string> imports, ImportGraphFileIndex fileIndex)
     {
         if (!line.StartsWith("import ", StringComparison.Ordinal))
         {
@@ -145,27 +145,27 @@ public sealed partial class ImportGraphAnalyzer
         var match = JavaImportRegex().Match(line);
         if (match.Success)
         {
-            AddResolvedModule(match.Groups["pkg"].Value, knownFiles, imports);
+            AddResolvedModule(match.Groups["pkg"].Value, fileIndex, imports);
         }
     }
 
-    private static void ParseGoImport(string line, List<string> imports, IReadOnlySet<string> knownFiles)
+    private static void ParseGoImport(string line, List<string> imports, ImportGraphFileIndex fileIndex)
     {
         var match = GoImportRegex().Match(line);
         if (match.Success)
         {
-            AddResolvedModule(match.Groups["path"].Value, knownFiles, imports);
+            AddResolvedModule(match.Groups["path"].Value, fileIndex, imports);
         }
     }
 
-    private static void ParseRustImport(string line, List<string> imports, IReadOnlySet<string> knownFiles)
+    private static void ParseRustImport(string line, List<string> imports, ImportGraphFileIndex fileIndex)
     {
         if (line.StartsWith("use ", StringComparison.Ordinal))
         {
             var match = RustUseRegex().Match(line);
             if (match.Success)
             {
-                AddResolvedModule(match.Groups["path"].Value.Replace("::", "/", StringComparison.Ordinal), knownFiles, imports);
+                AddResolvedModule(match.Groups["path"].Value.Replace("::", "/", StringComparison.Ordinal), fileIndex, imports);
             }
         }
         else if (line.StartsWith("mod ", StringComparison.Ordinal))
@@ -173,12 +173,12 @@ public sealed partial class ImportGraphAnalyzer
             var match = RustModRegex().Match(line);
             if (match.Success)
             {
-                AddResolvedModule(match.Groups["name"].Value, knownFiles, imports);
+                AddResolvedModule(match.Groups["name"].Value, fileIndex, imports);
             }
         }
     }
 
-    private static string? ResolveRelativePath(string sourceRelativePath, string importPath, IReadOnlySet<string> knownFiles)
+    private static string? ResolveRelativePath(string sourceRelativePath, string importPath, ImportGraphFileIndex fileIndex)
     {
         var sourceDir = Path.GetDirectoryName(sourceRelativePath)?.Replace('\\', '/') ?? string.Empty;
         var combined = string.IsNullOrEmpty(sourceDir)
@@ -208,22 +208,22 @@ public sealed partial class ImportGraphAnalyzer
             }
         }
 
-        return stack.Count == 0 ? null : ResolveCandidate(string.Join("/", stack.Reverse()), knownFiles);
+        return stack.Count == 0 ? null : ResolveCandidate(string.Join("/", stack.Reverse()), fileIndex);
     }
 
-    private static void AddResolvedModule(string module, IReadOnlySet<string> knownFiles, List<string> imports)
+    private static void AddResolvedModule(string module, ImportGraphFileIndex fileIndex, List<string> imports)
     {
-        var resolved = ResolveSuffixPath(module.Replace('.', '/').Trim('/'), knownFiles);
+        var resolved = fileIndex.ResolveSuffixPath(module.Replace('.', '/').Trim('/'));
         if (resolved is not null)
         {
             imports.Add(resolved);
         }
     }
 
-    private static string? ResolveCandidate(string candidate, IReadOnlySet<string> knownFiles)
+    private static string? ResolveCandidate(string candidate, ImportGraphFileIndex fileIndex)
     {
         var normalized = candidate.Replace('\\', '/').TrimStart('/');
-        if (knownFiles.Contains(normalized))
+        if (fileIndex.Contains(normalized))
         {
             return normalized;
         }
@@ -231,45 +231,82 @@ public sealed partial class ImportGraphAnalyzer
         foreach (var extension in SourceExtensions)
         {
             var withExtension = normalized + extension;
-            if (knownFiles.Contains(withExtension))
+            if (fileIndex.Contains(withExtension))
             {
                 return withExtension;
             }
 
             var indexFile = $"{normalized}/index{extension}";
-            if (knownFiles.Contains(indexFile))
+            if (fileIndex.Contains(indexFile))
             {
                 return indexFile;
             }
         }
 
-        return ResolveSuffixPath(normalized, knownFiles);
+        return fileIndex.ResolveSuffixPath(normalized);
     }
 
-    private static string? ResolveSuffixPath(string modulePath, IReadOnlySet<string> knownFiles)
+    private sealed class ImportGraphFileIndex
     {
-        if (string.IsNullOrWhiteSpace(modulePath))
-        {
-            return null;
-        }
+        private readonly HashSet<string> knownFiles;
+        private readonly Dictionary<string, string?> uniqueSuffixes;
 
-        foreach (var extension in SourceExtensions)
+        public ImportGraphFileIndex(IEnumerable<string> files)
         {
-            var suffix = modulePath.EndsWith(extension, StringComparison.OrdinalIgnoreCase)
-                ? modulePath
-                : modulePath + extension;
-            var matches = knownFiles
-                .Where(file => file.Equals(suffix, StringComparison.OrdinalIgnoreCase) ||
-                               file.EndsWith('/' + suffix, StringComparison.OrdinalIgnoreCase))
-                .Take(2)
-                .ToArray();
-            if (matches.Length == 1)
+            knownFiles = files.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            uniqueSuffixes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var file in knownFiles)
             {
-                return matches[0];
+                AddSuffixes(file);
             }
         }
 
-        return null;
+        public bool Contains(string normalizedPath) => knownFiles.Contains(normalizedPath);
+
+        public string? ResolveSuffixPath(string modulePath)
+        {
+            if (string.IsNullOrWhiteSpace(modulePath))
+            {
+                return null;
+            }
+
+            foreach (var extension in SourceExtensions)
+            {
+                var suffix = modulePath.EndsWith(extension, StringComparison.OrdinalIgnoreCase)
+                    ? modulePath
+                    : modulePath + extension;
+                if (uniqueSuffixes.TryGetValue(suffix, out var match))
+                {
+                    return match;
+                }
+            }
+
+            return null;
+        }
+
+        private void AddSuffixes(string file)
+        {
+            var parts = file.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (var index = 0; index < parts.Length; index++)
+            {
+                AddUniqueSuffix(string.Join("/", parts[index..]), file);
+            }
+        }
+
+        private void AddUniqueSuffix(string suffix, string file)
+        {
+            if (!uniqueSuffixes.TryGetValue(suffix, out var existing))
+            {
+                uniqueSuffixes[suffix] = file;
+                return;
+            }
+
+            if (!string.Equals(existing, file, StringComparison.OrdinalIgnoreCase))
+            {
+                uniqueSuffixes[suffix] = null;
+            }
+        }
     }
 
     [GeneratedRegex(@"^using\s+(?!var\b)(?!static\b)(?<ns>[A-Za-z_][\w.]*)\s*;", RegexOptions.None)]

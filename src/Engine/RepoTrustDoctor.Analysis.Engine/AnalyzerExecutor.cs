@@ -36,6 +36,9 @@ public sealed class AnalyzerExecutor
             var status = result.Status == ModuleStatus.Completed && (result.Warnings?.Count ?? 0) > 0
                 ? ModuleStatus.CompletedWithWarnings
                 : result.Status;
+            var moduleMessage = status == ModuleStatus.CompletedWithWarnings && (result.Warnings?.Count ?? 0) > 0
+                ? string.Join("; ", result.Warnings!.Take(3))
+                : result.ErrorMessage;
 
             return new AnalyzerExecutionResult(
                 analyzer,
@@ -48,7 +51,7 @@ public sealed class AnalyzerExecutor
                     started,
                     completed,
                     result.Findings.Count,
-                    result.ErrorMessage));
+                    moduleMessage));
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
