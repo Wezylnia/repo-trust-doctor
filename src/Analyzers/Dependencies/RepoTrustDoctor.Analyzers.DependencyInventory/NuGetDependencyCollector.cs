@@ -36,6 +36,17 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
         foreach (var project in projects)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var relativePath = DependencyInventorySupport.Relative(context, project);
+            state.Manifests.Add(new DependencyManifestInfo(
+                DependencyEcosystem.NuGet,
+                relativePath,
+                ".csproj"));
+
+            if (!ContainsPackageReference(project))
+            {
+                continue;
+            }
+
             AnalyzeProject(context, project, centralVersions, msBuildProperties, state);
         }
 
@@ -77,8 +88,6 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
         DependencyInventoryState state)
     {
         var relativePath = DependencyInventorySupport.Relative(context, project);
-        state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.NuGet, relativePath, ".csproj"));
-
         if (!DependencyInventorySupport.TryLoadXml(project, state.Warnings, relativePath, out var document))
         {
             return;
@@ -108,6 +117,38 @@ internal sealed class NuGetDependencyCollector : IDependencyInventoryCollector
 
             AddPackage(relativePath, name.Trim(), version, projectScope, state);
         }
+    }
+
+    private static bool ContainsPackageReference(string projectPath)
+    {
+        if (!RepositoryFileSystem.CanReadAsText(projectPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var reader = new StreamReader(projectPath);
+            var buffer = new char[4096];
+            var overlap = string.Empty;
+            int read;
+            while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                var chunk = overlap + new string(buffer, 0, read);
+                if (chunk.Contains("<PackageReference", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+
+                overlap = chunk.Length > 32 ? chunk[^32..] : chunk;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        return false;
     }
 
     private static void AddPackage(string relativePath, string name, string? version, DependencyScope scope, DependencyInventoryState state)

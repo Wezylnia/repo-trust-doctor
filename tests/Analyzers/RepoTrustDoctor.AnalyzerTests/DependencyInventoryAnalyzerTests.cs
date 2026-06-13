@@ -162,6 +162,28 @@ public sealed class DependencyInventoryAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_NuGetPrefilterDetectsPackageReferenceAcrossReadBoundary()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(
+            Path.Combine(fixture.Path, "LargeProject.csproj"),
+            "<Project><ItemGroup>" +
+            new string(' ', 4090) +
+            "<PackageReference Include=\"Boundary.Package\" Version=\"1.2.3\" />" +
+            "</ItemGroup></Project>");
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Contains(
+            inventory.Packages,
+            package => package.Name == "Boundary.Package" && package.Version == "1.2.3");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_NuGetCentralPackageManagement_ResolvesVersions()
     {
         using var fixture = TemporaryRepository.Create();
