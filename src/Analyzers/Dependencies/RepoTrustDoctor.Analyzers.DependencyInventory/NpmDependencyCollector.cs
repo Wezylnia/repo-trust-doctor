@@ -6,6 +6,7 @@ namespace RepoTrustDoctor.Analyzers.DependencyInventory;
 
 internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
 {
+    private const int MaxDetailedLocalSourceFindingsPerManifest = 10;
     private static readonly string[] LockfileNames = ["package-lock.json", "pnpm-lock.yaml", "yarn.lock"];
 
     public void Collect(AnalysisContext context, DependencyInventoryState state, CancellationToken cancellationToken)
@@ -62,10 +63,12 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
                 "package.json",
                 ReadManifestMetadata(root)));
 
-            ReadDependencySection(root, "dependencies", DependencyScope.Production, relativePath, coveringLockfiles, context, state);
-            ReadDependencySection(root, "devDependencies", DependencyScope.Development, relativePath, coveringLockfiles, context, state);
-            ReadDependencySection(root, "optionalDependencies", DependencyScope.Optional, relativePath, coveringLockfiles, context, state);
-            ReadDependencySection(root, "peerDependencies", DependencyScope.Peer, relativePath, coveringLockfiles, context, state);
+            var localSources = new List<NpmLocalSourceDependency>();
+            ReadDependencySection(root, "dependencies", DependencyScope.Production, relativePath, coveringLockfiles, context, state, localSources);
+            ReadDependencySection(root, "devDependencies", DependencyScope.Development, relativePath, coveringLockfiles, context, state, localSources);
+            ReadDependencySection(root, "optionalDependencies", DependencyScope.Optional, relativePath, coveringLockfiles, context, state, localSources);
+            ReadDependencySection(root, "peerDependencies", DependencyScope.Peer, relativePath, coveringLockfiles, context, state, localSources);
+            AddLocalSourceFindings(relativePath, localSources, state);
             AddInstallScriptFindings(root, relativePath, state);
         }
         catch (JsonException ex)
@@ -82,7 +85,8 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
         string manifestPath,
         string[] coveringLockfiles,
         AnalysisContext context,
-        DependencyInventoryState state)
+        DependencyInventoryState state,
+        List<NpmLocalSourceDependency> localSources)
     {
         if (!root.TryGetProperty(sectionName, out var section) || section.ValueKind != JsonValueKind.Object)
         {
@@ -123,6 +127,7 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
                 manifestPath,
                 coveringLockfiles.Length > 0,
                 IsLowSignalPrereleaseManifest(manifestPath),
+                localSources,
                 state);
         }
     }
@@ -137,6 +142,7 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
         string manifestPath,
         bool hasCoveringLockfile,
         bool suppressPrereleaseFinding,
+        List<NpmLocalSourceDependency> localSources,
         DependencyInventoryState state)
     {
         if (!pinned && !hasCoveringLockfile)
@@ -169,7 +175,7 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
 
         if (sourceKind.IsRemote || sourceKind.IsLocal)
         {
-            AddSourceFinding(name, sectionName, version, sourceKind, manifestPath, state);
+            AddSourceFinding(name, sectionName, version, sourceKind, manifestPath, localSources, state);
         }
     }
 
@@ -186,7 +192,14 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
             RepositoryPathClassification.Tooling);
     }
 
-    private static void AddSourceFinding(string name, string sectionName, string? version, NpmSourceKind sourceKind, string manifestPath, DependencyInventoryState state)
+    private static void AddSourceFinding(
+        string name,
+        string sectionName,
+        string? version,
+        NpmSourceKind sourceKind,
+        string manifestPath,
+        List<NpmLocalSourceDependency> localSources,
+        DependencyInventoryState state)
     {
         var remote = sourceKind.IsRemote;
         if (!remote && DependencyInventorySupport.IsLikelyExampleOrTestPath(manifestPath))
@@ -194,19 +207,62 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
             return;
         }
 
+        if (!remote)
+        {
+            localSources.Add(new NpmLocalSourceDependency(name, sectionName, DependencyInventorySupport.DisplayVersion(version)));
+            return;
+        }
+
         state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
-            remote ? "TRUST-DEP011" : "TRUST-DEP012",
-            remote ? "npm dependency uses a direct remote source" : "npm dependency uses a local file source",
-            remote ? Severity.Medium : Severity.Low,
+            "TRUST-DEP011",
+            "npm dependency uses a direct remote source",
+            Severity.Medium,
             Confidence.High,
-            remote ? $"npm dependency `{name}` points directly at a remote source." : $"npm dependency `{name}` points at a local source.",
+            $"npm dependency `{name}` points directly at a remote source.",
             "npm-package",
             $"Package `{name}` in `{sectionName}` uses `{DependencyInventorySupport.DisplayVersion(version)}`.",
             manifestPath,
-            remote
-                ? "Review direct remote dependency sources and prefer registry packages with pinned versions when possible."
-                : "Review local dependency sources because they depend on repository layout and may bypass registry provenance."));
+            "Review direct remote dependency sources and prefer registry packages with pinned versions when possible."));
     }
+
+    private static void AddLocalSourceFindings(string manifestPath, List<NpmLocalSourceDependency> localSources, DependencyInventoryState state)
+    {
+        if (localSources.Count == 0)
+        {
+            return;
+        }
+
+        if (localSources.Count <= MaxDetailedLocalSourceFindingsPerManifest)
+        {
+            foreach (var dependency in localSources)
+            {
+                state.Findings.Add(CreateLocalSourceFinding(
+                    manifestPath,
+                    $"npm dependency `{dependency.Name}` points at a local source.",
+                    $"Package `{dependency.Name}` in `{dependency.SectionName}` uses `{dependency.Version}`."));
+            }
+
+            return;
+        }
+
+        var sample = string.Join(", ", localSources.Take(MaxDetailedLocalSourceFindingsPerManifest).Select(dependency => dependency.Name));
+        state.Findings.Add(CreateLocalSourceFinding(
+            manifestPath,
+            $"npm manifest contains {localSources.Count} local file, link, or portal dependencies.",
+            $"Manifest contains {localSources.Count} local npm dependency sources. Sample packages: {sample}."));
+    }
+
+    private static Finding CreateLocalSourceFinding(string manifestPath, string message, string evidence) =>
+        DependencyInventorySupport.CreateDependencyFinding(
+            "TRUST-DEP012",
+            "npm dependency uses a local file source",
+            Severity.Low,
+            Confidence.High,
+            message,
+            "npm-package",
+            evidence,
+            manifestPath,
+            "Review local dependency sources because they depend on repository layout and may bypass registry provenance.");
 
     private static void AddInstallScriptFindings(JsonElement root, string relativePath, DependencyInventoryState state)
     {
@@ -332,4 +388,6 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
     }
 
     private sealed record NpmSourceKind(string Kind, bool IsRemote, bool IsLocal);
+
+    private sealed record NpmLocalSourceDependency(string Name, string SectionName, string Version);
 }

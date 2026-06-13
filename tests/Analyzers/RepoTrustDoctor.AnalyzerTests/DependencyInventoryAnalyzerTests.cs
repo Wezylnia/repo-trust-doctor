@@ -483,6 +483,32 @@ public sealed class DependencyInventoryAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_NpmManyLocalSources_AreSummarizedPerManifest()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "pnpm-lock.yaml"), "");
+        var dependencies = string.Join(
+            "," + Environment.NewLine,
+            Enumerable.Range(0, 12).Select(index => $"    \"local-{index:D2}\": \"link:packages/local-{index:D2}\""));
+        File.WriteAllText(Path.Combine(fixture.Path, "package.json"), $$"""
+        {
+          "dependencies": {
+        {{dependencies}}
+          }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        Assert.Equal(12, inventory.Packages.Count(package => package.Metadata?["sourceKind"] == "local"));
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-DEP012");
+        Assert.Contains("12 local file, link, or portal dependencies", finding.Message, StringComparison.Ordinal);
+        Assert.Contains("local-00", Assert.Single(finding.Evidence).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_NpmLocalSourcesInFixtures_AreRecordedWithoutFindings()
     {
         using var fixture = TemporaryRepository.Create();

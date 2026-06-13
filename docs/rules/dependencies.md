@@ -140,6 +140,8 @@ Recommendation: review direct remote dependency sources and prefer registry pack
 
 Detects npm dependencies that use local `file:`, `link:`, or `portal:` references. Workspace protocol dependencies are recorded as workspace-internal package references instead of local file-source risks. Local-source dependencies in common test, fixture, example, or playground manifests are recorded in inventory but do not emit this finding.
 
+Large monorepos often declare many internal `link:` dependencies in a single root manifest. When one manifest contains more than 10 local npm sources, the analyzer emits one summarized `TRUST-DEP012` finding with sample package names instead of one finding per internal package. The dependency inventory still records every package and source kind.
+
 Why it matters: local dependency sources depend on repository layout and package manager behavior. They can be legitimate in monorepos, but they deserve review because they bypass registry provenance.
 
 Recommendation: review local dependency sources and ensure they are intentional, documented, and covered by the repository's dependency review process.
