@@ -8,6 +8,9 @@ namespace RepoTrustDoctor.Analyzers.DependencyRisk;
 
 public sealed class PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadataClient> clients) : IRepositoryAnalyzer
 {
+    private const int MaxLookupPackages = 50;
+    private const int MaxConcurrentMetadataLookups = 8;
+
     public string Id => "dependency-metadata";
     public string DisplayName => "Package Registry Metadata";
     public AnalysisCategory Category => AnalysisCategory.Dependencies;
@@ -24,33 +27,29 @@ public sealed class PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadata
             return new AnalyzerResult(ModuleStatus.Skipped, []);
         }
 
-        var metadata = new List<PackageRegistryMetadata>();
-        var warnings = new List<string>();
-        foreach (var package in DistinctPackagesForLookup(inventory.Packages
+        var packages = DistinctPackagesForLookup(inventory.Packages
                      .Where(package =>
                          package.IsDirect &&
                          package.IsVersionPinned &&
                          !string.IsNullOrWhiteSpace(package.Version) &&
                          !DependencyRiskPathFilters.IsLikelyExampleOrTestManifest(package.ManifestPath)))
-                     .Take(50))
+                     .Take(MaxLookupPackages)
+                     .ToArray();
+
+        var lookupResults = await QueryMetadataAsync(packages, cancellationToken);
+        var metadata = new List<PackageRegistryMetadata>();
+        var warnings = new List<string>();
+        foreach (var lookupResult in lookupResults)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var client = clients.FirstOrDefault(client => client.Ecosystem == package.Ecosystem);
-            if (client is null)
+            if (lookupResult.Metadata is not null)
             {
-                continue;
+                metadata.Add(lookupResult.Metadata);
             }
 
-            try
+            if (lookupResult.Warning is not null)
             {
-                if (await client.GetMetadataAsync(package, cancellationToken) is { } item)
-                {
-                    metadata.Add(WithDependencyContext(item, package));
-                }
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or FormatException)
-            {
-                warnings.Add($"Could not parse metadata for {package.Ecosystem}:{package.Name}: {ex.Message}");
+                warnings.Add(lookupResult.Warning);
             }
         }
 
@@ -60,6 +59,43 @@ public sealed class PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadata
         };
         var artifact = new PackageMetadataArtifact(metadata, metrics);
         return AnalyzerResult.Completed([], [new AnalyzerArtifact(PackageMetadataArtifact.ArtifactKey, artifact)], metrics, warnings);
+    }
+
+    private async Task<IReadOnlyList<PackageMetadataLookup>> QueryMetadataAsync(
+        IReadOnlyList<DependencyPackageInfo> packages,
+        CancellationToken cancellationToken)
+    {
+        using var throttle = new SemaphoreSlim(MaxConcurrentMetadataLookups);
+
+        var tasks = packages.Select(async package =>
+        {
+            var client = clients.FirstOrDefault(client => client.Ecosystem == package.Ecosystem);
+            if (client is null)
+            {
+                return new PackageMetadataLookup(null, null);
+            }
+
+            await throttle.WaitAsync(cancellationToken);
+            try
+            {
+                if (await client.GetMetadataAsync(package, cancellationToken) is { } item)
+                {
+                    return new PackageMetadataLookup(WithDependencyContext(item, package), null);
+                }
+
+                return new PackageMetadataLookup(null, null);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or FormatException)
+            {
+                return new PackageMetadataLookup(null, $"Could not parse metadata for {package.Ecosystem}:{package.Name}: {ex.Message}");
+            }
+            finally
+            {
+                throttle.Release();
+            }
+        });
+
+        return await Task.WhenAll(tasks);
     }
 
     private static PackageRegistryMetadata WithDependencyContext(PackageRegistryMetadata metadata, DependencyPackageInfo package)
@@ -87,6 +123,7 @@ public sealed class PackageMetadataAnalyzer(IReadOnlyCollection<IPackageMetadata
         }
     }
 
+    private sealed record PackageMetadataLookup(PackageRegistryMetadata? Metadata, string? Warning);
 }
 
 internal static class DependencyRiskPathFilters

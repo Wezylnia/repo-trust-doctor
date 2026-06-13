@@ -61,6 +61,40 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
+    public async Task PackageMetadataAnalyzer_QueriesMetadataWithBoundedParallelism()
+    {
+        var packages = Enumerable.Range(0, 12)
+            .Select(index => CreatePackage(DependencyEcosystem.Npm, $"package-{index}", "1.0.0", manifestPath: $"module-{index}/package.json"))
+            .ToArray();
+        var context = CreateContextWithInventory(packages);
+        var client = new TrackingMetadataClient(DependencyEcosystem.Npm);
+        var analyzer = new PackageMetadataAnalyzer([client]);
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        var artifact = Assert.Single(result.Artifacts!, artifact => artifact.Key == PackageMetadataArtifact.ArtifactKey);
+        var metadata = Assert.IsType<PackageMetadataArtifact>(artifact.Value);
+        Assert.Equal(12, metadata.Packages.Count);
+        Assert.Equal(12, client.QueryCount);
+        Assert.True(client.MaxObservedConcurrency > 1);
+        Assert.True(client.MaxObservedConcurrency <= 8);
+    }
+
+    [Fact]
+    public async Task PackageMetadataAnalyzer_PreservesParseWarningsFromParallelLookups()
+    {
+        var context = CreateContextWithInventory([
+            CreatePackage(DependencyEcosystem.Npm, "bad-lib", "1.0.0")
+        ]);
+        var analyzer = new PackageMetadataAnalyzer([new ThrowingMetadataClient(DependencyEcosystem.Npm)]);
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.NotNull(result.Warnings);
+        Assert.Contains(result.Warnings, warning => warning.Contains("bad-lib", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task PackageFreshnessAnalyzer_ReportsOutdatedAndDeprecatedPackages()
     {
         var context = CreateContextWithMetadata([
@@ -352,6 +386,65 @@ public sealed class DependencyRiskAnalyzerTests
 
         public Task<PackageRegistryMetadata?> GetMetadataAsync(DependencyPackageInfo package, CancellationToken cancellationToken) =>
             Task.FromResult<PackageRegistryMetadata?>(new PackageRegistryMetadata(package.Ecosystem, package.Name, package.Version, package.Version, null, false, false, "https://github.com/example/repo", null, "MIT", null, "fake"));
+    }
+
+    private sealed class TrackingMetadataClient(DependencyEcosystem ecosystem) : IPackageMetadataClient
+    {
+        private int currentConcurrency;
+        private int maxObservedConcurrency;
+        private int queryCount;
+
+        public DependencyEcosystem Ecosystem { get; } = ecosystem;
+
+        public int MaxObservedConcurrency => Volatile.Read(ref maxObservedConcurrency);
+
+        public int QueryCount => Volatile.Read(ref queryCount);
+
+        public async Task<PackageRegistryMetadata?> GetMetadataAsync(
+            DependencyPackageInfo package,
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref queryCount);
+            var current = Interlocked.Increment(ref currentConcurrency);
+            UpdateMaxObserved(current);
+
+            try
+            {
+                await Task.Delay(50, cancellationToken);
+                return new PackageRegistryMetadata(package.Ecosystem, package.Name, package.Version, package.Version, null, false, false, "https://github.com/example/repo", null, "MIT", null, "fake");
+            }
+            finally
+            {
+                Interlocked.Decrement(ref currentConcurrency);
+            }
+        }
+
+        private void UpdateMaxObserved(int current)
+        {
+            while (true)
+            {
+                var observed = Volatile.Read(ref maxObservedConcurrency);
+                if (current <= observed)
+                {
+                    return;
+                }
+
+                if (Interlocked.CompareExchange(ref maxObservedConcurrency, current, observed) == observed)
+                {
+                    return;
+                }
+            }
+        }
+    }
+
+    private sealed class ThrowingMetadataClient(DependencyEcosystem ecosystem) : IPackageMetadataClient
+    {
+        public DependencyEcosystem Ecosystem { get; } = ecosystem;
+
+        public Task<PackageRegistryMetadata?> GetMetadataAsync(
+            DependencyPackageInfo package,
+            CancellationToken cancellationToken) =>
+            throw new FormatException("bad registry payload");
     }
 
     private sealed class FakeOsvClient(IReadOnlyList<VulnerabilityAdvisory> advisories) : IOsvAdvisoryClient
