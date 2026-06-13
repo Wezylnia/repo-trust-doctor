@@ -187,6 +187,9 @@ public sealed class PackageFreshnessAnalyzer : IRepositoryAnalyzer
 
 public sealed class DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient) : IRepositoryAnalyzer
 {
+    private const int MaxLookupPackages = 50;
+    private const int MaxConcurrentOsvLookups = 8;
+
     public string Id => "dependency-risk-vulnerabilities";
     public string DisplayName => "Dependency Vulnerabilities";
     public AnalysisCategory Category => AnalysisCategory.Dependencies;
@@ -208,25 +211,24 @@ public sealed class DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient
             return new AnalyzerResult(ModuleStatus.Skipped, []);
         }
 
+        var packages = PackageMetadataAnalyzer.DistinctPackagesForLookup(inventory.Packages
+                 .Where(package =>
+                     !string.IsNullOrWhiteSpace(package.Version) &&
+                     !DependencyRiskPathFilters.IsLikelyExampleOrTestManifest(package.ManifestPath))
+                 .OrderByDescending(package => package.IsDirect))
+                 .Take(MaxLookupPackages)
+                 .ToArray();
+
+        var lookupResults = await QueryAdvisoriesAsync(packages, cancellationToken);
+
         var findings = new List<Finding>();
-        var cache = new Dictionary<string, IReadOnlyList<VulnerabilityAdvisory>>(StringComparer.OrdinalIgnoreCase);
         var reported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var package in PackageMetadataAnalyzer.DistinctPackagesForLookup(inventory.Packages
-                     .Where(package =>
-                         !string.IsNullOrWhiteSpace(package.Version) &&
-                         !DependencyRiskPathFilters.IsLikelyExampleOrTestManifest(package.ManifestPath))
-                     .OrderByDescending(package => package.IsDirect))
-                     .Take(50))
+        foreach (var lookupResult in lookupResults)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var key = $"{package.Ecosystem}:{package.Name}:{package.Version}";
-            if (!cache.TryGetValue(key, out var advisories))
-            {
-                advisories = await osvClient.QueryAsync(package, cancellationToken);
-                cache[key] = advisories;
-            }
+            var package = lookupResult.Package;
 
-            foreach (var advisory in advisories)
+            foreach (var advisory in lookupResult.Advisories)
             {
                 var reportKey = $"{package.Ecosystem}:{package.Name}:{package.Version}:{advisory.Id}";
                 if (!reported.Add(reportKey))
@@ -265,12 +267,39 @@ public sealed class DependencyVulnerabilityAnalyzer(IOsvAdvisoryClient osvClient
         return AnalyzerResult.Completed(findings);
     }
 
+    private async Task<IReadOnlyList<PackageAdvisoryLookup>> QueryAdvisoriesAsync(
+        IReadOnlyList<DependencyPackageInfo> packages,
+        CancellationToken cancellationToken)
+    {
+        using var throttle = new SemaphoreSlim(MaxConcurrentOsvLookups);
+
+        var tasks = packages.Select(async package =>
+        {
+            await throttle.WaitAsync(cancellationToken);
+            try
+            {
+                var advisories = await osvClient.QueryAsync(package, cancellationToken);
+                return new PackageAdvisoryLookup(package, advisories);
+            }
+            finally
+            {
+                throttle.Release();
+            }
+        });
+
+        return await Task.WhenAll(tasks);
+    }
+
     private static Severity Downgrade(Severity severity) => severity switch
     {
         Severity.Critical => Severity.High,
         Severity.High => Severity.Medium,
         _ => severity
     };
+
+    private sealed record PackageAdvisoryLookup(
+        DependencyPackageInfo Package,
+        IReadOnlyList<VulnerabilityAdvisory> Advisories);
 }
 
 public sealed class DependencyLicenseAnalyzer : IRepositoryAnalyzer

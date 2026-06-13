@@ -195,6 +195,24 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
+    public async Task DependencyVulnerabilityAnalyzer_QueriesAdvisoriesWithBoundedParallelism()
+    {
+        var packages = Enumerable.Range(0, 12)
+            .Select(index => CreatePackage(DependencyEcosystem.Npm, $"package-{index}", "1.0.0", manifestPath: $"module-{index}/package.json"))
+            .ToArray();
+        var context = CreateContextWithInventory(packages);
+        var client = new TrackingOsvClient();
+        var analyzer = new DependencyVulnerabilityAnalyzer(client);
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+        Assert.Equal(12, client.QueryCount);
+        Assert.True(client.MaxObservedConcurrency > 1);
+        Assert.True(client.MaxObservedConcurrency <= 8);
+    }
+
+    [Fact]
     public async Task DependencyLicenseAnalyzer_ReportsMissingUnknownAndCopyleftLicenses()
     {
         var context = CreateContextWithMetadata([
@@ -340,5 +358,52 @@ public sealed class DependencyRiskAnalyzerTests
     {
         public Task<IReadOnlyList<VulnerabilityAdvisory>> QueryAsync(DependencyPackageInfo package, CancellationToken cancellationToken) =>
             Task.FromResult(advisories);
+    }
+
+    private sealed class TrackingOsvClient : IOsvAdvisoryClient
+    {
+        private int currentConcurrency;
+        private int maxObservedConcurrency;
+        private int queryCount;
+
+        public int MaxObservedConcurrency => Volatile.Read(ref maxObservedConcurrency);
+
+        public int QueryCount => Volatile.Read(ref queryCount);
+
+        public async Task<IReadOnlyList<VulnerabilityAdvisory>> QueryAsync(
+            DependencyPackageInfo package,
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref queryCount);
+            var current = Interlocked.Increment(ref currentConcurrency);
+            UpdateMaxObserved(current);
+
+            try
+            {
+                await Task.Delay(50, cancellationToken);
+                return [];
+            }
+            finally
+            {
+                Interlocked.Decrement(ref currentConcurrency);
+            }
+        }
+
+        private void UpdateMaxObserved(int current)
+        {
+            while (true)
+            {
+                var observed = Volatile.Read(ref maxObservedConcurrency);
+                if (current <= observed)
+                {
+                    return;
+                }
+
+                if (Interlocked.CompareExchange(ref maxObservedConcurrency, current, observed) == observed)
+                {
+                    return;
+                }
+            }
+        }
     }
 }
