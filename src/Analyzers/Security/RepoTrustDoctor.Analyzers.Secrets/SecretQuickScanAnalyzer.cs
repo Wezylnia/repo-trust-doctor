@@ -6,7 +6,8 @@ namespace RepoTrustDoctor.Analyzers.Secrets;
 
 public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 {
-    private const int DefaultMaxSourceContentScanFiles = 2500;
+    private const int DefaultMaxSourceContentScanFiles = 1500;
+    private const int DefaultMaxConfigurationContentScanFiles = 1000;
     private static readonly string[] SensitiveFileNames = [".env", ".env.local", ".env.production", ".env.development", "id_rsa", ".git-credentials", ".netrc"];
     private static readonly string[] CredentialConfigFileNames = [".npmrc", ".pypirc"];
     private static readonly string[] SensitiveExtensions = [".pem", ".key", ".ppk", ".p12", ".pfx"];
@@ -28,15 +29,22 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
     ];
 
     private readonly int maxSourceContentScanFiles;
+    private readonly int maxConfigurationContentScanFiles;
 
     public SecretQuickScanAnalyzer()
-        : this(DefaultMaxSourceContentScanFiles)
+        : this(DefaultMaxSourceContentScanFiles, DefaultMaxConfigurationContentScanFiles)
     {
     }
 
     public SecretQuickScanAnalyzer(int maxSourceContentScanFiles)
+        : this(maxSourceContentScanFiles, DefaultMaxConfigurationContentScanFiles)
+    {
+    }
+
+    public SecretQuickScanAnalyzer(int maxSourceContentScanFiles, int maxConfigurationContentScanFiles)
     {
         this.maxSourceContentScanFiles = Math.Max(0, maxSourceContentScanFiles);
+        this.maxConfigurationContentScanFiles = Math.Max(0, maxConfigurationContentScanFiles);
     }
 
     public string Id => "secret-quick-scan";
@@ -74,6 +82,8 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
         var findings = new List<Finding>();
         var sourceContentScanned = 0;
         var sourceContentSkipped = 0;
+        var configurationContentScanned = 0;
+        var configurationContentSkipped = 0;
         var contentScanned = 0;
         var prefilterSkipped = 0;
         var candidateCount = 0;
@@ -118,9 +128,20 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
+            if (candidate.Kind == SecretCandidateKind.Configuration &&
+                configurationContentScanned >= maxConfigurationContentScanFiles)
+            {
+                configurationContentSkipped++;
+                continue;
+            }
+
             if (candidate.Kind == SecretCandidateKind.Source)
             {
                 sourceContentScanned++;
+            }
+            else if (candidate.Kind == SecretCandidateKind.Configuration)
+            {
+                configurationContentScanned++;
             }
 
             var content = await TryReadTextAsync(candidate.Path, cancellationToken);
@@ -209,16 +230,17 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             ["secret.candidate.count"] = candidateCount.ToString(),
             ["secret.sensitive.candidate.count"] = sensitiveCandidateCount.ToString(),
             ["secret.content.scanned.count"] = contentScanned.ToString(),
+            ["secret.configuration.content.scanned.count"] = configurationContentScanned.ToString(),
+            ["secret.configuration.content.skipped.count"] = configurationContentSkipped.ToString(),
             ["secret.source.content.scanned.count"] = sourceContentScanned.ToString(),
             ["secret.source.content.skipped.count"] = sourceContentSkipped.ToString(),
             ["secret.prefilter.skipped.count"] = prefilterSkipped.ToString()
         };
-        var warnings = sourceContentSkipped > 0
-            ? new[]
-            {
-                $"Secret quick scan skipped {sourceContentSkipped} lower-priority source files after scanning {sourceContentScanned} source files; sensitive filenames and configuration files were still analyzed."
-            }
-            : null;
+        var warnings = BuildBudgetWarnings(
+            sourceContentScanned,
+            sourceContentSkipped,
+            configurationContentScanned,
+            configurationContentSkipped);
 
         return AnalyzerResult.Completed(findings, metrics: metrics, warnings: warnings);
     }
@@ -255,8 +277,11 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             {
                 yield return new SecretCandidateFile(file, relativePath, fileName, extension, SecretCandidateKind.Sensitive);
             }
-            else if (CredentialConfigFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) ||
-                     CandidateTextExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            else if (CredentialConfigFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+            {
+                yield return new SecretCandidateFile(file, relativePath, fileName, extension, SecretCandidateKind.CredentialConfiguration);
+            }
+            else if (CandidateTextExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
             {
                 yield return new SecretCandidateFile(
                     file,
@@ -317,6 +342,26 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
         content.Contains("api_secret", StringComparison.OrdinalIgnoreCase) ||
         content.Contains("api-secret", StringComparison.OrdinalIgnoreCase) ||
         content.Contains("apikey", StringComparison.OrdinalIgnoreCase);
+
+    private static string[]? BuildBudgetWarnings(
+        int sourceContentScanned,
+        int sourceContentSkipped,
+        int configurationContentScanned,
+        int configurationContentSkipped)
+    {
+        var warnings = new List<string>(capacity: 2);
+        if (configurationContentSkipped > 0)
+        {
+            warnings.Add($"Secret quick scan skipped {configurationContentSkipped} lower-priority configuration files after scanning {configurationContentScanned} configuration files; sensitive filenames and credential config files were still analyzed.");
+        }
+
+        if (sourceContentSkipped > 0)
+        {
+            warnings.Add($"Secret quick scan skipped {sourceContentSkipped} lower-priority source files after scanning {sourceContentScanned} source files; sensitive filenames and credential config files were still analyzed.");
+        }
+
+        return warnings.Count > 0 ? warnings.ToArray() : null;
+    }
 
     private static int GetLineNumber(string content, int matchIndex)
     {
@@ -509,8 +554,9 @@ public sealed partial class SecretQuickScanAnalyzer : IRepositoryAnalyzer
     private enum SecretCandidateKind
     {
         Sensitive = 0,
-        Configuration = 1,
-        Source = 2
+        CredentialConfiguration = 1,
+        Configuration = 2,
+        Source = 3
     }
 
     [GeneratedRegex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----")]

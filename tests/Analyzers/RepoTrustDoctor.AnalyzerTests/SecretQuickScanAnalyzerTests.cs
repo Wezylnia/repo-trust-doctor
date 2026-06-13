@@ -401,6 +401,30 @@ public sealed class SecretQuickScanAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_BudgetsConfigurationFilesButKeepsCredentialConfigs()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var fakeNpmToken = "npm_" + "abcdefghijklmnopqrstuvwxyz0123456789";
+        File.WriteAllText(Path.Combine(fixture.Path, ".npmrc"), $"""
+        //registry.npmjs.org/:_authToken={fakeNpmToken}
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "appsettings.json"), """
+        { "api_key": "Abcdefghijklmnop1234567890" }
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer(maxSourceContentScanFiles: 100, maxConfigurationContentScanFiles: 0);
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-SECRET011");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-SECRET012");
+        Assert.NotNull(result.Warnings);
+        Assert.Contains(result.Warnings, warning => warning.Contains("skipped 1 lower-priority configuration files", StringComparison.Ordinal));
+        Assert.NotNull(result.Metrics);
+        Assert.Equal("0", result.Metrics["secret.configuration.content.scanned.count"]);
+        Assert.Equal("1", result.Metrics["secret.configuration.content.skipped.count"]);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_HandlesDeletedOrUnreadableFilesGracefully()
     {
         using var fixture = TemporaryRepository.Create();
