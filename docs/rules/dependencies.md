@@ -408,17 +408,17 @@ Why it matters: path-sourced dependencies depend on repository layout and may by
 
 Recommendation: review path-sourced dependencies and document whether they are workspace-internal or development-only.
 
-## TRUST-DEP029: Cargo Dependency Uses a Non-Exact Version
+## TRUST-DEP029: Cargo Dependency Uses a Non-Exact Version Without Lockfile
 
 - Category: Dependencies
 - Default severity: Medium
 - Default confidence: High
 
-Detects Cargo dependencies that do not use an exact requirement (e.g. `"1"`, `"1.2"`, or `"1.2.3"` instead of `"=1.2.3"`). The collector reads normal dependency sections, target-specific dependency sections, and dependency subtables such as `[dependencies.serde]` without treating metadata keys like `features` as packages.
+Detects Cargo dependencies that do not use an exact requirement (e.g. `"1"`, `"1.2"`, or `"1.2.3"` instead of `"=1.2.3"`) when no adjacent `Cargo.lock` is present. The collector still records non-exact requirements in the dependency inventory when a lockfile exists, but it does not emit this finding because the lockfile provides the reproducibility signal for normal Cargo projects. The collector reads normal dependency sections, target-specific dependency sections, and dependency subtables such as `[dependencies.serde]` without treating metadata keys like `features` as packages.
 
-Why it matters: non-exact Cargo dependency versions can resolve to different minor or patch versions over time.
+Why it matters: non-exact Cargo dependency versions can resolve to different minor or patch versions over time when a lockfile is not committed.
 
-Recommendation: use exact `=x.y.z` requirements when strict direct dependency pinning is required, and commit `Cargo.lock` for reproducible Cargo builds.
+Recommendation: commit `Cargo.lock` for reproducible Cargo builds, or use exact `=x.y.z` requirements when strict direct dependency pinning is required.
 
 ## TRUST-DEP030: Cargo Dependency Uses a Prerelease Version
 

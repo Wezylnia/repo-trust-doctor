@@ -248,7 +248,7 @@ Collects structured dependency manifests across 12 ecosystems: npm, NuGet, Pytho
 | TRUST-DEP026 | Cargo has no Cargo.lock | Medium | High |
 | TRUST-DEP027 | Cargo dependency uses Git source | Medium | High |
 | TRUST-DEP028 | Cargo dependency uses path source | Low | High |
-| TRUST-DEP029 | Cargo dependency uses non-exact version | Medium | High |
+| TRUST-DEP029 | Cargo dependency uses non-exact version without lockfile | Medium | High |
 | TRUST-DEP030 | Cargo dependency uses prerelease version | Low | High |
 | TRUST-DEP031 | Composer has no composer.lock | Medium | High |
 | TRUST-DEP032 | Composer dependency uses non-exact version | Medium | High |

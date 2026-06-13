@@ -64,7 +64,7 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
 
             if (line.StartsWith('[') && line.EndsWith(']'))
             {
-                FlushCargoTableDependency(ref tableDependency, relativePath, state);
+                FlushCargoTableDependency(ref tableDependency, relativePath, hasCargoLock, state);
 
                 if (TryParseCargoDependencyTable(line, out var tableCrateName, out var tableScope))
                 {
@@ -115,15 +115,15 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
 
             if (valuePart.StartsWith('{'))
             {
-                ParseCargoInlineTable(relativePath, crateName, valuePart, scope, state);
+                ParseCargoInlineTable(relativePath, crateName, valuePart, scope, hasCargoLock, state);
             }
             else
             {
-                ParseCargoSimpleVersion(relativePath, crateName, valuePart.Trim('"'), scope, state);
+                ParseCargoSimpleVersion(relativePath, crateName, valuePart.Trim('"'), scope, hasCargoLock, state);
             }
         }
 
-        FlushCargoTableDependency(ref tableDependency, relativePath, state);
+        FlushCargoTableDependency(ref tableDependency, relativePath, hasCargoLock, state);
     }
 
     private static bool HasCargoLock(AnalysisContext context, string cargoTomlPath)
@@ -227,7 +227,7 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
             _ => DependencyScope.Production
         };
 
-    private void ParseCargoInlineTable(string manifestPath, string crateName, string valuePart, DependencyScope scope, DependencyInventoryState state)
+    private void ParseCargoInlineTable(string manifestPath, string crateName, string valuePart, DependencyScope scope, bool hasCargoLock, DependencyInventoryState state)
     {
         // Extract version from inline table like { version = "1.2.3", features = [...] }
         var version = ExtractCargoInlineValue(valuePart, "version");
@@ -282,18 +282,18 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
             isPrerelease,
             metadata.Count > 0 ? metadata : null));
 
-        if (!isPinned && version != null)
+        if (!isPinned && version != null && !hasCargoLock)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP029",
-                "Cargo dependency uses a non-exact version",
+                "Cargo dependency uses a non-exact version without lockfile",
                 Severity.Medium,
                 Confidence.High,
-                $"Cargo dependency '{crateName}' does not use an exact pinned version.",
+                $"Cargo dependency '{crateName}' does not use an exact pinned version and no Cargo.lock was found.",
                 "cargo-dependency",
                 $"Crate '{crateName}' has version '{version}'.",
                 manifestPath,
-                "Use exact versions with a committed Cargo.lock for reproducible Cargo builds."));
+                "Commit Cargo.lock for reproducible Cargo builds, or use exact versions when strict direct dependency pinning is required."));
         }
 
         if (isPrerelease)
@@ -336,7 +336,7 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         }
     }
 
-    private void FlushCargoTableDependency(ref CargoTableDependency? tableDependency, string manifestPath, DependencyInventoryState state)
+    private void FlushCargoTableDependency(ref CargoTableDependency? tableDependency, string manifestPath, bool hasCargoLock, DependencyInventoryState state)
     {
         if (tableDependency is null)
         {
@@ -362,11 +362,12 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
             tableDependency.CrateName,
             "{ " + string.Join(", ", parts) + " }",
             tableDependency.Scope,
+            hasCargoLock,
             state);
         tableDependency = null;
     }
 
-    private void ParseCargoSimpleVersion(string manifestPath, string crateName, string version, DependencyScope scope, DependencyInventoryState state)
+    private void ParseCargoSimpleVersion(string manifestPath, string crateName, string version, DependencyScope scope, bool hasCargoLock, DependencyInventoryState state)
     {
         var isPinned = IsExactCargoRequirement(version);
         var isPrerelease = DependencyInventorySupport.IsPrereleaseVersion(version);
@@ -383,18 +384,18 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
             isPrerelease,
             null));
 
-        if (!isPinned)
+        if (!isPinned && !hasCargoLock)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP029",
-                "Cargo dependency uses a non-exact version",
+                "Cargo dependency uses a non-exact version without lockfile",
                 Severity.Medium,
                 Confidence.High,
-                $"Cargo dependency '{crateName}' does not use an exact pinned version.",
+                $"Cargo dependency '{crateName}' does not use an exact pinned version and no Cargo.lock was found.",
                 "cargo-dependency",
                 $"Crate '{crateName}' has version '{version}'.",
                 manifestPath,
-                "Use exact versions with a committed Cargo.lock for reproducible Cargo builds."));
+                "Commit Cargo.lock for reproducible Cargo builds, or use exact versions when strict direct dependency pinning is required."));
         }
 
         if (isPrerelease)

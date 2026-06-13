@@ -292,14 +292,13 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
         var inventory = GetInventory(result);
         Assert.Contains(inventory.Packages, p => p.Ecosystem == DependencyEcosystem.Cargo && p.Name == "windows-sys");
         Assert.DoesNotContain(inventory.Packages, p => p.Name == "features");
-        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP029" && f.Message.Contains("windows-sys", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP029");
     }
 
     [Fact]
-    public async Task AnalyzeAsync_CargoNonExactVersion_ReportsDep029()
+    public async Task AnalyzeAsync_CargoNonExactVersionWithoutLockfile_ReportsDep029()
     {
         using var fixture = TemporaryRepository.Create();
-        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), "");
         File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
         [package]
         name = "mycrate"
@@ -315,10 +314,9 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
     }
 
     [Fact]
-    public async Task AnalyzeAsync_CargoBareSemverRequirement_ReportsDep029()
+    public async Task AnalyzeAsync_CargoBareSemverRequirementWithoutLockfile_ReportsDep029()
     {
         using var fixture = TemporaryRepository.Create();
-        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), "");
         File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
         [package]
         name = "mycrate"
