@@ -94,7 +94,7 @@ public static class PackageMetadataParser
         var latest = versions
             .Select(entry => new { Entry = entry, Version = ReadString(entry, "version") })
             .Where(item => !string.IsNullOrWhiteSpace(item.Version))
-            .OrderBy(item => item.Version, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(item => item.Version, NuGetVersionStringComparer.Instance)
             .Last();
 
         var requested = versions.FirstOrDefault(entry =>

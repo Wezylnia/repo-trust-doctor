@@ -32,6 +32,11 @@ The background refresh only revisits expired packages already present in the cac
 
 Package metadata includes `lookup.source` with `sqlite`, `network`, or `sqlite-stale`. Analyzer metrics expose cache-hit and network lookup counts.
 
+NuGet registration metadata can arrive in pages that are not safe to interpret
+with lexical string ordering. The parser selects the latest NuGet version using
+numeric release components and prerelease precedence before freshness rules use
+that value.
+
 Real scan validation across NuGet, npm, Maven, and PyPI confirmed that a second
 scan against the same database performed zero registry requests. The measured
 metadata analyzer times were:

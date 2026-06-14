@@ -171,6 +171,46 @@ public sealed class PackageInfrastructureTests
     }
 
     [Fact]
+    public void PackageMetadataParser_ParsesNuGetLatestUsingSemanticVersionOrdering()
+    {
+        var package = CreatePackage(DependencyEcosystem.NuGet, "Example.Package", "9.0.0");
+        var metadata = PackageMetadataParser.ParseNuGet(package, """
+        {
+          "items": [
+            {
+              "items": [
+                {
+                  "catalogEntry": {
+                    "version": "9.0.0",
+                    "published": "2025-01-01T00:00:00Z",
+                    "licenseExpression": "MIT"
+                  }
+                },
+                {
+                  "catalogEntry": {
+                    "version": "10.0.0-preview.1",
+                    "published": "2025-02-01T00:00:00Z"
+                  }
+                },
+                {
+                  "catalogEntry": {
+                    "version": "10.0.0",
+                    "published": "2025-03-01T00:00:00Z"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+        """);
+
+        Assert.NotNull(metadata);
+        Assert.Equal("10.0.0", metadata!.LatestVersion);
+        Assert.Equal(DateTimeOffset.Parse("2025-01-01T00:00:00Z"), metadata.PublishedAt);
+        Assert.Equal("MIT", metadata.LicenseExpression);
+    }
+
+    [Fact]
     public void OsvAdvisoryClient_ParsesAdvisoryFixture()
     {
         var advisories = OsvAdvisoryClient.Parse("""

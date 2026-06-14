@@ -178,7 +178,7 @@ Recommendation: review local package sources and document whether they are devel
 - Default severity: Medium
 - Default confidence: Medium
 
-Detects direct production dependencies where package metadata reports a newer major version than the requested version. Development dependencies and packages declared only in common test, fixture, example, or playground manifests are skipped for metadata freshness findings.
+Detects direct production dependencies where package metadata reports a newer major version than the requested version. Development dependencies and packages declared only in common test, fixture, example, or playground manifests are skipped for metadata freshness findings. NuGet freshness uses semantic version ordering for registry versions instead of lexical string ordering.
 
 Why it matters: major-version drift can indicate missed maintenance, unfixed defects, or delayed security updates. It is not automatically unsafe, but it is useful review evidence.
 
