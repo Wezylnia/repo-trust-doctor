@@ -167,33 +167,11 @@ internal static class OsvAffectedVersionMatcher
             return false;
         }
 
-        var expectedEcosystem = OsvEcosystemNames.GetName(package.Ecosystem);
-        return string.Equals(
-                   ReadString(packageElement, "ecosystem"),
-                   expectedEcosystem,
-                   StringComparison.OrdinalIgnoreCase) &&
-               string.Equals(
-                   NormalizePackageName(expectedEcosystem, ReadString(packageElement, "name")),
-                   NormalizePackageName(expectedEcosystem, package.Name),
-                   PackageNameComparison(expectedEcosystem));
+        return OsvPackageIdentity.Matches(
+            ReadString(packageElement, "ecosystem"),
+            ReadString(packageElement, "name"),
+            package);
     }
-
-    private static string? NormalizePackageName(string? ecosystem, string? packageName)
-    {
-        if (packageName is null)
-        {
-            return null;
-        }
-
-        return ecosystem?.Equals("PyPI", StringComparison.OrdinalIgnoreCase) == true
-            ? SqliteOsvAdvisoryStore.NormalizePackageName(ecosystem, packageName)
-            : packageName.Trim();
-    }
-
-    private static StringComparison PackageNameComparison(string? ecosystem) =>
-        ecosystem is "Go" or "Maven" or "SwiftURL"
-            ? StringComparison.Ordinal
-            : StringComparison.OrdinalIgnoreCase;
 
     private static bool VersionsEqual(string? left, string right)
     {

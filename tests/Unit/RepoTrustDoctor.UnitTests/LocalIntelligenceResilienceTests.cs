@@ -137,6 +137,70 @@ public sealed class LocalIntelligenceResilienceTests
         Assert.Equal(1, fallback.BatchRequestCount);
     }
 
+    [Fact]
+    public async Task QueryBatchAsync_PreservesCertainMatchesWhenAnotherRangeIsInconclusive()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var store = CreateStore(fixture.Path);
+        await ImportAsync(store, "Go", ExplicitAndInconclusiveAdvisories());
+
+        var result = await new LocalOsvAdvisoryClient(store, null).QueryBatchAsync(
+            [CreatePackage(DependencyEcosystem.Go, "github.com/acme/tool", "1.0.0")],
+            TestContext.Current.CancellationToken);
+
+        Assert.False(result.QuerySucceeded);
+        Assert.Equal(
+            "GO-EXPLICIT",
+            Assert.Single(Assert.Single(result.Packages).Advisories).Id);
+        Assert.Contains(
+            result.Warnings,
+            warning => warning.Contains("inconclusive", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ImportFullArchiveAsync_CountsOnlyIndexedEcosystemRecords()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var store = CreateStore(fixture.Path);
+        await using var archive = OsvTestArchive.Create("""
+            [
+              {
+                "id": "NPM-1",
+                "affected": [
+                  {
+                    "package": {
+                      "ecosystem": "npm",
+                      "name": "left-pad"
+                    },
+                    "versions": ["1.0.0"]
+                  }
+                ]
+              },
+              {
+                "id": "OTHER-1",
+                "affected": [
+                  {
+                    "package": {
+                      "ecosystem": "Maven",
+                      "name": "com.acme:library"
+                    },
+                    "versions": ["1.0.0"]
+                  }
+                ]
+              }
+            ]
+            """);
+
+        var result = await new OsvDumpImporter(store).ImportFullArchiveAsync(
+            "npm",
+            archive,
+            DateTimeOffset.UtcNow,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.AdvisoryCount);
+        Assert.Equal(1, result.PackageMappingCount);
+    }
+
     private static LocalIntelligenceOptions CreateOptions(string directory) =>
         new()
         {
@@ -202,5 +266,38 @@ public sealed class LocalIntelligenceResilienceTests
         private static VulnerabilityAdvisory CreateAdvisory() =>
             new("ONLINE-1", [], "online fallback", Severity.High, [], null, null);
     }
-}
 
+    private static string ExplicitAndInconclusiveAdvisories() => """
+        [
+          {
+            "id": "GO-INCONCLUSIVE",
+            "affected": [
+              {
+                "package": {
+                  "ecosystem": "Go",
+                  "name": "github.com/acme/tool"
+                },
+                "ranges": [
+                  {
+                    "type": "ECOSYSTEM",
+                    "events": [{"introduced": "0"}]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "GO-EXPLICIT",
+            "affected": [
+              {
+                "package": {
+                  "ecosystem": "Go",
+                  "name": "github.com/acme/tool"
+                },
+                "versions": ["1.0.0"]
+              }
+            ]
+          }
+        ]
+        """;
+}

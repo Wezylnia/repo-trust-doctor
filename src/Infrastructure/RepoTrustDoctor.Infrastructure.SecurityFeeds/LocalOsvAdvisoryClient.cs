@@ -130,6 +130,9 @@ public sealed class LocalOsvAdvisoryClient(
 
             fallbackPackages.Add(packages[index]);
             fallbackIndexes.Add(index);
+            results[index] = new OsvPackageQueryResult(
+                packages[index],
+                local.Advisories);
             if (local.Warning is not null)
             {
                 warnings.Add(local.Warning);
@@ -142,10 +145,6 @@ public sealed class LocalOsvAdvisoryClient(
             if (onlineFallback is null)
             {
                 querySucceeded = false;
-                foreach (var index in fallbackIndexes)
-                {
-                    results[index] = new OsvPackageQueryResult(packages[index], []);
-                }
             }
             else
             {
@@ -185,10 +184,11 @@ public sealed class LocalOsvAdvisoryClient(
             return new LocalQueryResult(
                 false,
                 [],
-                $"Local OSV data is not ready for {ecosystem ?? package.Ecosystem.ToString()}; online fallback was used.");
+                $"Local OSV data is not ready for {ecosystem ?? package.Ecosystem.ToString()}; online fallback is required.");
         }
 
         var advisories = new List<VulnerabilityAdvisory>();
+        string? warning = null;
         foreach (var candidate in candidates)
         {
             try
@@ -197,10 +197,9 @@ public sealed class LocalOsvAdvisoryClient(
                 var match = OsvAffectedVersionMatcher.Match(document.RootElement, package);
                 if (match == OsvVersionMatch.Indeterminate)
                 {
-                    return new LocalQueryResult(
-                        false,
-                        advisories,
-                        $"Local OSV range evaluation was inconclusive for {package.Ecosystem}:{package.Name}:{package.Version}; online fallback was used.");
+                    warning ??=
+                        $"Local OSV range evaluation was inconclusive for {package.Ecosystem}:{package.Name}:{package.Version}; online fallback is required.";
+                    continue;
                 }
 
                 if (match == OsvVersionMatch.Affected)
@@ -210,14 +209,12 @@ public sealed class LocalOsvAdvisoryClient(
             }
             catch (JsonException)
             {
-                return new LocalQueryResult(
-                    false,
-                    advisories,
-                    $"Local OSV advisory {candidate.Id} is malformed; online fallback was used.");
+                warning ??=
+                    $"Local OSV advisory {candidate.Id} is malformed; online fallback is required.";
             }
         }
 
-        return new LocalQueryResult(true, advisories, null);
+        return new LocalQueryResult(warning is null, advisories, warning);
     }
 
     private sealed record LocalQueryResult(

@@ -136,11 +136,16 @@ public sealed class OsvDumpImporter(SqliteOsvAdvisoryStore store)
                 if (string.Equals(ecosystem, importedEcosystem, StringComparison.OrdinalIgnoreCase) &&
                     !string.IsNullOrWhiteSpace(name))
                 {
-                    packages.Add(SqliteOsvAdvisoryStore.NormalizePackageName(
+                    packages.Add(OsvPackageIdentity.NormalizeForLookup(
                         importedEcosystem,
                         name));
                 }
             }
+        }
+
+        if (packages.Count == 0)
+        {
+            return null;
         }
 
         return new OsvImportRecord(

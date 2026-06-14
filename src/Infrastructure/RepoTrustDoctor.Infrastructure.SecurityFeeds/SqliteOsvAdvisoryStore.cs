@@ -1,5 +1,4 @@
 using Microsoft.Data.Sqlite;
-using System.Text.RegularExpressions;
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Infrastructure.LocalData;
 
@@ -73,7 +72,7 @@ public sealed class SqliteOsvAdvisoryStore(LocalIntelligenceDatabase database)
 
             command.Parameters["$ecosystem"].Value = Normalize(ecosystem);
             command.Parameters["$package_name"].Value =
-                NormalizePackageName(ecosystem, package.Name);
+                OsvPackageIdentity.NormalizeForLookup(ecosystem, package.Name);
 
             var packageResults = new List<OsvStoredAdvisory>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -152,11 +151,4 @@ public sealed class SqliteOsvAdvisoryStore(LocalIntelligenceDatabase database)
     internal static string Normalize(string value) =>
         value.Trim().ToLowerInvariant();
 
-    internal static string NormalizePackageName(string ecosystem, string value)
-    {
-        var normalized = Normalize(value);
-        return ecosystem.Equals("PyPI", StringComparison.OrdinalIgnoreCase)
-            ? Regex.Replace(normalized, "[-_.]+", "-")
-            : normalized;
-    }
 }

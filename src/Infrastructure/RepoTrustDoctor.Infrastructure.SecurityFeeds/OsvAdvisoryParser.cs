@@ -185,11 +185,12 @@ internal static class OsvAdvisoryParser
 
         var affectedName = ReadString(affectedPackage, "name");
         var affectedEcosystem = ReadString(affectedPackage, "ecosystem");
-        var expectedEcosystem = OsvEcosystemNames.GetName(package.Ecosystem);
-        return (string.IsNullOrWhiteSpace(affectedName) ||
-                affectedName.Equals(package.Name, StringComparison.OrdinalIgnoreCase)) &&
-               (string.IsNullOrWhiteSpace(affectedEcosystem) ||
-                affectedEcosystem.Equals(expectedEcosystem, StringComparison.OrdinalIgnoreCase));
+        return string.IsNullOrWhiteSpace(affectedName) ||
+               string.IsNullOrWhiteSpace(affectedEcosystem) ||
+               OsvPackageIdentity.Matches(
+                   affectedEcosystem,
+                   affectedName,
+                   package);
     }
 
     private static bool TryParseSeverity(string value, out Severity severity)
