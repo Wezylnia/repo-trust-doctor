@@ -86,6 +86,18 @@ Why it matters: exposed Discord webhooks allow posting messages or executing act
 
 Recommendation: manually verify the finding, revoke or rotate the webhook URL if confirmed, and remove it from repository history.
 
+## TRUST-SECRET009: Possible GCP Service Account Key Found
+
+- Category: Security
+- Default severity: High
+- Default confidence: Medium
+
+Detects Google Cloud service account JSON keys when the file includes the `service_account` type, a service account email, and an embedded private key marker. A bare `"type": "service_account"` example is not enough to trigger this rule.
+
+Why it matters: exposed service account keys can grant access to cloud resources depending on IAM scope.
+
+Recommendation: revoke or rotate the service account key if confirmed, audit recent key usage, and move deployment credentials into a managed secret store.
+
 ## Candidate Files And False-Positive Suppression
 
 The secret scanner reads likely text/config/source candidates rather than every repository file. It always considers sensitive filenames and key/certificate extensions, registry config files such as `.npmrc` and `.pypirc`, plus common source and configuration formats such as `.cs`, `.js`, `.ts`, `.py`, `.go`, `.java`, `.php`, `.rb`, `.yml`, `.yaml`, `.json`, `.toml`, `.properties`, `.tf`, `.sh`, `.ps1`, `.cmd`, `.gradle`, and `.txt`.
@@ -132,7 +144,7 @@ To avoid noise in automated testing, vendored code, generated files, and documen
 - `external/`
 - `node_modules/`
 
-Markdown files under `docs/` also suppress JWT-token examples, because many security tutorials include sample JWTs. Text documentation files under `docs` and `documentation` suppress private-key block examples when they are clearly documentation content. Sensitive-looking certificate or environment filenames under documentation paths are also suppressed to avoid flagging committed tutorial artifacts such as sample `.p12` files. `.npmrc` and `.pypirc` are scanned for real registry token patterns but do not trigger `TRUST-SECRET001` merely because the config file exists. Note that files under these paths are still checked for general repository metadata or container settings where appropriate, but secret rules will not fire.
+Markdown files under `docs` also suppress JWT-token examples, because many security tutorials include sample JWTs. Plain documentation files are still scanned for concrete secret content. Private-key examples are suppressed only when the block is clearly placeholder or lacks real-looking base64 key material; documentation files containing real-looking private key blocks are reported. Sensitive-looking certificate or environment filenames under documentation paths are also suppressed to avoid flagging committed tutorial artifacts such as sample `.p12` files. `.npmrc` and `.pypirc` are scanned for real registry token patterns but do not trigger `TRUST-SECRET001` merely because the config file exists.
 
 ## Generic API Key Filtering (TRUST-SECRET012)
 

@@ -78,10 +78,7 @@ internal static partial class SecretContentScanner
             ? privateKeyBlockMatch
             : PrivateKeyMarkerPattern().Match(content);
         if (privateKeyMarkerMatch.Success &&
-            !IsDocumentationTextPath(relativePath) &&
-            (privateKeyBlockMatch.Success
-                ? !IsLikelySourceCodePrivateKeyPattern(relativePath, privateKeyBlockMatch)
-                : !IsLikelySourceCodeMarker(relativePath, content, privateKeyMarkerMatch.Index)))
+            !ShouldSuppressPrivateKeyFinding(relativePath, content, privateKeyMarkerMatch, privateKeyBlockMatch))
         {
             findings.Add(CreateFinding(
                 "TRUST-SECRET002",
@@ -172,7 +169,7 @@ internal static partial class SecretContentScanner
                 redactedValue: SecretEvidenceRedactor.Redact(azureMatch.Value)));
         }
 
-        if (GcpServiceAccountPattern().Match(content) is { Success: true } gcpMatch)
+        if (TryGetGcpServiceAccountKeyIndex(content, out var gcpMatchIndex))
         {
             findings.Add(CreateFinding(
                 "TRUST-SECRET009",
@@ -181,7 +178,7 @@ internal static partial class SecretContentScanner
                 Confidence.Medium,
                 relativePath,
                 "A Google Cloud service account JSON key was found.",
-                GetLineNumber(content, gcpMatch.Index),
+                GetLineNumber(content, gcpMatchIndex),
                 isBlocking: true));
         }
 
@@ -321,6 +318,78 @@ internal static partial class SecretContentScanner
         return isDocumentationFile && RepositoryPathClassifier.IsDocumentationPath(normalized);
     }
 
+    private static bool ShouldSuppressPrivateKeyFinding(
+        string relativePath,
+        string content,
+        Match markerMatch,
+        Match blockMatch)
+    {
+        if (IsDocumentationTextPath(relativePath) &&
+            IsLikelyDocumentationPrivateKeyExample(blockMatch.Success ? blockMatch.Value : markerMatch.Value))
+        {
+            return true;
+        }
+
+        return blockMatch.Success
+            ? IsLikelySourceCodePrivateKeyPattern(relativePath, blockMatch)
+            : IsLikelySourceCodeMarker(relativePath, content, markerMatch.Index);
+    }
+
+    private static bool IsLikelyDocumentationPrivateKeyExample(string matchedText)
+    {
+        var lower = matchedText.ToLowerInvariant();
+        if (lower.Contains("example", StringComparison.Ordinal) ||
+            lower.Contains("sample", StringComparison.Ordinal) ||
+            lower.Contains("documentation", StringComparison.Ordinal) ||
+            lower.Contains("placeholder", StringComparison.Ordinal) ||
+            lower.Contains("dummy", StringComparison.Ordinal) ||
+            lower.Contains("fake", StringComparison.Ordinal) ||
+            lower.Contains("redacted", StringComparison.Ordinal) ||
+            lower.Contains("your private key", StringComparison.Ordinal) ||
+            lower.Contains("...", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return !HasBase64PrivateKeyMaterial(matchedText);
+    }
+
+    private static bool HasBase64PrivateKeyMaterial(string matchedText)
+    {
+        foreach (var line in matchedText.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length < 40 ||
+                trimmed.StartsWith("-----", StringComparison.Ordinal) ||
+                trimmed.Contains(':', StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (trimmed.All(character => char.IsAsciiLetterOrDigit(character) || character is '+' or '/' or '='))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGetGcpServiceAccountKeyIndex(string content, out int matchIndex)
+    {
+        var serviceAccountMatch = GcpServiceAccountPattern().Match(content);
+        if (serviceAccountMatch.Success &&
+            GcpPrivateKeyPropertyPattern().IsMatch(content) &&
+            GcpClientEmailPattern().IsMatch(content))
+        {
+            matchIndex = serviceAccountMatch.Index;
+            return true;
+        }
+
+        matchIndex = -1;
+        return false;
+    }
+
     private static bool IsLikelySourceCodeMarker(
         string relativePath,
         string content,
@@ -458,6 +527,12 @@ internal static partial class SecretContentScanner
 
     [GeneratedRegex(@"""type""\s*:\s*""service_account""")]
     private static partial Regex GcpServiceAccountPattern();
+
+    [GeneratedRegex(@"""private_key""\s*:\s*""[^""]*-----BEGIN PRIVATE KEY-----")]
+    private static partial Regex GcpPrivateKeyPropertyPattern();
+
+    [GeneratedRegex(@"""client_email""\s*:\s*""[^""]+@[^""]+\.iam\.gserviceaccount\.com""")]
+    private static partial Regex GcpClientEmailPattern();
 
     [GeneratedRegex(@"eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}")]
     private static partial Regex JwtTokenPattern();

@@ -523,7 +523,9 @@ public sealed class SecretQuickScanAnalyzerTests
         {
             "type": "{{serviceAccountType}}",
             "project_id": "my-project",
-            "private_key_id": "abc123"
+            "private_key_id": "abc123",
+            "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDsample\n-----END PRIVATE KEY-----\n",
+            "client_email": "scanner@my-project.iam.gserviceaccount.com"
         }
         """);
 
@@ -534,6 +536,45 @@ public sealed class SecretQuickScanAnalyzerTests
         Assert.True(finding.IsBlocking);
         var evidence = Assert.Single(finding.Evidence);
         Assert.Equal("sa.json", evidence.FilePath);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ServiceAccountTypeWithoutPrivateKey_NoGcpFinding()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var serviceAccountType = "service_" + "account";
+        File.WriteAllText(Path.Combine(fixture.Path, "sa.json"), $$"""
+        {
+            "type": "{{serviceAccountType}}",
+            "project_id": "my-project",
+            "private_key_id": "abc123"
+        }
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-SECRET009");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DocumentationPrivateKeyWithRealMaterial_ReportsSecret002()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "docs", "operations"));
+        File.WriteAllText(Path.Combine(fixture.Path, "docs", "operations", "incident.md"), """
+        # Incident note
+
+        -----BEGIN PRIVATE KEY-----
+        MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDbE2m7LlJx4c7y
+        -----END PRIVATE KEY-----
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET002");
+        Assert.Equal("docs/operations/incident.md", Assert.Single(finding.Evidence).FilePath);
     }
 
     [Fact]

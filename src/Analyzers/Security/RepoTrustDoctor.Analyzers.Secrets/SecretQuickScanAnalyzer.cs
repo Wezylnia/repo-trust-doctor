@@ -269,13 +269,14 @@ public sealed class SecretQuickScanAnalyzer : IRepositoryAnalyzer
         foreach (var file in RepositoryFileSystem.EnumerateFiles(root))
         {
             var relativePath = Path.GetRelativePath(root, file).Replace('\\', '/');
-            if (RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath))
+            var fileName = Path.GetFileName(file);
+            var extension = Path.GetExtension(file);
+            if (RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath) &&
+                !ShouldScanDocumentationContent(relativePath, fileName, extension))
             {
                 continue;
             }
 
-            var fileName = Path.GetFileName(file);
-            var extension = Path.GetExtension(file);
             var isSensitive = SensitiveFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) ||
                               SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase);
             if (isSensitive)
@@ -286,7 +287,8 @@ public sealed class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             {
                 yield return new SecretCandidateFile(file, relativePath, fileName, extension, SecretCandidateKind.CredentialConfiguration);
             }
-            else if (CandidateTextExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            else if (CandidateTextExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase) ||
+                     IsDocumentationTextExtension(relativePath, extension))
             {
                 yield return new SecretCandidateFile(
                     file,
@@ -299,6 +301,34 @@ public sealed class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             }
         }
     }
+
+    private static bool ShouldScanDocumentationContent(string relativePath, string fileName, string extension)
+    {
+        var classification = RepositoryPathClassifier.Classify(relativePath);
+        const RepositoryPathClassification skippedDocumentationContexts =
+            RepositoryPathClassification.Test |
+            RepositoryPathClassification.Fixture |
+            RepositoryPathClassification.Example |
+            RepositoryPathClassification.Generated |
+            RepositoryPathClassification.Template |
+            RepositoryPathClassification.Benchmark |
+            RepositoryPathClassification.Vendored;
+
+        return classification.HasAny(RepositoryPathClassification.Documentation) &&
+               !classification.HasAny(skippedDocumentationContexts) &&
+               (CandidateTextExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase) ||
+                extension.Equals(".md", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".adoc", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".rst", StringComparison.OrdinalIgnoreCase) ||
+                SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase) ||
+                CredentialConfigFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static bool IsDocumentationTextExtension(string relativePath, string extension) =>
+        RepositoryPathClassifier.IsDocumentationPath(relativePath) &&
+        (extension.Equals(".md", StringComparison.OrdinalIgnoreCase) ||
+         extension.Equals(".adoc", StringComparison.OrdinalIgnoreCase) ||
+         extension.Equals(".rst", StringComparison.OrdinalIgnoreCase));
 
     private static string[]? BuildBudgetWarnings(
         int sourceContentScanned,
@@ -322,7 +352,13 @@ public sealed class SecretQuickScanAnalyzer : IRepositoryAnalyzer
 
     private static bool IsExampleFixturePath(string relativePath)
     {
-        return RepositoryPathClassifier.IsTestFixtureExampleOrDocumentationPath(relativePath);
+        var classification = RepositoryPathClassifier.Classify(relativePath);
+        const RepositoryPathClassification lowSignal =
+            RepositoryPathClassification.Test |
+            RepositoryPathClassification.Fixture |
+            RepositoryPathClassification.Example;
+
+        return classification.HasAny(lowSignal);
     }
 
     private static bool IsDocumentationSensitiveFilePath(string relativePath)
