@@ -328,6 +328,30 @@ Why it matters: internal-looking names on public registries can be dependency-co
 
 Recommendation: verify whether the package should come from a private registry.
 
+## TRUST-REG001: Package Registry Uses HTTP
+
+- Category: Dependencies
+- Default severity: High
+- Default confidence: High
+
+Detects package registry URLs that use plaintext `http://` in registry configuration files such as `.npmrc`, NuGet config, Gradle settings, and Maven settings. Localhost development registries are ignored.
+
+Why it matters: plaintext package registry traffic can expose package metadata and credentials and weakens package integrity assumptions.
+
+Recommendation: use HTTPS package sources for non-local registries. Report evidence redacts URL credentials and query strings.
+
+## TRUST-REG003: Inline Package Registry Token
+
+- Category: Dependencies
+- Default severity: High
+- Default confidence: Medium
+
+Detects literal package registry credentials in registry configuration, including scoped `.npmrc` entries such as `//registry.example/:_authToken=...`, `_auth`, `_password`, `password`, and NuGet `ClearTextPassword` values. Environment variable references are not reported.
+
+Why it matters: registry tokens committed to source can allow package publishing, private package reads, or dependency tampering depending on token scope.
+
+Recommendation: move registry credentials to environment variables, CI secrets, or a local developer credential store. Findings identify the key name but do not include the credential value.
+
 ## TRUST-DEP022: Go Module Does Not Have a go.sum File
 
 - Category: Dependencies

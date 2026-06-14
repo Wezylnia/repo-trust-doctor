@@ -58,7 +58,20 @@ public sealed class PackageRegistryConfigAnalyzerTests
 
         var a = new PackageRegistryConfigAnalyzer();
         var r = await a.AnalyzeAsync(new AnalysisContext(f.Path, f.Path, AnalysisDepth.Standard), CancellationToken.None);
-        Assert.Contains(r.Findings, x => x.RuleId == "TRUST-REG003");
+        Assert.Contains(r.Findings, x => x.RuleId == "TRUST-REG003" && x.Category == AnalysisCategory.Dependencies);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DetectsScopedNpmTokenLine()
+    {
+        using var f = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(f.Path, ".npmrc"), "//registry.npmjs.org/:_authToken=secret123\n");
+
+        var a = new PackageRegistryConfigAnalyzer();
+        var r = await a.AnalyzeAsync(new AnalysisContext(f.Path, f.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(r.Findings, x => x.RuleId == "TRUST-REG003");
+        Assert.DoesNotContain("secret123", finding.Evidence[0].Message);
     }
 
     [Fact]
@@ -92,5 +105,22 @@ public sealed class PackageRegistryConfigAnalyzerTests
         var a = new PackageRegistryConfigAnalyzer();
         var r = await a.AnalyzeAsync(new AnalysisContext(f.Path, f.Path, AnalysisDepth.Standard), CancellationToken.None);
         Assert.DoesNotContain(r.Findings, x => x.RuleId == "TRUST-REG005");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_RedactsCredentialsFromRegistryUrlEvidence()
+    {
+        using var f = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(f.Path, ".npmrc"), "registry=http://user:pass@example.com/npm?token=secret\n");
+
+        var a = new PackageRegistryConfigAnalyzer();
+        var r = await a.AnalyzeAsync(new AnalysisContext(f.Path, f.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        var finding = Assert.Single(r.Findings, x => x.RuleId == "TRUST-REG001");
+        var evidence = finding.Evidence[0].Message;
+        Assert.Contains("http://example.com/npm", evidence);
+        Assert.DoesNotContain("user", evidence);
+        Assert.DoesNotContain("pass", evidence);
+        Assert.DoesNotContain("token=secret", evidence);
     }
 }

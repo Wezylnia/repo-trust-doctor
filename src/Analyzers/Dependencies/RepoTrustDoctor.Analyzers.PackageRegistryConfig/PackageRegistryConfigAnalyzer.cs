@@ -29,7 +29,7 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
             "A registry URL uses http://.", "Use https:// for all package registries."),
         new("TRUST-REG002", "npm always-auth enabled globally", AnalysisCategory.Dependencies, Severity.Medium, Confidence.Medium,
             "always-auth=true is set globally in .npmrc.", "Scope auth to specific registries."),
-        new("TRUST-REG003", "Inline package registry token", AnalysisCategory.Security, Severity.High, Confidence.Medium,
+        new("TRUST-REG003", "Inline package registry token", AnalysisCategory.Dependencies, Severity.High, Confidence.Medium,
             "A literal token or password found in registry config.", "Use environment variables instead of inline credentials."),
         new("TRUST-REG004", "Maven mirror redirects all repositories", AnalysisCategory.Dependencies, Severity.Medium, Confidence.Medium,
             "A mirrorOf=* redirects all repositories to a non-default host.", "Review Maven mirror configuration."),
@@ -51,7 +51,7 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
                 var content = await File.ReadAllTextAsync(file, cancellationToken);
                 var scanContent = file.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
                     ? content
-                    : StripLineComments(content);
+                    : StripLineComments(content, relativePath);
 
                 CheckHttpRegistry(scanContent, relativePath, findings);
                 CheckAlwaysAuth(scanContent, relativePath, findings);
@@ -70,7 +70,7 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
         {
             var url = m.Value.Trim();
             if (url.Contains("localhost") || url.Contains("127.0.0.1") || url.Contains("[::1]")) continue;
-            findings.Add(F("TRUST-REG001", "HTTP registry URL", Severity.High, relativePath, $"Registry URL uses http://: {url}"));
+            findings.Add(F("TRUST-REG001", "HTTP registry URL", Severity.High, relativePath, $"Registry URL uses http://: {RedactUrlForEvidence(url)}"));
         }
     }
 
@@ -102,7 +102,7 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
                 var mirrorOf = mirror.Elements().FirstOrDefault(e => e.Name.LocalName == "mirrorOf")?.Value;
                 var url = mirror.Elements().FirstOrDefault(e => e.Name.LocalName == "url")?.Value ?? "";
                 if (mirrorOf == "*" && !url.Contains("localhost") && !url.Contains(".corp") && !url.Contains(".internal"))
-                    findings.Add(F("TRUST-REG004", "Maven mirror-all", Severity.Medium, relativePath, $"mirrorOf=* redirects to {url}.", Confidence.Medium));
+                    findings.Add(F("TRUST-REG004", "Maven mirror-all", Severity.Medium, relativePath, $"mirrorOf=* redirects to {RedactUrlForEvidence(url)}.", Confidence.Medium));
             }
         }
         catch { /* skip unparseable XML */ }
@@ -119,17 +119,42 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
             [new Evidence("registry-config", ev, path)],
             new Recommendation("Review the package registry configuration."));
 
-    private static string StripLineComments(string content)
+    private static string StripLineComments(string content, string relativePath)
     {
+        var fileName = Path.GetFileName(relativePath);
+        var stripDoubleSlashComments =
+            !fileName.Equals(".npmrc", StringComparison.OrdinalIgnoreCase) &&
+            !fileName.Equals(".yarnrc", StringComparison.OrdinalIgnoreCase);
         var lines = content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
         for (var i = 0; i < lines.Length; i++)
         {
             var trimmed = lines[i].TrimStart();
-            if (trimmed.StartsWith('#') || trimmed.StartsWith("//"))
+            if (trimmed.StartsWith('#') ||
+                trimmed.StartsWith(';') ||
+                stripDoubleSlashComments && trimmed.StartsWith("//"))
+            {
                 lines[i] = "";
+            }
         }
 
         return string.Join('\n', lines);
+    }
+
+    private static string RedactUrlForEvidence(string rawUrl)
+    {
+        if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri))
+        {
+            return rawUrl;
+        }
+
+        var builder = new UriBuilder(uri)
+        {
+            UserName = string.Empty,
+            Password = string.Empty,
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+        return builder.Uri.AbsoluteUri;
     }
 
     [GeneratedRegex(@"http://[^\s""'>]+")]
@@ -141,7 +166,7 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"//[^/]+\.[^/]+/:_authToken")]
     private static partial Regex ScopedAlwaysAuthPattern();
 
-    [GeneratedRegex(@"(?mi)(?<key>_authToken|password|ClearTextPassword)\s*[=:]\s*(?<value>\S+)")]
+    [GeneratedRegex(@"(?mi)(?<key>_authToken|_auth|_password|password|ClearTextPassword)\s*[=:]\s*(?<value>\S+)")]
     private static partial Regex InlineTokenPattern();
 
     [GeneratedRegex(@"allowInsecureProtocol\s*[=:]\s*true", RegexOptions.IgnoreCase)]
