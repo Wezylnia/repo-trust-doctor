@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Data.Sqlite;
 
 namespace RepoTrustDoctor.Infrastructure.LocalData;
@@ -5,8 +6,9 @@ namespace RepoTrustDoctor.Infrastructure.LocalData;
 public sealed class LocalIntelligenceDatabase
 {
     private const int SchemaVersion = 2;
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> InitializationLocks =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly string connectionString;
-    private readonly SemaphoreSlim initializationLock = new(1, 1);
     private volatile bool initialized;
 
     public LocalIntelligenceDatabase(LocalIntelligenceOptions options)
@@ -39,6 +41,9 @@ public sealed class LocalIntelligenceDatabase
             return;
         }
 
+        var initializationLock = InitializationLocks.GetOrAdd(
+            DatabasePath,
+            static _ => new SemaphoreSlim(1, 1));
         await initializationLock.WaitAsync(cancellationToken);
         try
         {
@@ -49,14 +54,18 @@ public sealed class LocalIntelligenceDatabase
 
             Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
             await using var connection = await OpenUninitializedConnectionAsync(cancellationToken);
+            await using var transaction = connection.BeginTransaction(deferred: false);
             await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
             command.CommandText = SchemaSql;
             await command.ExecuteNonQueryAsync(cancellationToken);
             await EnsureRegistryOriginalPackageNameColumnAsync(
                 connection,
+                transaction,
                 cancellationToken);
 
             await using var versionCommand = connection.CreateCommand();
+            versionCommand.Transaction = transaction;
             versionCommand.CommandText = """
                 INSERT INTO local_schema(key, value)
                 VALUES ('schema_version', $version)
@@ -64,6 +73,7 @@ public sealed class LocalIntelligenceDatabase
                 """;
             versionCommand.Parameters.AddWithValue("$version", SchemaVersion.ToString());
             await versionCommand.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             initialized = true;
         }
         finally
@@ -75,23 +85,33 @@ public sealed class LocalIntelligenceDatabase
     private async Task<SqliteConnection> OpenUninitializedConnectionAsync(CancellationToken cancellationToken)
     {
         var connection = new SqliteConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            PRAGMA journal_mode = WAL;
-            PRAGMA synchronous = NORMAL;
-            PRAGMA foreign_keys = ON;
-            PRAGMA busy_timeout = 30000;
-            """;
-        await command.ExecuteNonQueryAsync(cancellationToken);
-        return connection;
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                PRAGMA journal_mode = WAL;
+                PRAGMA synchronous = NORMAL;
+                PRAGMA foreign_keys = ON;
+                PRAGMA busy_timeout = 30000;
+                """;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            return connection;
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
     }
 
     private static async Task EnsureRegistryOriginalPackageNameColumnAsync(
         SqliteConnection connection,
+        SqliteTransaction transaction,
         CancellationToken cancellationToken)
     {
         await using var columnsCommand = connection.CreateCommand();
+        columnsCommand.Transaction = transaction;
         columnsCommand.CommandText = "PRAGMA table_info(registry_metadata);";
         await using var reader = await columnsCommand.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -107,6 +127,7 @@ public sealed class LocalIntelligenceDatabase
 
         await reader.DisposeAsync();
         await using var migrationCommand = connection.CreateCommand();
+        migrationCommand.Transaction = transaction;
         migrationCommand.CommandText = """
             ALTER TABLE registry_metadata
             ADD COLUMN original_package_name TEXT NOT NULL DEFAULT '';

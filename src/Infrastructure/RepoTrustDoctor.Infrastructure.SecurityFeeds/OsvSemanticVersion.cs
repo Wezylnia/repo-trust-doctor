@@ -25,18 +25,31 @@ internal sealed record OsvSemanticVersion(
         var buildIndex = normalized.IndexOf('+');
         if (buildIndex >= 0)
         {
+            if (!IdentifiersAreValid(normalized[(buildIndex + 1)..], allowLeadingZero: true))
+            {
+                return false;
+            }
+
             normalized = normalized[..buildIndex];
         }
 
         var prereleaseIndex = normalized.IndexOf('-');
         var coreText = prereleaseIndex < 0 ? normalized : normalized[..prereleaseIndex];
+        if (prereleaseIndex >= 0 &&
+            !IdentifiersAreValid(normalized[(prereleaseIndex + 1)..], allowLeadingZero: false))
+        {
+            return false;
+        }
+
         var prerelease = prereleaseIndex < 0
             ? []
             : normalized[(prereleaseIndex + 1)..]
-                .Split('.', StringSplitOptions.RemoveEmptyEntries);
+                .Split('.');
         var coreParts = coreText.Split('.');
-        if (coreParts.Length == 0 ||
-            coreParts.Any(part => !BigInteger.TryParse(part, out _)))
+        if (coreParts.Length != 3 ||
+            coreParts.Any(part =>
+                !IsNumericIdentifier(part, allowLeadingZero: false) ||
+                !BigInteger.TryParse(part, out _)))
         {
             return false;
         }
@@ -112,4 +125,21 @@ internal sealed record OsvSemanticVersion(
 
         return string.Compare(left, right, StringComparison.Ordinal);
     }
+
+    private static bool IdentifiersAreValid(string value, bool allowLeadingZero)
+    {
+        var identifiers = value.Split('.');
+        return identifiers.Length > 0 &&
+               identifiers.All(identifier =>
+                   identifier.Length > 0 &&
+                   identifier.All(character =>
+                       char.IsAsciiLetterOrDigit(character) || character == '-') &&
+                   (!identifier.All(char.IsDigit) ||
+                    IsNumericIdentifier(identifier, allowLeadingZero)));
+    }
+
+    private static bool IsNumericIdentifier(string value, bool allowLeadingZero) =>
+        value.Length > 0 &&
+        value.All(char.IsDigit) &&
+        (allowLeadingZero || value.Length == 1 || value[0] != '0');
 }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using RepoTrustDoctor.Analysis.Abstractions;
 
 namespace RepoTrustDoctor.Infrastructure.SecurityFeeds;
@@ -15,24 +16,67 @@ public sealed class LocalOsvAdvisoryClient(
         DependencyPackageInfo package,
         CancellationToken cancellationToken)
     {
-        var ecosystem = OsvEcosystemNames.GetName(package.Ecosystem);
-        var ready = ecosystem is not null &&
-                    await store.IsEcosystemReadyAsync(ecosystem, cancellationToken);
-        var candidates = ready
-            ? await store.GetCandidatesAsync(package, cancellationToken)
-            : [];
-        var local = QueryLocal(package, ecosystem, ready, candidates);
-        if (local.Complete)
+        try
         {
-            return local.Advisories;
-        }
+            var ecosystem = OsvEcosystemNames.GetName(package.Ecosystem);
+            var ready = ecosystem is not null &&
+                        await store.IsEcosystemReadyAsync(ecosystem, cancellationToken);
+            var candidates = ready
+                ? await store.GetCandidatesAsync(package, cancellationToken)
+                : [];
+            var local = QueryLocal(package, ecosystem, ready, candidates);
+            if (local.Complete)
+            {
+                return local.Advisories;
+            }
 
-        return onlineFallback is null
-            ? local.Advisories
-            : await onlineFallback.QueryAsync(package, cancellationToken);
+            return onlineFallback is null
+                ? local.Advisories
+                : await onlineFallback.QueryAsync(package, cancellationToken);
+        }
+        catch (Exception ex) when (IsLocalStoreFailure(ex))
+        {
+            return onlineFallback is null
+                ? []
+                : await onlineFallback.QueryAsync(package, cancellationToken);
+        }
     }
 
     public async Task<OsvBatchQueryResult> QueryBatchAsync(
+        IReadOnlyList<DependencyPackageInfo> packages,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await QueryBatchCoreAsync(packages, cancellationToken);
+        }
+        catch (Exception ex) when (IsLocalStoreFailure(ex))
+        {
+            const string warning =
+                "The local OSV SQLite index could not be read; online fallback was used.";
+            if (onlineFallback is null)
+            {
+                return new OsvBatchQueryResult(
+                    packages.Select(package => new OsvPackageQueryResult(package, []))
+                        .ToArray(),
+                    false,
+                    [warning]);
+            }
+
+            var online = await onlineFallback.QueryBatchAsync(packages, cancellationToken);
+            return online with
+            {
+                Warnings = online.Warnings
+                    .Append(warning)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray(),
+                LocalPackageCount = 0,
+                OnlinePackageCount = packages.Count
+            };
+        }
+    }
+
+    private async Task<OsvBatchQueryResult> QueryBatchCoreAsync(
         IReadOnlyList<DependencyPackageInfo> packages,
         CancellationToken cancellationToken)
     {
@@ -180,4 +224,7 @@ public sealed class LocalOsvAdvisoryClient(
         bool Complete,
         IReadOnlyList<VulnerabilityAdvisory> Advisories,
         string? Warning);
+
+    private static bool IsLocalStoreFailure(Exception exception) =>
+        exception is SqliteException or IOException or UnauthorizedAccessException;
 }

@@ -173,10 +173,27 @@ internal static class OsvAffectedVersionMatcher
                    expectedEcosystem,
                    StringComparison.OrdinalIgnoreCase) &&
                string.Equals(
-                   ReadString(packageElement, "name"),
-                   package.Name,
-                   StringComparison.OrdinalIgnoreCase);
+                   NormalizePackageName(expectedEcosystem, ReadString(packageElement, "name")),
+                   NormalizePackageName(expectedEcosystem, package.Name),
+                   PackageNameComparison(expectedEcosystem));
     }
+
+    private static string? NormalizePackageName(string? ecosystem, string? packageName)
+    {
+        if (packageName is null)
+        {
+            return null;
+        }
+
+        return ecosystem?.Equals("PyPI", StringComparison.OrdinalIgnoreCase) == true
+            ? SqliteOsvAdvisoryStore.NormalizePackageName(ecosystem, packageName)
+            : packageName.Trim();
+    }
+
+    private static StringComparison PackageNameComparison(string? ecosystem) =>
+        ecosystem is "Go" or "Maven" or "SwiftURL"
+            ? StringComparison.Ordinal
+            : StringComparison.OrdinalIgnoreCase;
 
     private static bool VersionsEqual(string? left, string right)
     {

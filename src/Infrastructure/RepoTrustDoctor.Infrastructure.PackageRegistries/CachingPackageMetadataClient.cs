@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Data.Sqlite;
 using RepoTrustDoctor.Analysis.Abstractions;
 
 namespace RepoTrustDoctor.Infrastructure.PackageRegistries;
@@ -31,7 +32,7 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
         CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
-        var cached = await cache.GetAsync(package, cancellationToken);
+        var cached = await TryGetCachedAsync(package, cancellationToken);
         if (cached?.IsFresh(now) == true)
         {
             return AddCacheMetadata(cached.Metadata, "sqlite", cached.FetchedAt);
@@ -43,16 +44,29 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
         try
         {
             now = timeProvider.GetUtcNow();
-            cached = await cache.GetAsync(package, cancellationToken);
+            cached = await TryGetCachedAsync(package, cancellationToken);
             if (cached?.IsFresh(now) == true)
             {
                 return AddCacheMetadata(cached.Metadata, "sqlite", cached.FetchedAt);
             }
 
-            var fresh = await inner.GetMetadataAsync(package, cancellationToken);
+            PackageRegistryMetadata? fresh;
+            try
+            {
+                fresh = await inner.GetMetadataAsync(package, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch when (cached is not null)
+            {
+                return AddCacheMetadata(cached.Metadata, "sqlite-stale", cached.FetchedAt);
+            }
+
             if (fresh is not null)
             {
-                await cache.SetAsync(
+                await TrySetCachedAsync(
                     package,
                     fresh,
                     now,
@@ -66,7 +80,7 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
                 return AddCacheMetadata(cached.Metadata, "sqlite-stale", cached.FetchedAt);
             }
 
-            await cache.SetAsync(
+            await TrySetCachedAsync(
                 package,
                 null,
                 now,
@@ -79,6 +93,45 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
             keyLock.Release();
         }
     }
+
+    private async Task<PackageMetadataCacheEntry?> TryGetCachedAsync(
+        DependencyPackageInfo package,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await cache.GetAsync(package, cancellationToken);
+        }
+        catch (Exception ex) when (IsCacheFailure(ex))
+        {
+            return null;
+        }
+    }
+
+    private async Task TrySetCachedAsync(
+        DependencyPackageInfo package,
+        PackageRegistryMetadata? metadata,
+        DateTimeOffset fetchedAt,
+        DateTimeOffset expiresAt,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await cache.SetAsync(
+                package,
+                metadata,
+                fetchedAt,
+                expiresAt,
+                cancellationToken);
+        }
+        catch (Exception ex) when (IsCacheFailure(ex))
+        {
+            // A local cache failure must not discard successful registry metadata.
+        }
+    }
+
+    private static bool IsCacheFailure(Exception exception) =>
+        exception is SqliteException or IOException or UnauthorizedAccessException;
 
     private static PackageRegistryMetadata? AddCacheMetadata(
         PackageRegistryMetadata? metadata,

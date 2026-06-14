@@ -156,6 +156,73 @@ public sealed class PackageMetadataCacheTests
         Assert.Equal("Example.MixedCase", client.LastPackageName);
     }
 
+    [Fact]
+    public async Task DatabaseInitialization_IsSafeAcrossConcurrentInstances()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var options = CreateOptions(fixture.Path);
+        var databases = Enumerable.Range(0, 24)
+            .Select(_ => new LocalIntelligenceDatabase(options))
+            .ToArray();
+
+        await Task.WhenAll(databases.Select(database =>
+            database.EnsureInitializedAsync(TestContext.Current.CancellationToken)));
+
+        var cache = new SqlitePackageMetadataCache(databases[0]);
+        await cache.SetAsync(
+            CreatePackage("left-pad", "1.0.0"),
+            null,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.AddHours(1),
+            TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task GetMetadataAsync_UsesNetworkWhenCacheDatabaseIsCorrupt()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var options = CreateOptions(fixture.Path);
+        await File.WriteAllTextAsync(
+            options.DatabasePath,
+            "not a sqlite database",
+            TestContext.Current.CancellationToken);
+        var inner = new StubMetadataClient();
+        var cache = new SqlitePackageMetadataCache(new LocalIntelligenceDatabase(options));
+        var client = new CachingPackageMetadataClient(
+            inner,
+            cache,
+            options.RegistryCacheTtl);
+
+        var result = await client.GetMetadataAsync(
+            CreatePackage("left-pad", "1.0.0"),
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Equal(1, inner.RequestCount);
+        Assert.Equal("network", result!.Metadata?["lookup.source"]);
+    }
+
+    [Fact]
+    public async Task GetMetadataAsync_ReturnsStaleEntryWhenRegistryThrows()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var time = new MutableTimeProvider(
+            new DateTimeOffset(2026, 6, 14, 10, 0, 0, TimeSpan.Zero));
+        var inner = new StubMetadataClient();
+        var client = CreateClient(fixture.Path, inner, time);
+        var package = CreatePackage("left-pad", "1.0.0");
+        await client.GetMetadataAsync(package, TestContext.Current.CancellationToken);
+        time.Advance(TimeSpan.FromHours(25));
+        inner.ThrowOnRequest = true;
+
+        var result = await client.GetMetadataAsync(
+            package,
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Equal("sqlite-stale", result!.Metadata?["lookup.source"]);
+    }
+
     private static CachingPackageMetadataClient CreateClient(
         string directory,
         IPackageMetadataClient inner,
@@ -194,6 +261,8 @@ public sealed class PackageMetadataCacheTests
 
         public bool ReturnNull { get; set; }
 
+        public bool ThrowOnRequest { get; set; }
+
         public string? LastPackageName { get; private set; }
 
         public Task<PackageRegistryMetadata?> GetMetadataAsync(
@@ -202,6 +271,11 @@ public sealed class PackageMetadataCacheTests
         {
             RequestCount++;
             LastPackageName = package.Name;
+            if (ThrowOnRequest)
+            {
+                throw new HttpRequestException("simulated registry failure");
+            }
+
             return Task.FromResult(ReturnNull
                 ? null
                 : new PackageRegistryMetadata(
