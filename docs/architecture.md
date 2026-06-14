@@ -87,6 +87,12 @@ The dependency inventory analyzer follows this rule with an orchestration class 
 
 `RepoTrustDoctor.Infrastructure.Scanning` owns the default analyzer pipeline and repository workspace preparation. This prevents CLI, API, and worker hosts from each composing analyzer lists independently.
 
+## Local Intelligence
+
+Dependency intelligence is persisted in a shared SQLite database. Registry metadata for previously seen NuGet, npm, PyPI, and Maven packages is cached by exact requested version. OSV ecosystem archives are indexed by ecosystem and normalized package name so vulnerability candidates can be found locally before version matching.
+
+The scanner uses online registry or OSV requests only for cache misses, expired registry entries, ecosystems that are not ready, or OSV range types that cannot be evaluated conservatively. The optional hosted updater is disabled by default and can be enabled in one production API or worker instance. See [Local Dependency Intelligence](local-intelligence.md).
+
 ## Repository Workspace Preparation
 
 `RepoTrustDoctor.Infrastructure.Git` prepares the repository workspace before analysis:

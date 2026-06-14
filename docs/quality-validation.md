@@ -64,6 +64,15 @@ Deep code analyzers use deterministic partition-balanced selection when a reposi
 
 For dependency validation, inspect `dependency.package.lock-resolved.count` and sample the resolved package records. npm ranges can resolve through `package-lock.json` v1-v3, including workspace-specific package entries. NuGet projects resolve only through an adjacent `packages.lock.json`; conflicting versions across target frameworks remain unresolved instead of being collapsed to an arbitrary version. Both readers accept lockfiles up to 64 MiB through bounded JSON parsing.
 
+For repeated network-intelligence benchmarks, also record:
+
+- `dependency.metadata.cache.hit.count`
+- `dependency.metadata.network.count`
+- `dependency.vulnerability.lookup.local.count`
+- `dependency.vulnerability.lookup.online.count`
+
+Use a fresh dedicated SQLite database to measure cold behavior, then repeat against the same database to measure warm behavior. Do not compare a cold scan with a warm scan without labeling the cache state.
+
 Measure analyzer performance with a solo run before treating a concurrent-run timeout as an algorithmic regression. Parallel scans are still useful for cancellation and resource-contention validation, but registry latency, disk contention, and CPU pressure make their wall-clock durations unsuitable as a stable baseline.
 
 ## Rule Distribution Diffs

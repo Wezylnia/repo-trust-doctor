@@ -1,0 +1,94 @@
+# Local Dependency Intelligence
+
+Repository Trust Doctor stores dependency intelligence in a shared SQLite database. The local layer reduces repeated registry requests, allows OSV checks to run without one API request per package, and preserves usable stale metadata during temporary registry failures.
+
+## Storage
+
+The default database path is:
+
+```text
+%LOCALAPPDATA%\RepoTrustDoctor\intelligence.db
+```
+
+`LocalIntelligenceOptions.DatabasePath` can point to a persistent application volume in production. SQLite uses WAL mode, foreign keys, a 30-second busy timeout, and a versioned schema.
+
+The database contains:
+
+- version-specific package metadata cache entries,
+- raw OSV advisory documents,
+- normalized OSV ecosystem/package lookup mappings,
+- feed readiness and refresh timestamps.
+
+## Registry Metadata
+
+NuGet, npm, PyPI, and Maven Central metadata is cached on demand. A package/version lookup first checks SQLite:
+
+- a fresh entry is returned without network access,
+- a missing or expired entry is fetched from the allowlisted registry and written to SQLite,
+- an expired entry is returned as stale data if the registry refresh fails,
+- concurrent requests for the same package/version share one network lookup within a scan.
+
+The background refresh only revisits expired packages already present in the cache. It does not mirror complete public registries; complete npm, NuGet, PyPI, and Maven indexes would be much larger and more operationally complex than the OSV dataset.
+
+Package metadata includes `lookup.source` with `sqlite`, `network`, or `sqlite-stale`. Analyzer metrics expose cache-hit and network lookup counts.
+
+## Local OSV Index
+
+The updater downloads official ecosystem archives from:
+
+```text
+https://osv-vulnerabilities.storage.googleapis.com/{ecosystem}/all.zip
+```
+
+Each archive is validated for entry count, single-entry size, and expanded size before its records replace the previous ecosystem mappings in one transaction. A malformed or empty archive does not erase the existing usable index.
+
+After a full import, daily refreshes read the official `modified_id.csv` index and fetch only advisories modified since the last successful update. A full ecosystem archive is imported again every seven days by default. Failure in one ecosystem does not prevent the remaining ecosystems from refreshing.
+
+Local matching supports exact affected-version lists and OSV `SEMVER` ranges. Ecosystem-specific or Git ranges that cannot be evaluated conservatively are sent to the online OSV fallback instead of being treated as clean. Reports expose local and online package counts:
+
+- `dependency.vulnerability.lookup.local.count`
+- `dependency.vulnerability.lookup.online.count`
+
+Before an ecosystem has a ready local index, vulnerability checks use `api.osv.dev` when online fallback is enabled. If fallback is disabled, the analyzer records incomplete coverage rather than reporting an unverified clean result.
+
+## Background Refresh
+
+The API and worker can host a refresh service, but it is disabled by default:
+
+```json
+{
+  "RepoTrustDoctor": {
+    "LocalIntelligence": {
+      "BackgroundRefreshEnabled": false,
+      "RefreshInterval": "1.00:00:00",
+      "FullOsvRefreshInterval": "7.00:00:00"
+    }
+  }
+}
+```
+
+Enable it only in the production host that owns the persistent SQLite volume:
+
+```powershell
+$env:RepoTrustDoctor__LocalIntelligence__BackgroundRefreshEnabled = "true"
+$env:RepoTrustDoctor__LocalIntelligence__DatabasePath = "D:\repo-trust-data\intelligence.db"
+```
+
+Run one active updater against a shared database. Other scanner instances can use the same durable database with background refresh disabled.
+
+## Configuration
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `DatabasePath` | Local application data | SQLite database location |
+| `RegistryCacheEnabled` | `true` | Enables package metadata cache reads and writes |
+| `RegistryCacheTtl` | 24 hours | Freshness window for registry metadata |
+| `RegistryRefreshBatchSize` | `10000` | Maximum expired cache entries refreshed per cycle |
+| `RegistryRefreshConcurrency` | `8` | Maximum concurrent registry refresh requests |
+| `LocalOsvEnabled` | `true` | Enables SQLite OSV queries |
+| `OsvOnlineFallbackEnabled` | `true` | Uses OSV API for missing or inconclusive local coverage |
+| `BackgroundRefreshEnabled` | `false` | Starts the hosted refresh loop |
+| `RefreshInterval` | 24 hours | Hosted refresh interval |
+| `FullOsvRefreshInterval` | 7 days | Maximum age before a full ecosystem reimport |
+
+The default OSV ecosystem list covers npm, NuGet, PyPI, Maven, Go, crates.io, Packagist, RubyGems, Pub, Hex, and SwiftURL.

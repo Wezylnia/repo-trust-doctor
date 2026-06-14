@@ -80,7 +80,7 @@ Implemented through `v0.8.3`:
 - typed trust profiles recorded in reports,
 - stable finding fingerprints for report output,
 - CI gate options for score and severity thresholds,
-- safe package metadata and OSV advisory lookup foundations,
+- SQLite-backed package metadata caching and local OSV advisory indexing with conservative online fallback,
 - dependency freshness, vulnerability, license, package-origin, and dependency-confusion review findings,
 - scan progress DTOs for API/worker/frontend polling,
 - built-in trust policies and profile-aware scoring,
@@ -95,7 +95,7 @@ Implemented through `v0.8.3`:
 - fixture-based analyzer tests,
 - public rule, architecture, API/worker, security, web UI, and contributor documentation.
 
-The scanner does not execute repository code by default. Persistence, hosted monitoring, and notification providers are planned future work.
+The scanner does not execute repository code by default. Scan history persistence, hosted monitoring, and notification providers are planned future work; dependency intelligence is persisted locally in SQLite.
 
 ## Requirements
 
@@ -277,6 +277,7 @@ See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scop
 - [Analyzer coverage](docs/analyzers.md)
 - [Roadmap](docs/roadmap.md)
 - [Development guide](docs/development.md)
+- [Local dependency intelligence](docs/local-intelligence.md)
 - [CI usage](docs/ci-usage.md)
 - [Analyzer authoring guide](docs/analyzer-authoring.md)
 - [Report format](docs/report-format.md)

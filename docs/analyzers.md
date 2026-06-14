@@ -71,15 +71,15 @@ The inventory analyzer is split into per-ecosystem collectors so future language
 
 Consumes dependency inventory and safe package metadata/advisory clients:
 
-- package metadata collection for npm, NuGet, PyPI, and Maven Central with duplicate package lookup suppression, no fixed package-count cutoff, bounded concurrency, and partial-result preservation when the lookup time budget is exhausted,
+- package metadata collection for npm, NuGet, PyPI, and Maven Central with a version-specific SQLite cache, stale-if-error behavior, duplicate package lookup suppression, no fixed package-count cutoff, bounded concurrency, and partial-result preservation when the lookup time budget is exhausted,
 - dependency freshness checks,
 - deprecated or yanked package checks,
-- OSV advisory lookup for exact resolved versions across npm, NuGet, PyPI, Maven, Go, Cargo, Composer, RubyGems, Pub, Hex, and Swift packages; lookups have no fixed package-count cutoff, use 100-package batches with bounded concurrency, follow OSV pagination, and preserve completed batches when the lookup time budget is exhausted,
+- local SQLite OSV advisory lookup for exact resolved versions across npm, NuGet, PyPI, Maven, Go, Cargo, Composer, RubyGems, Pub, Hex, and Swift packages, with online fallback for missing indexes or conservatively unsupported range semantics,
 - license metadata review,
 - package origin and repository URL comparison,
 - dependency confusion review signals for npm and NuGet source configuration.
 
-Network access is restricted to safe clients with allowlisted hosts, timeouts, response-size limits, cancellation, and isolated failure behavior.
+Network access is restricted to safe clients with allowlisted hosts, timeouts, response-size limits, cancellation, and isolated failure behavior. See [Local Dependency Intelligence](local-intelligence.md) for cache, feed, and refresh behavior.
 
 ## Release Evidence
 

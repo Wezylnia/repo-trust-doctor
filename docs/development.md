@@ -44,6 +44,8 @@ Trust profile values are normalized by the CLI. Active values are `Personal`, `P
 
 For larger false-positive and false-negative validation passes, use the repeatable benchmark workflow in [Quality Validation](quality-validation.md).
 
+Repeated dependency scans use the SQLite intelligence database under the local application-data directory. To isolate a benchmark, set `RepoTrustDoctor__LocalIntelligence__DatabasePath` to a dedicated temporary database. The OSV/registry background updater remains disabled unless `RepoTrustDoctor__LocalIntelligence__BackgroundRefreshEnabled=true` is explicitly configured.
+
 ## Local API Smoke Test
 
 ```powershell
@@ -66,6 +68,8 @@ dotnet run --project src/Apps/RepoTrustDoctor.Worker
 ```
 
 The worker uses the shared scan queue and processor contracts. In `v1.0.0`, it is primarily a host foundation for future persistent queues and scheduled scans.
+
+Local intelligence storage and production refresh configuration are documented in [Local Dependency Intelligence](local-intelligence.md).
 
 ## Dependency Analyzer Fixtures
 

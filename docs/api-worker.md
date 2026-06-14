@@ -65,6 +65,12 @@ dotnet run --project src/Apps/RepoTrustDoctor.Worker
 
 The worker host uses the same queue, scan processor, cancellation, and runner abstractions as the API host. The `v1.0.0` worker is a foundation for future persistent queues and scheduled scans.
 
+## Local Intelligence Refresh
+
+API and worker hosts read `RepoTrustDoctor:LocalIntelligence` configuration. Both use the SQLite registry cache and local OSV index during scans. The 24-hour hosted refresh loop is present but `BackgroundRefreshEnabled` is `false` in the checked-in configuration, so local development does not download OSV archives automatically.
+
+Production should enable the updater in only one host that owns the persistent database volume. Full OSV ecosystem archives are refreshed weekly by default; intervening cycles use the modified-advisory index. Registry refreshes are limited to expired packages already observed by scans. See [Local Dependency Intelligence](local-intelligence.md) for configuration and operational guidance.
+
 ## Current Storage Model
 
 `v1.0.0` uses in-memory scan state and an in-memory queue:
@@ -83,5 +89,5 @@ API and worker scans use the same safety posture as CLI scans:
 - repository code is not executed by default,
 - public HTTP(S) Git URLs are shallow-cloned with the existing Git workspace safeguards,
 - credentialed repository URLs are rejected,
-- dependency metadata and advisory lookups remain behind allowlisted safe HTTP clients,
+- dependency metadata and advisory downloads remain behind allowlisted safe HTTP clients, while repeated lookups use the local SQLite intelligence database,
 - analyzer failures are isolated and surfaced as scan/module failures instead of crashing the host.
