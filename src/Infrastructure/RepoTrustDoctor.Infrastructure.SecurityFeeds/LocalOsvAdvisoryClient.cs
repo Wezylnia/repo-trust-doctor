@@ -60,7 +60,10 @@ public sealed class LocalOsvAdvisoryClient(
                     packages.Select(package => new OsvPackageQueryResult(package, []))
                         .ToArray(),
                     false,
-                    [warning]);
+                    [warning])
+                {
+                    CompletedPackageCount = 0
+                };
             }
 
             var online = await onlineFallback.QueryBatchAsync(packages, cancellationToken);
@@ -140,6 +143,7 @@ public sealed class LocalOsvAdvisoryClient(
         }
 
         var querySucceeded = true;
+        var completedPackageCount = packages.Count - fallbackPackages.Count;
         if (fallbackPackages.Count > 0)
         {
             if (onlineFallback is null)
@@ -152,6 +156,7 @@ public sealed class LocalOsvAdvisoryClient(
                     fallbackPackages,
                     cancellationToken);
                 querySucceeded = online.QuerySucceeded;
+                completedPackageCount += GetCompletedPackageCount(online);
                 warnings.AddRange(online.Warnings);
                 for (var index = 0; index < online.Packages.Count; index++)
                 {
@@ -167,6 +172,7 @@ public sealed class LocalOsvAdvisoryClient(
             querySucceeded,
             warnings.Distinct(StringComparer.OrdinalIgnoreCase).ToArray())
         {
+            CompletedPackageCount = completedPackageCount,
             LocalPackageCount = packages.Count - fallbackPackages.Count,
             OnlinePackageCount = onlineFallback is null ? 0 : fallbackPackages.Count
         };
@@ -224,4 +230,11 @@ public sealed class LocalOsvAdvisoryClient(
 
     private static bool IsLocalStoreFailure(Exception exception) =>
         exception is SqliteException or IOException or UnauthorizedAccessException;
+
+    private static int GetCompletedPackageCount(OsvBatchQueryResult result) =>
+        result.CompletedPackageCount > 0 || result.Packages.Count == 0
+            ? result.CompletedPackageCount
+            : result.QuerySucceeded
+                ? result.Packages.Count
+                : 0;
 }

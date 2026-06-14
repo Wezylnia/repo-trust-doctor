@@ -29,6 +29,7 @@ public interface IOsvAdvisoryClient
 
         return new OsvBatchQueryResult(results, true, [])
         {
+            CompletedPackageCount = packages.Count,
             OnlinePackageCount = packages.Count
         };
     }
@@ -43,6 +44,8 @@ public sealed record OsvBatchQueryResult(
     bool QuerySucceeded,
     IReadOnlyList<string> Warnings)
 {
+    public int CompletedPackageCount { get; init; }
+
     public int LocalPackageCount { get; init; }
 
     public int OnlinePackageCount { get; init; }
@@ -171,6 +174,7 @@ public sealed class OsvAdvisoryClient(SafeHttpLookup lookup) : IOsvAdvisoryClien
 
         return new OsvBatchQueryResult(results, true, warnings)
         {
+            CompletedPackageCount = packages.Count,
             OnlinePackageCount = packages.Count
         };
     }

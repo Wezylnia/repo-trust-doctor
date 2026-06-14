@@ -314,8 +314,7 @@ public sealed class DependencyVulnerabilityAnalyzer : IRepositoryAnalyzer
             .SelectMany(result => result.Packages)
             .ToArray();
         var completedPackageCount = batchResults.Results
-            .Where(result => result.QuerySucceeded)
-            .Sum(result => result.Packages.Count);
+            .Sum(GetCompletedPackageCount);
         var completedBatchCount = batchResults.Results.Count(result => result.QuerySucceeded);
         var localPackageCount = batchResults.Results.Sum(result => result.LocalPackageCount);
         var onlinePackageCount = batchResults.Results.Sum(result => result.OnlinePackageCount);
@@ -419,6 +418,13 @@ public sealed class DependencyVulnerabilityAnalyzer : IRepositoryAnalyzer
             .Prepend("vulnerability")
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+    private static int GetCompletedPackageCount(OsvBatchQueryResult result) =>
+        result.CompletedPackageCount > 0 || result.Packages.Count == 0
+            ? result.CompletedPackageCount
+            : result.QuerySucceeded
+                ? result.Packages.Count
+                : 0;
 
 }
 

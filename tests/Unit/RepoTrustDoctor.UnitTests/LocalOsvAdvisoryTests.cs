@@ -44,10 +44,37 @@ public sealed class LocalOsvAdvisoryTests
             CancellationToken.None);
 
         Assert.True(vulnerable.QuerySucceeded);
+        Assert.Equal(1, vulnerable.CompletedPackageCount);
         Assert.Equal(1, vulnerable.LocalPackageCount);
         Assert.Equal(0, vulnerable.OnlinePackageCount);
         Assert.Equal("GHSA-local", Assert.Single(Assert.Single(vulnerable.Packages).Advisories).Id);
         Assert.Empty(Assert.Single(fixedResult.Packages).Advisories);
+    }
+
+    [Fact]
+    public async Task QueryBatchAsync_CountsCompletedLocalPackagesInPartialBatch()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var store = CreateStore(fixture.Path);
+        await ImportAsync(store, "npm", AdvisoryWithExplicitVersion(
+            "GHSA-local",
+            "left-pad",
+            "1.0.0"));
+        var client = new LocalOsvAdvisoryClient(store, null);
+
+        var result = await client.QueryBatchAsync(
+            [
+                CreatePackage(DependencyEcosystem.Npm, "left-pad", "1.0.0"),
+                CreatePackage(DependencyEcosystem.Pub, "http", "1.2.0")
+            ],
+            CancellationToken.None);
+
+        Assert.False(result.QuerySucceeded);
+        Assert.Equal(1, result.CompletedPackageCount);
+        Assert.Equal(1, result.LocalPackageCount);
+        Assert.Equal(0, result.OnlinePackageCount);
+        Assert.Equal("GHSA-local", Assert.Single(result.Packages[0].Advisories).Id);
+        Assert.Empty(result.Packages[1].Advisories);
     }
 
     [Fact]
