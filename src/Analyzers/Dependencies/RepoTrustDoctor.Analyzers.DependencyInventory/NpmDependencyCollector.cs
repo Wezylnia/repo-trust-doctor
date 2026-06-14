@@ -11,14 +11,19 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
 
     public void Collect(AnalysisContext context, DependencyInventoryState state, CancellationToken cancellationToken)
     {
+        var lockResolvers = new Dictionary<string, NpmPackageLockResolver?>(StringComparer.OrdinalIgnoreCase);
         foreach (var manifest in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "package.json"))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            AnalyzeManifest(context, state, manifest);
+            AnalyzeManifest(context, state, manifest, lockResolvers);
         }
     }
 
-    private static void AnalyzeManifest(AnalysisContext context, DependencyInventoryState state, string manifest)
+    private static void AnalyzeManifest(
+        AnalysisContext context,
+        DependencyInventoryState state,
+        string manifest,
+        Dictionary<string, NpmPackageLockResolver?> lockResolvers)
     {
         var relativePath = DependencyInventorySupport.Relative(context, manifest);
         var directory = Path.GetDirectoryName(manifest);
@@ -64,10 +69,10 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
                 ReadManifestMetadata(root)));
 
             var localSources = new List<NpmLocalSourceDependency>();
-            ReadDependencySection(root, "dependencies", DependencyScope.Production, relativePath, coveringLockfiles, context, state, localSources);
-            ReadDependencySection(root, "devDependencies", DependencyScope.Development, relativePath, coveringLockfiles, context, state, localSources);
-            ReadDependencySection(root, "optionalDependencies", DependencyScope.Optional, relativePath, coveringLockfiles, context, state, localSources);
-            ReadDependencySection(root, "peerDependencies", DependencyScope.Peer, relativePath, coveringLockfiles, context, state, localSources);
+            ReadDependencySection(root, "dependencies", DependencyScope.Production, relativePath, directory, coveringLockfiles, lockResolvers, context, state, localSources);
+            ReadDependencySection(root, "devDependencies", DependencyScope.Development, relativePath, directory, coveringLockfiles, lockResolvers, context, state, localSources);
+            ReadDependencySection(root, "optionalDependencies", DependencyScope.Optional, relativePath, directory, coveringLockfiles, lockResolvers, context, state, localSources);
+            ReadDependencySection(root, "peerDependencies", DependencyScope.Peer, relativePath, directory, coveringLockfiles, lockResolvers, context, state, localSources);
             AddLocalSourceFindings(relativePath, localSources, state);
             AddInstallScriptFindings(root, relativePath, state);
         }
@@ -83,7 +88,9 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
         string sectionName,
         DependencyScope scope,
         string manifestPath,
+        string manifestDirectory,
         string[] coveringLockfiles,
+        Dictionary<string, NpmPackageLockResolver?> lockResolvers,
         AnalysisContext context,
         DependencyInventoryState state,
         List<NpmLocalSourceDependency> localSources)
@@ -96,31 +103,49 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
         foreach (var dependency in section.EnumerateObject())
         {
             var version = dependency.Value.ValueKind == JsonValueKind.String ? dependency.Value.GetString() : null;
-            var normalizedVersion = DependencyInventorySupport.NormalizeVersion(version);
-            var pinned = IsPinnedVersion(normalizedVersion);
-            var prerelease = DependencyInventorySupport.IsPrereleaseVersion(normalizedVersion);
-            var sourceKind = ClassifyVersionSpec(normalizedVersion);
+            var requestedVersion = DependencyInventorySupport.NormalizeVersion(version);
+            var sourceKind = ClassifyVersionSpec(requestedVersion);
+            var resolved = TryResolveLockedVersion(
+                dependency.Name,
+                requestedVersion,
+                sourceKind,
+                manifestDirectory,
+                coveringLockfiles,
+                lockResolvers,
+                context,
+                state,
+                out var resolvedVersion,
+                out var resolvingLockfile);
+            var effectiveVersion = resolved ? resolvedVersion : requestedVersion;
+            var pinned = IsPinnedVersion(effectiveVersion);
+            var prerelease = DependencyInventorySupport.IsPrereleaseVersion(effectiveVersion);
+            var metadata = new Dictionary<string, string>
+            {
+                ["section"] = sectionName,
+                ["sourceKind"] = sourceKind.Kind
+            };
+            if (resolved)
+            {
+                metadata["requestedVersion"] = requestedVersion ?? string.Empty;
+                metadata["versionSource"] = "package-lock";
+            }
 
             state.Packages.Add(new DependencyPackageInfo(
                 DependencyEcosystem.Npm,
                 dependency.Name,
-                normalizedVersion,
+                effectiveVersion,
                 scope,
                 manifestPath,
-                coveringLockfiles.Length == 0 ? null : DependencyInventorySupport.Relative(context, coveringLockfiles[0]),
+                resolvingLockfile ?? (coveringLockfiles.Length == 0 ? null : DependencyInventorySupport.Relative(context, coveringLockfiles[0])),
                 true,
                 pinned,
                 prerelease,
-                new Dictionary<string, string>
-                {
-                    ["section"] = sectionName,
-                    ["sourceKind"] = sourceKind.Kind
-                }));
+                metadata));
 
             AddVersionFindings(
                 dependency.Name,
                 sectionName,
-                normalizedVersion,
+                requestedVersion,
                 pinned,
                 prerelease,
                 sourceKind,
@@ -311,8 +336,7 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
     }
 
     private static bool IsPinnedVersion(string? version) =>
-        !string.IsNullOrWhiteSpace(version) &&
-        DependencyInventorySupport.ExactSemVerPattern().IsMatch(version);
+        NpmPackageLockResolver.IsExactVersion(version);
 
     private static NpmSourceKind ClassifyVersionSpec(string? version)
     {
@@ -336,6 +360,8 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
                value.StartsWith("link:", StringComparison.OrdinalIgnoreCase) ||
             value.StartsWith("portal:", StringComparison.OrdinalIgnoreCase)
             ? new NpmSourceKind("local", false, true)
+            : value.StartsWith("npm:", StringComparison.OrdinalIgnoreCase)
+            ? new NpmSourceKind("alias", false, false)
             : value.StartsWith("workspace:", StringComparison.OrdinalIgnoreCase)
             ? new NpmSourceKind("workspace", false, false)
             : new NpmSourceKind("registry", false, false);
@@ -385,6 +411,46 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
             DependencyEcosystem.Npm,
             relativePath,
             Path.GetFileName(lockfile)));
+    }
+
+    private static bool TryResolveLockedVersion(
+        string packageName,
+        string? requestedVersion,
+        NpmSourceKind sourceKind,
+        string manifestDirectory,
+        IReadOnlyList<string> coveringLockfiles,
+        Dictionary<string, NpmPackageLockResolver?> lockResolvers,
+        AnalysisContext context,
+        DependencyInventoryState state,
+        out string? resolvedVersion,
+        out string? resolvingLockfile)
+    {
+        resolvedVersion = null;
+        resolvingLockfile = null;
+        if (sourceKind.Kind != "registry" || IsPinnedVersion(requestedVersion))
+        {
+            return false;
+        }
+
+        foreach (var lockfile in coveringLockfiles.Where(path =>
+                     Path.GetFileName(path).Equals("package-lock.json", StringComparison.OrdinalIgnoreCase)))
+        {
+            if (!lockResolvers.TryGetValue(lockfile, out var resolver))
+            {
+                var relativePath = DependencyInventorySupport.Relative(context, lockfile);
+                NpmPackageLockResolver.TryLoad(lockfile, relativePath, state.Warnings, out resolver);
+                lockResolvers[lockfile] = resolver;
+            }
+
+            if (resolver?.TryResolve(manifestDirectory, packageName, out var version) == true)
+            {
+                resolvedVersion = version;
+                resolvingLockfile = DependencyInventorySupport.Relative(context, lockfile);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private sealed record NpmSourceKind(string Kind, bool IsRemote, bool IsLocal);

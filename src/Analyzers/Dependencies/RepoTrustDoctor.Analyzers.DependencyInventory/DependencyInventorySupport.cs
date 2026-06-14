@@ -139,6 +139,9 @@ internal static class DependencyInventoryMetrics
             ["dependency.package.direct.count"] = state.Packages.Count(package => package.IsDirect).ToString(),
             ["dependency.package.unpinned.count"] = state.Packages.Count(package => !package.IsVersionPinned).ToString(),
             ["dependency.package.prerelease.count"] = state.Packages.Count(package => package.IsPrerelease).ToString(),
+            ["dependency.package.lock-resolved.count"] = state.Packages.Count(package =>
+                package.Metadata?.TryGetValue("versionSource", out var source) == true &&
+                source.Equals("package-lock", StringComparison.OrdinalIgnoreCase)).ToString(),
             ["dependency.source.count"] = state.PackageSources.Count.ToString(),
             ["dependency.source.insecure.count"] = state.PackageSources.Count(source => !source.IsSecureTransport).ToString(),
             ["dependency.source.local.count"] = state.PackageSources.Count(source => source.IsLocal).ToString(),

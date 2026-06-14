@@ -218,6 +218,8 @@ Analyzers implement `IRepositoryAnalyzer` and produce `Finding` records with rul
 
 Collects structured dependency manifests across 12 ecosystems: npm, NuGet, Python (pip/Pipenv/Poetry), Maven/Gradle, Go, Cargo, Composer, Ruby/Bundler, Dart/Pub, Elixir/Hex, SwiftPM, C/C++ (Conan/vcpkg/CMake).
 
+For npm projects, direct registry ranges from `package.json` are resolved to exact versions from covering `package-lock.json` v1/v2/v3 files when possible. The requested range remains in package metadata while downstream metadata and OSV analyzers receive the resolved version. Package locks are parsed directly from a bounded stream up to 64 MiB, independently of the general 512 KiB source-text guard.
+
 | Rule ID | Title | Severity | Confidence |
 |---------|-------|----------|------------|
 | TRUST-DEP001 | npm manifest exists without lockfile | Medium | High |
