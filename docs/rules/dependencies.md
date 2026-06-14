@@ -30,7 +30,7 @@ Recommendation: enable NuGet Central Package Management or local project lock fi
 - Default severity: Low
 - Default confidence: Medium
 
-Detects Python repositories containing dependency manifests (`requirements.txt`, `pyproject.toml`, or `Pipfile`) without matching lockfiles (`poetry.lock`, `Pipfile.lock`, or `uv.lock`).
+Detects Python dependency manifests (`requirements.txt`, `pyproject.toml`, or `Pipfile`) without a compatible sibling lockfile (`poetry.lock`, `Pipfile.lock`, or `uv.lock`). Lockfile coverage is evaluated per manifest directory, so a lockfile for one service does not hide an unlocked independent service in a monorepo.
 
 Why it matters: raw manifests without a lockfile do not guarantee that the exact same package versions will be installed on different systems or runs.
 
@@ -104,7 +104,7 @@ Recommendation: review install-time scripts and avoid downloading or executing u
 - Default severity: Medium
 - Default confidence: High
 
-Detects Python dependencies that are missing an exact pinned version. For `pyproject.toml`, only `[project].dependencies` and Poetry dependency sections are interpreted as dependencies; classifiers and other metadata arrays are ignored. Python manifests under common documentation, sample, fixture, and test paths are still inventoried but do not emit version-pinning findings.
+Detects Python dependencies that are missing an exact pinned version. Exact versions successfully resolved from `Pipfile.lock`, `poetry.lock`, and `uv.lock` replace requested ranges for metadata and vulnerability analysis; merely detecting a lockfile does not suppress the finding when that package cannot be resolved from it. For `pyproject.toml`, only `[project].dependencies` and Poetry dependency sections are interpreted as dependencies; classifiers and other metadata arrays are ignored. Requirement extras preserve the underlying package identity. Python manifests under common documentation, sample, fixture, and test paths are still inventoried but do not emit version-pinning findings.
 
 Why it matters: unpinned Python requirements can resolve to different packages over time and make repository review less repeatable.
 

@@ -10,7 +10,13 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
 
     public void Collect(AnalysisContext context, DependencyInventoryState state, CancellationToken cancellationToken)
     {
-        foreach (var lockfile in LockfileNames.SelectMany(name => RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, name)))
+        var lockfiles = LockfileNames
+            .SelectMany(name => RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var lockResolvers = new Dictionary<string, PythonLockfileResolver?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var lockfile in lockfiles)
         {
             state.Lockfiles.Add(new DependencyLockfileInfo(
                 DependencyEcosystem.Python,
@@ -21,27 +27,32 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
         foreach (var requirements in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "requirements.txt"))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            AnalyzeRequirements(context, requirements, state);
+            AnalyzeRequirements(context, requirements, lockResolvers, state);
         }
 
         foreach (var pyproject in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "pyproject.toml"))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            AnalyzePyproject(context, pyproject, state);
+            AnalyzePyproject(context, pyproject, lockResolvers, state);
         }
 
         foreach (var pipfile in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "Pipfile"))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            AnalyzePipfile(context, pipfile, state);
+            AnalyzePipfile(context, pipfile, lockResolvers, state);
         }
     }
 
-    private static void AnalyzeRequirements(AnalysisContext context, string filePath, DependencyInventoryState state)
+    private static void AnalyzeRequirements(
+        AnalysisContext context,
+        string filePath,
+        Dictionary<string, PythonLockfileResolver?> lockResolvers,
+        DependencyInventoryState state)
     {
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
+        var lockfile = FindLockfile(context, filePath, LockfileNames, lockResolvers, state, out var hasLockfile);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Python, relativePath, "requirements.txt"));
-        AddMissingLockfileFinding(relativePath, state, "No Pipfile.lock, poetry.lock, or uv.lock was found.");
+        AddMissingLockfileFinding(relativePath, hasLockfile, state, "No sibling Pipfile.lock, poetry.lock, or uv.lock was found.");
 
         if (!DependencyInventorySupport.TryReadText(filePath, out var content, state.Warnings, relativePath))
         {
@@ -50,15 +61,26 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
 
         foreach (var line in DependencyInventorySupport.SplitLines(content))
         {
-            AddRequirement(relativePath, line, DependencyScope.Production, state);
+            AddRequirement(relativePath, line, DependencyScope.Production, lockfile, state);
         }
     }
 
-    private static void AnalyzePyproject(AnalysisContext context, string filePath, DependencyInventoryState state)
+    private static void AnalyzePyproject(
+        AnalysisContext context,
+        string filePath,
+        Dictionary<string, PythonLockfileResolver?> lockResolvers,
+        DependencyInventoryState state)
     {
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
+        var lockfile = FindLockfile(
+            context,
+            filePath,
+            ["poetry.lock", "uv.lock"],
+            lockResolvers,
+            state,
+            out var hasLockfile);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Python, relativePath, "pyproject.toml"));
-        AddMissingLockfileFinding(relativePath, state, "Neither poetry.lock nor uv.lock was found.");
+        AddMissingLockfileFinding(relativePath, hasLockfile, state, "Neither a sibling poetry.lock nor uv.lock was found.");
 
         if (!DependencyInventorySupport.TryReadText(filePath, out var content, state.Warnings, relativePath))
         {
@@ -79,13 +101,13 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
 
             if (section == PythonTomlSection.Project)
             {
-                ReadProjectDependencyLine(relativePath, line, ref inProjectDependencies, state);
+                ReadProjectDependencyLine(relativePath, line, ref inProjectDependencies, lockfile, state);
                 continue;
             }
 
             if (section is PythonTomlSection.PoetryProduction or PythonTomlSection.PoetryDevelopment)
             {
-                AddPoetryDependency(relativePath, line, section, state);
+                AddPoetryDependency(relativePath, line, section, lockfile, state);
             }
         }
     }
@@ -94,6 +116,7 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
         string relativePath,
         string line,
         ref bool inProjectDependencies,
+        PythonLockfileResolver? lockfile,
         DependencyInventoryState state)
     {
         if (!inProjectDependencies)
@@ -104,12 +127,12 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
             }
 
             var afterOpenBracket = line[(line.IndexOf('[', StringComparison.Ordinal) + 1)..];
-            AddQuotedRequirements(relativePath, afterOpenBracket, DependencyScope.Production, state);
+            AddQuotedRequirements(relativePath, afterOpenBracket, DependencyScope.Production, lockfile, state);
             inProjectDependencies = !afterOpenBracket.Contains(']');
             return;
         }
 
-        AddQuotedRequirements(relativePath, line, DependencyScope.Production, state);
+        AddQuotedRequirements(relativePath, line, DependencyScope.Production, lockfile, state);
         if (line.Contains(']'))
         {
             inProjectDependencies = false;
@@ -120,22 +143,31 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
         string relativePath,
         string value,
         DependencyScope scope,
+        PythonLockfileResolver? lockfile,
         DependencyInventoryState state)
     {
         foreach (Match match in QuotedRequirementPattern().Matches(value))
         {
-            AddRequirement(relativePath, match.Groups["requirement"].Value, scope, state);
+            AddRequirement(relativePath, match.Groups["requirement"].Value, scope, lockfile, state);
         }
     }
 
-    private static void AnalyzePipfile(AnalysisContext context, string filePath, DependencyInventoryState state)
+    private static void AnalyzePipfile(
+        AnalysisContext context,
+        string filePath,
+        Dictionary<string, PythonLockfileResolver?> lockResolvers,
+        DependencyInventoryState state)
     {
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
+        var lockfile = FindLockfile(
+            context,
+            filePath,
+            ["Pipfile.lock"],
+            lockResolvers,
+            state,
+            out var hasLockfile);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Python, relativePath, "Pipfile"));
-        if (!state.Lockfiles.Any(lockfile => lockfile.Kind.Equals("Pipfile.lock", StringComparison.OrdinalIgnoreCase)))
-        {
-            AddMissingLockfileFinding(relativePath, state, "No Pipfile.lock was found.");
-        }
+        AddMissingLockfileFinding(relativePath, hasLockfile, state, "No sibling Pipfile.lock was found.");
 
         if (!DependencyInventorySupport.TryReadText(filePath, out var content, state.Warnings, relativePath))
         {
@@ -164,11 +196,17 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
             }
 
             var parts = line.Split('=', 2, StringSplitOptions.TrimEntries);
-            AddPythonPackage(relativePath, parts[0], parts[1].Trim('"'), scope, null, state);
+            ParseVersionSpec(parts[1].Trim('"'), out var operatorText, out var version);
+            AddPythonPackage(relativePath, parts[0], version, scope, operatorText, lockfile, state);
         }
     }
 
-    private static void AddPoetryDependency(string relativePath, string line, PythonTomlSection section, DependencyInventoryState state)
+    private static void AddPoetryDependency(
+        string relativePath,
+        string line,
+        PythonTomlSection section,
+        PythonLockfileResolver? lockfile,
+        DependencyInventoryState state)
     {
         if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#') || !line.Contains('='))
         {
@@ -183,10 +221,15 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
         }
 
         var scope = section == PythonTomlSection.PoetryDevelopment ? DependencyScope.Development : DependencyScope.Production;
-        AddPythonPackage(relativePath, name, parts[1].Trim('"'), scope, null, state);
+        AddPythonPackage(relativePath, name, parts[1].Trim('"'), scope, null, lockfile, state);
     }
 
-    private static void AddRequirement(string relativePath, string line, DependencyScope scope, DependencyInventoryState state)
+    private static void AddRequirement(
+        string relativePath,
+        string line,
+        DependencyScope scope,
+        PythonLockfileResolver? lockfile,
+        DependencyInventoryState state)
     {
         var trimmed = line.Trim();
         if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith('#') || trimmed.StartsWith('-'))
@@ -202,7 +245,7 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
 
         var op = match.Groups["op"].Success ? match.Groups["op"].Value : null;
         var version = match.Groups["version"].Success ? match.Groups["version"].Value : null;
-        AddPythonPackage(relativePath, match.Groups["name"].Value, version, scope, op, state);
+        AddPythonPackage(relativePath, match.Groups["name"].Value, version, scope, op, lockfile, state);
     }
 
     private static void AddPythonPackage(
@@ -211,28 +254,40 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
         string? version,
         DependencyScope scope,
         string? operatorText,
+        PythonLockfileResolver? lockfile,
         DependencyInventoryState state)
     {
-        var normalizedVersion = DependencyInventorySupport.NormalizeVersion(version);
-        var pinned = operatorText == "==" || (operatorText is null && IsPinnedVersion(normalizedVersion));
-        var prerelease = IsPythonPrerelease(normalizedVersion);
-        var metadata = operatorText is null
-            ? null
-            : new Dictionary<string, string> { ["operator"] = operatorText };
+        var requestedVersion = DependencyInventorySupport.NormalizeVersion(version);
+        string? resolvedVersion = null;
+        var resolved = lockfile is not null && lockfile.TryResolve(name, out resolvedVersion);
+        var effectiveVersion = resolved ? resolvedVersion : requestedVersion;
+        var pinned = resolved || operatorText == "==" || (operatorText is null && IsPinnedVersion(effectiveVersion));
+        var prerelease = IsPythonPrerelease(effectiveVersion);
+        var metadata = new Dictionary<string, string>();
+        if (operatorText is not null)
+        {
+            metadata["operator"] = operatorText;
+        }
+
+        if (resolved)
+        {
+            metadata["requestedVersion"] = requestedVersion ?? string.Empty;
+            metadata["versionSource"] = lockfile!.RelativePath;
+        }
 
         state.Packages.Add(new DependencyPackageInfo(
             DependencyEcosystem.Python,
             name.Trim(),
-            normalizedVersion,
+            effectiveVersion,
             scope,
             relativePath,
-            null,
+            lockfile?.RelativePath,
             true,
             pinned,
             prerelease,
-            metadata));
+            metadata.Count == 0 ? null : metadata));
 
-        AddVersionFindings(relativePath, name.Trim(), normalizedVersion, pinned, prerelease, state);
+        AddVersionFindings(relativePath, name.Trim(), effectiveVersion, pinned, prerelease, state);
     }
 
     private static void AddVersionFindings(
@@ -277,10 +332,13 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
         }
     }
 
-    private static void AddMissingLockfileFinding(string relativePath, DependencyInventoryState state, string evidence)
+    private static void AddMissingLockfileFinding(
+        string relativePath,
+        bool hasLockfile,
+        DependencyInventoryState state,
+        string evidence)
     {
-        if (state.Lockfiles.Any(lockfile => lockfile.Ecosystem == DependencyEcosystem.Python) ||
-            DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath))
+        if (hasLockfile || DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath))
         {
             return;
         }
@@ -294,6 +352,62 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
             "Python dependency manifest does not have a recognized lockfile",
             [new Evidence("package-manifest", evidence, relativePath)],
             new Recommendation("Use a package manager like Poetry, uv, or Pipenv, and commit the lockfile to the repository.")));
+    }
+
+    private static PythonLockfileResolver? FindLockfile(
+        AnalysisContext context,
+        string manifestPath,
+        IReadOnlyList<string> allowedNames,
+        IDictionary<string, PythonLockfileResolver?> lockResolvers,
+        DependencyInventoryState state,
+        out bool detected)
+    {
+        detected = false;
+        PythonLockfileResolver? emptyResolver = null;
+        var directory = Path.GetDirectoryName(manifestPath);
+        if (directory is null)
+        {
+            return null;
+        }
+
+        foreach (var lockfileName in allowedNames)
+        {
+            var lockfilePath = Path.Combine(directory, lockfileName);
+            if (!File.Exists(lockfilePath))
+            {
+                continue;
+            }
+
+            detected = true;
+            if (!lockResolvers.TryGetValue(lockfilePath, out var resolver))
+            {
+                PythonLockfileResolver.TryLoad(
+                    lockfilePath,
+                    DependencyInventorySupport.Relative(context, lockfilePath),
+                    state.Warnings,
+                    out resolver);
+                lockResolvers[lockfilePath] = resolver;
+            }
+
+            if (resolver is not null)
+            {
+                if (resolver.HasPackages)
+                {
+                    return resolver;
+                }
+
+                emptyResolver ??= resolver;
+            }
+        }
+
+        return emptyResolver;
+    }
+
+    private static void ParseVersionSpec(string value, out string? operatorText, out string? version)
+    {
+        var match = PythonVersionSpecPattern().Match(value.Trim());
+        operatorText = match.Groups["op"].Success ? match.Groups["op"].Value : null;
+        version = match.Groups["version"].Success ? match.Groups["version"].Value : null;
     }
 
     private static PythonTomlSection ReadTomlSection(string line) =>
@@ -313,11 +427,14 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
         !string.IsNullOrWhiteSpace(version) &&
         Regex.IsMatch(version, @"\d+\.\d+(\.\d+)?(?:a|b|rc|dev|alpha|beta|pre|preview)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-    [GeneratedRegex(@"^(?<name>[A-Za-z0-9_.-]+)\s*(?<op>===|==|~=|!=|<=|>=|<|>)?\s*(?<version>[^\s;]+)?", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(?<name>[A-Za-z0-9_.-]+)(?:\[[^\]]+\])?\s*(?<op>===|==|~=|!=|<=|>=|<|>)?\s*(?<version>[^\s;]+)?", RegexOptions.CultureInvariant)]
     private static partial Regex RequirementPattern();
 
     [GeneratedRegex(@"['""](?<requirement>[^'""]+)['""]", RegexOptions.CultureInvariant)]
     private static partial Regex QuotedRequirementPattern();
+
+    [GeneratedRegex(@"^(?<op>===|==|~=|!=|<=|>=|<|>)?\s*(?<version>.+)?$", RegexOptions.CultureInvariant)]
+    private static partial Regex PythonVersionSpecPattern();
 
     private enum PythonTomlSection
     {
