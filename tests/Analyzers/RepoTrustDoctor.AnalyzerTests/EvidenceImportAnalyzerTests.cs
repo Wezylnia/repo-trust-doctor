@@ -76,6 +76,49 @@ public sealed class EvidenceImportAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_NonArrayComponents_DoesNotThrow()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
+        {"components":{"name":"x"}}
+        """);
+
+        var analyzer = new EvidenceImportAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-EVI001");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-EVI004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_NonPackageUrlPurl_ReportsEVI008()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
+        {"components":[{"name":"x","purl":"npm/x@1.0.0"}]}
+        """);
+
+        var analyzer = new EvidenceImportAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-EVI008");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ValidScopedPackageUrl_NoEVI008()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
+        {"components":[{"name":"@scope/name","purl":"pkg:npm/%40scope/name@1.0.0"}]}
+        """);
+
+        var analyzer = new EvidenceImportAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-EVI008");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_SmallSbomWithoutDependencyInventory_NoEVI007()
     {
         using var fixture = TemporaryRepository.Create();

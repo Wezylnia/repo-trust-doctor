@@ -114,6 +114,30 @@ Why it matters: corrupt provenance evidence cannot verify build integrity.
 
 Recommendation: ensure provenance files are valid JSON.
 
+### TRUST-EVI007: SBOM appears potentially incomplete
+
+- Category: Releases
+- Default severity: Low
+- Default confidence: Medium
+
+Detects SBOM files with very few components compared with the direct dependency inventory available to the scan.
+
+Why it matters: a very small SBOM may have been generated from only part of a monorepo or from the wrong build target.
+
+Recommendation: regenerate the SBOM from the current build graph and confirm it covers the packages being released.
+
+### TRUST-EVI008: SBOM package URL is malformed
+
+- Category: Releases
+- Default severity: Low
+- Default confidence: High
+
+Detects malformed SBOM package URLs, including `purl` values that do not use the `pkg:` scheme or that omit the required package type/name structure.
+
+Why it matters: malformed package URLs make it harder to correlate SBOM components with advisory and registry metadata.
+
+Recommendation: fix malformed package URLs in the SBOM and regenerate the evidence from the package manager or build tool.
+
 ## TRUST-REL005: Release Workflow Lacks Integrity Evidence Steps
 
 - Category: Releases

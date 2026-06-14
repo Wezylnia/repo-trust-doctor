@@ -107,35 +107,42 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
             // Check for empty components/packages
             if (root.TryGetProperty("components", out var components))
             {
-                var count = components.GetArrayLength();
-                if (count == 0)
+                if (components.ValueKind == JsonValueKind.Array)
                 {
-                    findings.Add(CreateEviFinding("TRUST-EVI005", "SBOM evidence appears empty",
-                        Severity.Low, relativePath, "SBOM has an empty 'components' array.", Confidence.Medium));
-                }
-                var directDependencyCount = GetDirectDependencyCount(context);
-                if (count > 0 && directDependencyCount >= 20 && count < Math.Ceiling(directDependencyCount * 0.25))
-                {
-                    findings.Add(CreateEviFinding("TRUST-EVI007", "SBOM appears potentially incomplete",
-                        Severity.Low, relativePath, $"SBOM has {count} components for {directDependencyCount} direct dependencies.", Confidence.Medium));
-                }
-
-                // EVI008: check purl format
-                foreach (var c in components.EnumerateArray())
-                {
-                    if (c.TryGetProperty("purl", out var purl))
+                    var count = components.GetArrayLength();
+                    if (count == 0)
                     {
-                        var p = purl.GetString() ?? "";
-                        if (p.StartsWith("pkg:") && !p.Contains('/'))
+                        findings.Add(CreateEviFinding("TRUST-EVI005", "SBOM evidence appears empty",
+                            Severity.Low, relativePath, "SBOM has an empty 'components' array.", Confidence.Medium));
+                    }
+
+                    var directDependencyCount = GetDirectDependencyCount(context);
+                    if (count > 0 && directDependencyCount >= 20 && count < Math.Ceiling(directDependencyCount * 0.25))
+                    {
+                        findings.Add(CreateEviFinding("TRUST-EVI007", "SBOM appears potentially incomplete",
+                            Severity.Low, relativePath, $"SBOM has {count} components for {directDependencyCount} direct dependencies.", Confidence.Medium));
+                    }
+
+                    foreach (var sbomComponent in components.EnumerateArray())
+                    {
+                        if (sbomComponent.ValueKind == JsonValueKind.Object &&
+                            sbomComponent.TryGetProperty("purl", out var purl) &&
+                            purl.ValueKind == JsonValueKind.String)
                         {
-                            findings.Add(CreateEviFinding("TRUST-EVI008", "Malformed purl",
-                                Severity.Low, relativePath, $"Purl '{p}' is malformed."));
-                            break;
+                            var value = purl.GetString() ?? "";
+                            if (!IsValidPackageUrl(value))
+                            {
+                                findings.Add(CreateEviFinding("TRUST-EVI008", "Malformed purl",
+                                    Severity.Low, relativePath, $"Purl '{value}' is malformed."));
+                                break;
+                            }
                         }
                     }
                 }
             }
-            else if (root.TryGetProperty("packages", out var packages) && packages.GetArrayLength() == 0)
+            else if (root.TryGetProperty("packages", out var packages) &&
+                     packages.ValueKind == JsonValueKind.Array &&
+                     packages.GetArrayLength() == 0)
             {
                 findings.Add(CreateEviFinding("TRUST-EVI005", "SBOM evidence appears empty",
                     Severity.Low, relativePath, "SBOM has an empty 'packages' array.", Confidence.Medium));
@@ -172,6 +179,31 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
 
         return inventory.Packages.Count(package => package.IsDirect);
     }
+
+    private static bool IsValidPackageUrl(string value)
+    {
+        if (!value.StartsWith("pkg:", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var body = value["pkg:".Length..];
+        var suffixStart = body.IndexOfAny(['?', '#']);
+        if (suffixStart >= 0)
+            body = body[..suffixStart];
+
+        var slashIndex = body.IndexOf('/');
+        if (slashIndex <= 0 || slashIndex == body.Length - 1)
+            return false;
+
+        var packageType = body[..slashIndex];
+        var packageName = body[(slashIndex + 1)..];
+        return packageType.All(IsPackageUrlTypeCharacter) &&
+               packageName.Length > 0 &&
+               !packageName.Any(char.IsWhiteSpace);
+    }
+
+    private static bool IsPackageUrlTypeCharacter(char value) =>
+        char.IsAsciiLetterOrDigit(value) ||
+        value is '.' or '+' or '-';
 
     private static bool TargetMatches(AnalysisContext context, string evidenceTarget)
     {
