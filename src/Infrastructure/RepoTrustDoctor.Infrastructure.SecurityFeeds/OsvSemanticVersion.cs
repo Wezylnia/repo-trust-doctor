@@ -46,7 +46,7 @@ internal sealed record OsvSemanticVersion(
             : normalized[(prereleaseIndex + 1)..]
                 .Split('.');
         var coreParts = coreText.Split('.');
-        if (coreParts.Length != 3 ||
+        if (coreParts.Length is < 1 or > 3 ||
             coreParts.Any(part =>
                 !IsNumericIdentifier(part, allowLeadingZero: false) ||
                 !BigInteger.TryParse(part, out _)))
@@ -54,8 +54,12 @@ internal sealed record OsvSemanticVersion(
             return false;
         }
 
+        var core = coreParts
+            .Select(BigInteger.Parse)
+            .Concat(Enumerable.Repeat(BigInteger.Zero, 3 - coreParts.Length))
+            .ToArray();
         version = new OsvSemanticVersion(
-            coreParts.Select(BigInteger.Parse).ToArray(),
+            core,
             prerelease);
         return true;
     }

@@ -52,6 +52,46 @@ public sealed class LocalOsvAdvisoryTests
     }
 
     [Fact]
+    public async Task QueryBatchAsync_MatchesOsvRangeWithShortSemverBoundary()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var store = CreateStore(fixture.Path);
+        await ImportAsync(store, "Go", """
+        {
+          "id": "GHSA-short-boundary",
+          "summary": "short OSV semver boundary",
+          "affected": [
+            {
+              "package": {
+                "ecosystem": "Go",
+                "name": "github.com/acme/module/v8"
+              },
+              "ranges": [
+                {
+                  "type": "SEMVER",
+                  "events": [
+                    { "introduced": "10.0" },
+                    { "fixed": "10.3.0" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+        """);
+        var client = new LocalOsvAdvisoryClient(store, null);
+
+        var result = await client.QueryBatchAsync(
+            [CreatePackage(DependencyEcosystem.Go, "github.com/acme/module/v8", "10.2.0")],
+            CancellationToken.None);
+
+        Assert.True(result.QuerySucceeded);
+        Assert.Equal(
+            "GHSA-short-boundary",
+            Assert.Single(Assert.Single(result.Packages).Advisories).Id);
+    }
+
+    [Fact]
     public async Task QueryBatchAsync_CountsCompletedLocalPackagesInPartialBatch()
     {
         using var fixture = TemporaryDirectory.Create();
