@@ -110,7 +110,7 @@ Analyzers implement `IRepositoryAnalyzer` and produce `Finding` records with rul
 | Rule ID | Title | Severity | Confidence |
 |---------|-------|----------|------------|
 | TRUST-GLCI001 | GitLab CI uses remote includes | Medium | High |
-| TRUST-GLCI002 | GitLab CI interpolates CI variables in shell | High | Medium |
+| TRUST-GLCI002 | GitLab CI dynamically executes CI variables | High | Medium |
 | TRUST-GLCI003 | GitLab CI uses `:latest` image tag | Medium | High |
 | TRUST-GLCI004 | GitLab CI uses deprecated `only`/`except` | Low | High |
 | TRUST-GLCI005 | GitLab CI uses privileged Docker-in-Docker | High | Medium |
@@ -138,7 +138,7 @@ Analyzers implement `IRepositoryAnalyzer` and produce `Finding` records with rul
 | TRUST-CIRCLE002 | Docker executor image uses `:latest` or no tag | Medium | High |
 | TRUST-CIRCLE003 | Workspace persist stores repository root | Low | Medium |
 | TRUST-CIRCLE004 | Inline secret-looking environment variable | High | Medium |
-| TRUST-CIRCLE005 | Remote Docker enabled without explicit version | Low | Medium |
+| TRUST-CIRCLE005 | CircleCI remote Docker uses preview version | Low | High |
 
 ---
 

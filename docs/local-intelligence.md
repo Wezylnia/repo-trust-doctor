@@ -58,7 +58,12 @@ Each archive is validated for entry count, single-entry size, and expanded size 
 
 After a full import, daily refreshes read the official `modified_id.csv` index and fetch only advisories modified since the last successful update. A full ecosystem archive is imported again every seven days by default. Failure in one ecosystem does not prevent the remaining ecosystems from refreshing.
 
-Local matching supports exact affected-version lists and OSV `SEMVER` ranges. Ecosystem-specific or Git ranges that cannot be evaluated conservatively are sent to the online OSV fallback instead of being treated as clean. Reports expose local and online package counts:
+Local matching supports exact affected-version lists and OSV `SEMVER` ranges.
+OSV range boundaries with one, two, or three numeric components are normalized
+to semantic versions, so feed values such as `10.0` are evaluated as
+`10.0.0`. Ecosystem-specific or Git ranges that cannot be evaluated
+conservatively are sent to the online OSV fallback instead of being treated as
+clean. Reports expose local and online package counts:
 
 - `dependency.vulnerability.lookup.local.count`
 - `dependency.vulnerability.lookup.online.count`

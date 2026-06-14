@@ -89,6 +89,12 @@ report locally completed packages even when another ecosystem remains
 incomplete. Alias-connected advisory records should produce one vulnerability
 finding with merged identifiers, severity, and fixed versions.
 
+For local/online parity checks, sample exact affected versions directly from a
+ready ecosystem database and compare the complete identifier sets returned by
+the local client and `api.osv.dev`. Include at least one feed record with a
+short `SEMVER` boundary such as `10.0`; the local matcher must complete the
+package without fallback and return the same advisory aliases as the API.
+
 Measure analyzer performance with a solo run before treating a concurrent-run timeout as an algorithmic regression. Parallel scans are still useful for cancellation and resource-contention validation, but registry latency, disk contention, and CPU pressure make their wall-clock durations unsuitable as a stable baseline.
 
 ## Rule Distribution Diffs
