@@ -57,9 +57,9 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
         var sourceFiles = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*", SearchOption.AllDirectories)
             .Where(file => extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
             .Where(file => !IsLowSignalSource(context.RepositoryPath, file))
-            .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        var files = sourceFiles.Take(MaxAnalyzedSourceFiles).ToArray();
+        var selection = CodebaseFileSelection.Select(context.RepositoryPath, sourceFiles, MaxAnalyzedSourceFiles);
+        var files = selection.Files;
 
         foreach (var file in files)
         {
@@ -134,18 +134,20 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
             new Dictionary<string, string>
             {
                 ["code.public_api.source_file.count"] = sourceFiles.Length.ToString(CultureInfo.InvariantCulture),
-                ["code.public_api.analyzed_file.count"] = files.Length.ToString(CultureInfo.InvariantCulture),
-                ["code.public_api.truncated"] = (sourceFiles.Length > files.Length).ToString(CultureInfo.InvariantCulture),
+                ["code.public_api.analyzed_file.count"] = files.Count.ToString(CultureInfo.InvariantCulture),
+                ["code.public_api.truncated"] = (sourceFiles.Length > files.Count).ToString(CultureInfo.InvariantCulture),
+                ["code.public_api.partition.count"] = selection.EligiblePartitionCount.ToString(CultureInfo.InvariantCulture),
+                ["code.public_api.selected_partition.count"] = selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.symbol.count"] = symbols.Count.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.added.count"] = added.Length.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.removed.count"] = removed.Length.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.baseline.present"] = (baseline is not null).ToString(CultureInfo.InvariantCulture)
             });
 
-        var warnings = sourceFiles.Length > files.Length
+        var warnings = sourceFiles.Length > files.Count
             ? new[]
             {
-                $"Public API analysis processed the first {files.Length.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} source files after low-signal filtering."
+                $"Public API analysis processed {files.Count.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} source files, balanced across {selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture)} of {selection.EligiblePartitionCount.ToString(CultureInfo.InvariantCulture)} repository partitions."
             }
             : [];
 

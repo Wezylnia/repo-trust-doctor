@@ -91,11 +91,13 @@ public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
     {
         var criticalFiles = new List<CodeCriticalityFile>();
 
-        var sourceFiles = EnumerateSourceFiles(context.RepositoryPath)
-            .OrderBy(file => GetSourcePriority(context.RepositoryPath, file))
-            .ThenBy(file => file, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var analyzedFiles = sourceFiles.Take(MaxAnalyzedSourceFiles).ToArray();
+        var sourceFiles = EnumerateSourceFiles(context.RepositoryPath).ToArray();
+        var selection = CodebaseFileSelection.Select(
+            context.RepositoryPath,
+            sourceFiles,
+            MaxAnalyzedSourceFiles,
+            file => GetSourcePriority(context.RepositoryPath, file));
+        var analyzedFiles = selection.Files;
 
         foreach (var file in analyzedFiles)
         {
@@ -203,8 +205,10 @@ public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             new Dictionary<string, string>
             {
                 ["code.criticality.source_file.count"] = sourceFiles.Length.ToString(CultureInfo.InvariantCulture),
-                ["code.criticality.analyzed_file.count"] = analyzedFiles.Length.ToString(CultureInfo.InvariantCulture),
-                ["code.criticality.truncated"] = (sourceFiles.Length > analyzedFiles.Length).ToString(CultureInfo.InvariantCulture),
+                ["code.criticality.analyzed_file.count"] = analyzedFiles.Count.ToString(CultureInfo.InvariantCulture),
+                ["code.criticality.truncated"] = (sourceFiles.Length > analyzedFiles.Count).ToString(CultureInfo.InvariantCulture),
+                ["code.criticality.partition.count"] = selection.EligiblePartitionCount.ToString(CultureInfo.InvariantCulture),
+                ["code.criticality.selected_partition.count"] = selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.file.count"] = ordered.Length.ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.highest_score"] = (ordered.FirstOrDefault()?.Score ?? 0).ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.large_file.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.LargeFile)).ToString(CultureInfo.InvariantCulture),
@@ -215,10 +219,10 @@ public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 ["code.criticality.java_serialization_hook.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.JavaSerializationHook)).ToString(CultureInfo.InvariantCulture)
             });
 
-        var warnings = sourceFiles.Length > analyzedFiles.Length
+        var warnings = sourceFiles.Length > analyzedFiles.Count
             ? new[]
             {
-                $"Code criticality analyzed the first {analyzedFiles.Length.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} source files after low-signal filtering."
+                $"Code criticality analyzed {analyzedFiles.Count.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} source files, balanced across {selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture)} of {selection.EligiblePartitionCount.ToString(CultureInfo.InvariantCulture)} repository partitions."
             }
             : [];
 

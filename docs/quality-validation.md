@@ -60,6 +60,8 @@ Local corpus scans should still use multiple ecosystems and profiles. The scanne
 
 For very large repositories, codebase analyzers should prefer `CompletedWithWarnings` plus explicit truncation metrics over hard timeouts. Review `*.modules[*].status`, `*.modules[*].errorMessage`, and analyzer metrics after each corpus run; a timeout is usually a product issue, while a warning with source/analyzed counts is an explainable scope limit.
 
+Deep code analyzers use deterministic partition-balanced selection when a repository exceeds the 6,000-file budget. Monorepo roots such as `packages`, `apps`, `services`, `modules`, and `crates` are sampled round-robin instead of taking one alphabetical prefix. Review each analyzer's `partition.count` and `selected_partition.count` metrics together with analyzed/source file counts.
+
 ## Rule Distribution Diffs
 
 Summarize a current report directory:

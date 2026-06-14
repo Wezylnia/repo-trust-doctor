@@ -54,10 +54,9 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
     {
         var adjacency = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         var inDegree = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var sourceFiles = EnumerateSourceFiles(context.RepositoryPath)
-            .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var analyzedSourceFiles = sourceFiles.Take(MaxAnalyzedSourceFiles).ToArray();
+        var sourceFiles = EnumerateSourceFiles(context.RepositoryPath).ToArray();
+        var selection = CodebaseFileSelection.Select(context.RepositoryPath, sourceFiles, MaxAnalyzedSourceFiles);
+        var analyzedSourceFiles = selection.Files;
         var allFiles = analyzedSourceFiles
             .Select(file => ToRepoRelative(context.RepositoryPath, file))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -193,16 +192,18 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
             {
                 ["import.graph.file.count"] = allFiles.Count.ToString(CultureInfo.InvariantCulture),
                 ["import.graph.source_file.count"] = sourceFiles.Length.ToString(CultureInfo.InvariantCulture),
-                ["import.graph.analyzed_file.count"] = analyzedSourceFiles.Length.ToString(CultureInfo.InvariantCulture),
-                ["import.graph.truncated"] = (sourceFiles.Length > analyzedSourceFiles.Length).ToString(CultureInfo.InvariantCulture),
+                ["import.graph.analyzed_file.count"] = analyzedSourceFiles.Count.ToString(CultureInfo.InvariantCulture),
+                ["import.graph.truncated"] = (sourceFiles.Length > analyzedSourceFiles.Count).ToString(CultureInfo.InvariantCulture),
+                ["import.graph.partition.count"] = selection.EligiblePartitionCount.ToString(CultureInfo.InvariantCulture),
+                ["import.graph.selected_partition.count"] = selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture),
                 ["import.graph.edge.count"] = adjacency.Values.Sum(v => v.Count).ToString(CultureInfo.InvariantCulture),
                 ["import.graph.central_file.count"] = centralFiles.Count.ToString(CultureInfo.InvariantCulture)
             });
 
-        var warnings = sourceFiles.Length > analyzedSourceFiles.Length
+        var warnings = sourceFiles.Length > analyzedSourceFiles.Count
             ? new[]
             {
-                $"Import graph analyzed the first {analyzedSourceFiles.Length.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} source files after low-signal filtering."
+                $"Import graph analyzed {analyzedSourceFiles.Count.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} source files, balanced across {selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture)} of {selection.EligiblePartitionCount.ToString(CultureInfo.InvariantCulture)} repository partitions."
             }
             : [];
 

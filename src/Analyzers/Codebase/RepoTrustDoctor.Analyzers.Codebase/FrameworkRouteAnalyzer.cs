@@ -88,10 +88,9 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
     {
         var detectedRoutes = new List<FrameworkRouteInfo>();
 
-        var sourceFiles = EnumerateSourceFiles(context.RepositoryPath)
-            .OrderBy(file => file, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var analyzedFiles = sourceFiles.Take(MaxAnalyzedSourceFiles).ToArray();
+        var sourceFiles = EnumerateSourceFiles(context.RepositoryPath).ToArray();
+        var selection = CodebaseFileSelection.Select(context.RepositoryPath, sourceFiles, MaxAnalyzedSourceFiles);
+        var analyzedFiles = selection.Files;
 
         foreach (var file in analyzedFiles)
         {
@@ -203,8 +202,10 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
         var metrics = new Dictionary<string, string>
         {
             ["route.source_file.count"] = sourceFiles.Length.ToString(CultureInfo.InvariantCulture),
-            ["route.analyzed_file.count"] = analyzedFiles.Length.ToString(CultureInfo.InvariantCulture),
-            ["route.truncated"] = (sourceFiles.Length > analyzedFiles.Length).ToString(CultureInfo.InvariantCulture),
+            ["route.analyzed_file.count"] = analyzedFiles.Count.ToString(CultureInfo.InvariantCulture),
+            ["route.truncated"] = (sourceFiles.Length > analyzedFiles.Count).ToString(CultureInfo.InvariantCulture),
+            ["route.partition.count"] = selection.EligiblePartitionCount.ToString(CultureInfo.InvariantCulture),
+            ["route.selected_partition.count"] = selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture),
             ["route.total.count"] = ordered.Length.ToString(CultureInfo.InvariantCulture),
             ["route.unauthenticated.count"] = unauthCount.ToString(CultureInfo.InvariantCulture),
             ["route.frameworks"] = string.Join(", ", frameworkCounts.Select(
@@ -223,10 +224,10 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 
         var artifact = new FrameworkRouteArtifact(routeEntries, metrics);
 
-        var warnings = sourceFiles.Length > analyzedFiles.Length
+        var warnings = sourceFiles.Length > analyzedFiles.Count
             ? new[]
             {
-                $"Framework route detection analyzed the first {analyzedFiles.Length.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} candidate source files after low-signal filtering."
+                $"Framework route detection analyzed {analyzedFiles.Count.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} candidate files, balanced across {selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture)} of {selection.EligiblePartitionCount.ToString(CultureInfo.InvariantCulture)} repository partitions."
             }
             : [];
 
