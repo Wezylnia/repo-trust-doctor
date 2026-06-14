@@ -32,26 +32,6 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
             return;
         }
 
-        var coveringLockfiles = FindCoveringLockfiles(context.RepositoryPath, directory);
-
-        foreach (var lockfile in coveringLockfiles)
-        {
-            AddLockfile(context, state, lockfile);
-        }
-
-        if (coveringLockfiles.Length == 0)
-        {
-            state.Findings.Add(new Finding(
-                "TRUST-DEP001",
-                "npm manifest exists without lockfile",
-                AnalysisCategory.Dependencies,
-                Severity.Medium,
-                Confidence.High,
-                "npm manifest exists without lockfile",
-                [new Evidence("package-manifest", "A package.json file exists but no lockfile was found.", relativePath)],
-                new Recommendation("Commit package-lock.json, pnpm-lock.yaml, or yarn.lock to the repository.")));
-        }
-
         if (!DependencyInventorySupport.TryReadText(manifest, out var json, state.Warnings, relativePath))
         {
             state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Npm, relativePath, "package.json"));
@@ -62,6 +42,31 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
         {
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                state.Warnings.Add($"Skipped npm manifest '{relativePath}' because its JSON root is not an object.");
+                return;
+            }
+
+            var coveringLockfiles = FindCoveringLockfiles(context.RepositoryPath, directory);
+            foreach (var lockfile in coveringLockfiles)
+            {
+                AddLockfile(context, state, lockfile);
+            }
+
+            if (coveringLockfiles.Length == 0)
+            {
+                state.Findings.Add(new Finding(
+                    "TRUST-DEP001",
+                    "npm manifest exists without lockfile",
+                    AnalysisCategory.Dependencies,
+                    Severity.Medium,
+                    Confidence.High,
+                    "npm manifest exists without lockfile",
+                    [new Evidence("package-manifest", "A package.json file exists but no lockfile was found.", relativePath)],
+                    new Recommendation("Commit package-lock.json, pnpm-lock.yaml, or yarn.lock to the repository.")));
+            }
+
             state.Manifests.Add(new DependencyManifestInfo(
                 DependencyEcosystem.Npm,
                 relativePath,

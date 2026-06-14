@@ -35,6 +35,7 @@ public sealed class DockerBasicAnalyzerTests
         File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
         File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
         FROM alpine:3.18
+        RUN go build -o /app/server ./cmd/server
         USER appuser
         HEALTHCHECK NONE
         """);
@@ -80,6 +81,7 @@ public sealed class DockerBasicAnalyzerTests
         # FROM scratch
         FROM alpine:3.18
         #  FROM ubuntu
+        RUN go build -o /app/server ./cmd/server
         USER appuser
         HEALTHCHECK NONE
         """);
@@ -266,6 +268,7 @@ public sealed class DockerBasicAnalyzerTests
     [InlineData("tools/devcontainer/Dockerfile")]
     [InlineData("integration-test/app/Dockerfile")]
     [InlineData("smoke-test/app/Dockerfile")]
+    [InlineData("examples/cpp/server/Dockerfile")]
     public async Task AnalyzeAsync_SkipsTemplateAndFixtureDockerfiles(string relativePath)
     {
         using var fixture = TemporaryRepository.Create();
@@ -303,5 +306,65 @@ public sealed class DockerBasicAnalyzerTests
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DOCKER002");
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DOCKER005");
         Assert.DoesNotContain(result.Findings, f => f.RuleId is "TRUST-DOCKER001" or "TRUST-DOCKER003" or "TRUST-DOCKER004" or "TRUST-DOCKER006" or "TRUST-DOCKER007");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_NestedBuildImageWithoutRuntimeInstructions_SkipsRuntimeHygiene()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var filePath = Path.Combine(fixture.Path, "src", "php", "docker", "Dockerfile");
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, """
+        FROM php:8.4
+        RUN docker-php-ext-install grpc
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding =>
+            finding.RuleId is "TRUST-DOCKER003" or "TRUST-DOCKER004" or "TRUST-DOCKER006");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CliImageWithoutExposedPort_DoesNotRequireHealthcheck()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM alpine:3.20
+        USER app
+        ENTRYPOINT ["/usr/local/bin/tool"]
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DOCKER004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_NestedTestRunnerImage_SkipsRuntimeHygiene()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var filePath = Path.Combine(fixture.Path, "src", "php", "docker", "Dockerfile");
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, """
+        FROM php:8.4
+        RUN make extension
+        CMD ["/repo/bin/run_tests.sh"]
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding =>
+            finding.RuleId is "TRUST-DOCKER003" or "TRUST-DOCKER004" or "TRUST-DOCKER006");
     }
 }

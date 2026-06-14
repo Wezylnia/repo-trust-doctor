@@ -32,6 +32,12 @@ public static class RepositoryPathClassifier
             HasSegment(normalized, "testfiles") ||
             HasSegment(normalized, "testassets") ||
             HasSegment(normalized, "testcertificates") ||
+            HasSegment(normalized, "test_creds") ||
+            HasSegment(normalized, "test_credentials") ||
+            HasSegment(normalized, "test-certs") ||
+            HasSegment(normalized, "test_certs") ||
+            HasSegmentPrefix(normalized, "tests_") ||
+            HasSegmentSuffix(normalized, "_tests") ||
             ContainsToken(normalized, "integration-test") ||
             ContainsToken(normalized, "integrationtesting") ||
             ContainsToken(normalized, "e2etest") ||
@@ -58,6 +64,10 @@ public static class RepositoryPathClassifier
             HasSegment(normalized, "testfiles") ||
             HasSegment(normalized, "testassets") ||
             HasSegment(normalized, "testcertificates") ||
+            HasSegment(normalized, "test_creds") ||
+            HasSegment(normalized, "test_credentials") ||
+            HasSegment(normalized, "test-certs") ||
+            HasSegment(normalized, "test_certs") ||
             HasSegment(normalized, "mock") ||
             HasSegment(normalized, "mocks") ||
             HasSegment(normalized, "_mock") ||
@@ -188,6 +198,14 @@ public static class RepositoryPathClassifier
         normalizedPath.StartsWith(segment + "/", StringComparison.OrdinalIgnoreCase) ||
         normalizedPath.EndsWith("/" + segment, StringComparison.OrdinalIgnoreCase) ||
         normalizedPath.Contains("/" + segment + "/", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasSegmentPrefix(string normalizedPath, string prefix) =>
+        normalizedPath.Split('/').Any(segment =>
+            segment.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+    private static bool HasSegmentSuffix(string normalizedPath, string suffix) =>
+        normalizedPath.Split('/').Any(segment =>
+            segment.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
 
     private static bool ContainsToken(string normalizedPath, string token) =>
         normalizedPath.Contains(token, StringComparison.OrdinalIgnoreCase);

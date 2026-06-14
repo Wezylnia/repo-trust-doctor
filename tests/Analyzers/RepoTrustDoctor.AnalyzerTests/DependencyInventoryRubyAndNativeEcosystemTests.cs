@@ -381,6 +381,7 @@ public sealed class DependencyInventoryRubyAndNativeEcosystemTests
         using var fixture = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fixture.Path, "Package.swift"), """
         let package = Package(
+            products: [.executable(name: "example", targets: ["Example"])],
             dependencies: [
                 .package(url: "https://github.com/example/lib", from: "1.0.0")
             ]

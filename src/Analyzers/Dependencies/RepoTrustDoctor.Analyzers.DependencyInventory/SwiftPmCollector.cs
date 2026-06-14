@@ -30,40 +30,28 @@ internal sealed partial class SwiftPmCollector : IDependencyInventoryCollector
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Swift, relativePath, "Package.swift"));
 
-        if (!HasSiblingLockfile(filePath))
-        {
-            state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
-                "TRUST-DEP043",
-                "Swift package does not have a Package.resolved file",
-                Severity.Medium,
-                Confidence.High,
-                "A Package.swift file exists but no Package.resolved was found.",
-                "package-manifest",
-                "No Package.resolved file was found alongside Package.swift.",
-                relativePath,
-                "Commit Package.resolved to the repository for reproducible builds."));
-        }
-
         if (!DependencyInventorySupport.TryReadText(filePath, out var content, state.Warnings, relativePath))
         {
             return;
         }
 
-        var lines = DependencyInventorySupport.SplitLines(content);
-        foreach (var rawLine in lines)
+        if (RequiresResolvedFile(content, relativePath) && !HasResolvedFile(filePath))
         {
-            var line = rawLine.Trim();
-            if (line.Length == 0 || line.StartsWith("//", StringComparison.Ordinal))
-            {
-                continue;
-            }
+            state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
+                "TRUST-DEP043",
+                "Swift executable package does not have a Package.resolved file",
+                Severity.Medium,
+                Confidence.High,
+                "A Swift executable package exists but no Package.resolved was found.",
+                "package-manifest",
+                "No Package.resolved file was found for the executable package.",
+                relativePath,
+                "Commit Package.resolved for reproducible executable builds."));
+        }
 
-            // Match: .package(url: "https://...", from: "1.0.0"),
-            // or: .package(url: "https://...", exact: "1.2.3"),
-            // or: .package(url: "https://...", branch: "main"),
-            // or: .package(path: "../local"),
-            var match = SwiftPackagePattern().Match(line);
-            if (!match.Success)
+        foreach (Match match in SwiftPackagePattern().Matches(content))
+        {
+            if (IsCommentedOut(content, match.Index))
             {
                 continue;
             }
@@ -72,7 +60,7 @@ internal sealed partial class SwiftPmCollector : IDependencyInventoryCollector
             var path = match.Groups["path"].Success ? match.Groups["path"].Value : null;
             var version = match.Groups["version"].Success ? match.Groups["version"].Value : null;
             var isBranch = match.Groups["branch"].Success;
-            var isExact = line.Contains("exact:", StringComparison.Ordinal);
+            var isExact = match.Value.Contains("exact:", StringComparison.Ordinal);
 
             var pkgName = url ?? path ?? "unknown";
             var constraint = isBranch ? $"branch:{match.Groups["branch"].Value}" : version;
@@ -111,9 +99,22 @@ internal sealed partial class SwiftPmCollector : IDependencyInventoryCollector
     [GeneratedRegex(@"\.package\s*\(\s*(?:url\s*:\s*""(?<url>[^""]+)""|path\s*:\s*""(?<path>[^""]+)"")(?:\s*,\s*(?:from|exact)\s*:\s*""(?<version>[^""]+)"")?(?:\s*,\s*branch\s*:\s*""(?<branch>[^""]+)"")?")]
     private static partial Regex SwiftPackagePattern();
 
-    private static bool HasSiblingLockfile(string packageSwiftPath)
+    private static bool RequiresResolvedFile(string content, string relativePath) =>
+        !RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath) &&
+        content.Contains(".executable(", StringComparison.Ordinal);
+
+    private static bool HasResolvedFile(string packageSwiftPath)
     {
         var directory = Path.GetDirectoryName(packageSwiftPath);
-        return directory is not null && File.Exists(Path.Combine(directory, "Package.resolved"));
+        return directory is not null &&
+               (File.Exists(Path.Combine(directory, "Package.resolved")) ||
+                File.Exists(Path.Combine(directory, ".swiftpm", "Package.resolved")));
+    }
+
+    private static bool IsCommentedOut(string content, int matchIndex)
+    {
+        var lineStart = content.LastIndexOf('\n', Math.Max(0, matchIndex - 1));
+        var prefix = content[(lineStart + 1)..matchIndex].TrimStart();
+        return prefix.StartsWith("//", StringComparison.Ordinal);
     }
 }

@@ -47,7 +47,8 @@ public sealed class WorkspaceAnalyzer : IRepositoryAnalyzer
             try
             {
                 using var doc = System.Text.Json.JsonDocument.Parse(content);
-                if (doc.RootElement.TryGetProperty("workspaces", out var workspaces) &&
+                if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                    doc.RootElement.TryGetProperty("workspaces", out var workspaces) &&
                     workspaces.ValueKind == System.Text.Json.JsonValueKind.Array)
                 {
                     findings.Add(CreateInfoFinding("TRUST-WS001", "Repository uses npm workspaces", relativePath,

@@ -29,8 +29,16 @@ internal sealed partial class HexDependencyCollector : IDependencyInventoryColle
     {
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Hex, relativePath, "mix.exs"));
+        var lockfilePath = Path.Combine(Path.GetDirectoryName(filePath)!, "mix.lock");
+        var hasSiblingLockfile = File.Exists(lockfilePath);
+        var lockfile = hasSiblingLockfile
+            ? HexLockfileResolver.TryCreate(
+                lockfilePath,
+                DependencyInventorySupport.Relative(context, lockfilePath),
+                state)
+            : null;
 
-        if (!HasSiblingLockfile(filePath))
+        if (!hasSiblingLockfile)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP040",
@@ -72,27 +80,41 @@ internal sealed partial class HexDependencyCollector : IDependencyInventoryColle
             var constraint = match.Groups["constraint"].Success ? match.Groups["constraint"].Value : null;
             var isGit = match.Groups["git"].Success;
             var isPath = match.Groups["path"].Success;
+            var path = isPath ? match.Groups["path"].Value : null;
+            var resolvedVersion = string.Empty;
+            var resolved = constraint != null &&
+                           lockfile is not null &&
+                           lockfile.TryResolve(pkgName, out resolvedVersion);
+            var effectiveVersion = resolved ? resolvedVersion : constraint;
 
             var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (isGit) metadata["sourceKind"] = "git";
             if (isPath) metadata["sourceKind"] = "path";
+            if (resolved)
+            {
+                metadata["requestedVersion"] = constraint!;
+                metadata["versionSource"] = "mix.lock";
+            }
 
-            var isPinned = constraint != null && ExactHexVersionPattern().IsMatch(constraint);
-            var isPrerelease = constraint != null && DependencyInventorySupport.IsPrereleaseVersion(constraint);
+            var isPinned = effectiveVersion != null && ExactHexVersionPattern().IsMatch(effectiveVersion);
+            var isPrerelease = effectiveVersion != null && DependencyInventorySupport.IsPrereleaseVersion(effectiveVersion);
 
             state.Packages.Add(new DependencyPackageInfo(
                 DependencyEcosystem.Hex,
                 pkgName,
-                constraint,
+                effectiveVersion,
                 DependencyScope.Production,
                 relativePath,
-                null,
+                resolved ? lockfile!.RelativePath : null,
                 true,
                 isPinned,
                 isPrerelease,
                 metadata.Count > 0 ? metadata : null));
 
-            if (isGit || isPath)
+            var reportsPathSource = isPath &&
+                                    !DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath) &&
+                                    !IsRepositoryLocalPath(context.RepositoryPath, filePath, path!);
+            if (isGit || reportsPathSource)
             {
                 state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                     "TRUST-DEP042",
@@ -106,18 +128,22 @@ internal sealed partial class HexDependencyCollector : IDependencyInventoryColle
                     "Review non-Hex dependency sources and prefer Hex packages with pinned versions when possible."));
             }
 
-            if (!isPinned && constraint != null)
+            if (!isPinned &&
+                constraint != null &&
+                !DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath))
             {
                 state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                     "TRUST-DEP041",
                     "Elixir dependency uses a non-exact version constraint",
                     Severity.Medium,
                     Confidence.High,
-                    $"Elixir dependency '{pkgName}' uses a version constraint instead of an exact version.",
+                    $"Elixir dependency '{pkgName}' is not resolved to an exact version.",
                     "hex-dependency",
-                    $"Dependency '{pkgName}' has version constraint '{constraint}'.",
+                    hasSiblingLockfile
+                        ? $"Dependency '{pkgName}' has constraint '{constraint}', but mix.lock does not resolve it."
+                        : $"Dependency '{pkgName}' has version constraint '{constraint}' without a mix.lock resolution.",
                     relativePath,
-                    "Use exact version constraints with a committed mix.lock for reproducible builds."));
+                    "Commit an up-to-date mix.lock that resolves the dependency to an exact version."));
             }
         }
     }
@@ -128,9 +154,19 @@ internal sealed partial class HexDependencyCollector : IDependencyInventoryColle
     [GeneratedRegex(@"^\d+\.\d+\.\d+$")]
     private static partial Regex ExactHexVersionPattern();
 
-    private static bool HasSiblingLockfile(string mixExsPath)
+    private static bool IsRepositoryLocalPath(string repositoryPath, string manifestPath, string dependencyPath)
     {
-        var directory = Path.GetDirectoryName(mixExsPath);
-        return directory is not null && File.Exists(Path.Combine(directory, "mix.lock"));
+        var manifestDirectory = Path.GetDirectoryName(manifestPath);
+        if (manifestDirectory is null)
+        {
+            return false;
+        }
+
+        var resolvedPath = Path.GetFullPath(Path.Combine(manifestDirectory, dependencyPath));
+        var resolvedRepository = Path.GetFullPath(repositoryPath);
+        var relative = Path.GetRelativePath(resolvedRepository, resolvedPath);
+        return relative != ".." &&
+               !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+               !Path.IsPathRooted(relative);
     }
 }

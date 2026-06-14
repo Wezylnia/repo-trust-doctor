@@ -24,6 +24,9 @@ public sealed class RepositoryPathClassifierTests
     [InlineData(".azure-pipelines/templates/test.yml", RepositoryPathClassification.Tooling)]
     [InlineData("third_party/go/pkg/client.go", RepositoryPathClassification.Vendored)]
     [InlineData("deps/openssl/openssl/apps/server.pem", RepositoryPathClassification.Vendored)]
+    [InlineData("src/core/tsi/test_creds/server.key", RepositoryPathClassification.Test | RepositoryPathClassification.Fixture)]
+    [InlineData("pkg/tls/test-certs/client.pem", RepositoryPathClassification.Test | RepositoryPathClassification.Fixture)]
+    [InlineData("src/python/grpcio_tests/tests_py3_only/client.py", RepositoryPathClassification.Test)]
     public void Classify_ReturnsExpectedFlags(string path, RepositoryPathClassification expected)
     {
         var classification = RepositoryPathClassifier.Classify(path);

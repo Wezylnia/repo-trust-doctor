@@ -91,4 +91,19 @@ public sealed class WorkspaceAnalyzerTests
 
         Assert.Empty(result.Findings);
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_NonObjectPackageJson_IsIgnored()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "package.json"), "\"Package moved elsewhere\"");
+
+        var analyzer = new WorkspaceAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        Assert.Equal(ModuleStatus.Completed, result.Status);
+        Assert.Empty(result.Findings);
+    }
 }

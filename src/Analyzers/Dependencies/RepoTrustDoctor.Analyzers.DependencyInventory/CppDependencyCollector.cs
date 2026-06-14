@@ -6,6 +6,8 @@ namespace RepoTrustDoctor.Analyzers.DependencyInventory;
 
 internal sealed partial class CppDependencyCollector : IDependencyInventoryCollector
 {
+    private const long MaxCmakeFileBytes = 8 * 1024 * 1024;
+
     public void Collect(AnalysisContext context, DependencyInventoryState state, CancellationToken cancellationToken)
     {
         foreach (var file in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "conanfile.txt")
@@ -122,25 +124,34 @@ internal sealed partial class CppDependencyCollector : IDependencyInventoryColle
 
     private static void AnalyzeCmakeLists(AnalysisContext context, string filePath, string relativePath, DependencyInventoryState state)
     {
-        if (!DependencyInventorySupport.TryReadText(filePath, out var content, state.Warnings, relativePath))
+        if (!RepositoryFileSystem.CanReadAsText(filePath, MaxCmakeFileBytes))
         {
+            state.Warnings.Add($"Skipped CMake manifest '{relativePath}' because it exceeds {MaxCmakeFileBytes / (1024 * 1024)} MiB or is not readable as text.");
             return;
         }
 
         var hasExternalDeps = false;
-        foreach (var rawLine in DependencyInventorySupport.SplitLines(content))
+        try
         {
-            var line = rawLine.Trim();
-            if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal))
+            foreach (var rawLine in File.ReadLines(filePath))
             {
-                continue;
-            }
+                var line = rawLine.Trim();
+                if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal))
+                {
+                    continue;
+                }
 
-            if (CmakeFindPackagePattern().IsMatch(line) || CmakeFetchContentPattern().IsMatch(line))
-            {
-                hasExternalDeps = true;
-                break;
+                if (CmakeFindPackagePattern().IsMatch(line) || CmakeFetchContentPattern().IsMatch(line))
+                {
+                    hasExternalDeps = true;
+                    break;
+                }
             }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            state.Warnings.Add($"Could not read CMake manifest '{relativePath}': {ex.Message}");
+            return;
         }
 
         if (hasExternalDeps)

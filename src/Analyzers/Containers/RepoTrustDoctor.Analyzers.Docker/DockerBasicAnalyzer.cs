@@ -65,13 +65,15 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
             var content = await File.ReadAllTextAsync(dockerfile.FullPath, cancellationToken);
             var relativePath = dockerfile.RelativePath;
+            var isBuildSupport = dockerfile.IsBuildSupport ||
+                                 IsNestedBuildOnlyDockerfile(relativePath, content);
 
             if (LatestImagePattern().IsMatch(content))
             {
                 findings.Add(CreateFinding("TRUST-DOCKER002", "Docker base image uses latest tag", Severity.Medium, relativePath, "A FROM instruction uses the latest tag."));
             }
 
-            if (!dockerfile.IsBuildSupport)
+            if (!isBuildSupport)
             {
                 CheckRuntimeHardening(content, relativePath, findings);
                 CheckCopyBeforeRestore(content, relativePath, findings);
@@ -109,13 +111,14 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
             findings.Add(CreateFinding("TRUST-DOCKER003", "Dockerfile does not declare a non-root USER", Severity.Medium, relativePath, "No USER instruction was found."));
         }
 
-        if (!HealthcheckPattern().IsMatch(content))
+        if (ExposeInstructionPattern().IsMatch(content) &&
+            !HealthcheckPattern().IsMatch(content))
         {
             findings.Add(CreateFinding("TRUST-DOCKER004", "Dockerfile does not declare HEALTHCHECK", Severity.Low, relativePath, "No HEALTHCHECK instruction was found."));
         }
 
         var fromCount = FromInstructionPattern().Matches(content).Count;
-        if (fromCount == 1)
+        if (fromCount == 1 && BuildInstructionPattern().IsMatch(content))
         {
             findings.Add(CreateFinding(
                 "TRUST-DOCKER006",
@@ -169,7 +172,8 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
     {
         var fileName = Path.GetFileName(relativePath);
 
-        return fileName.EndsWith(".tt", StringComparison.OrdinalIgnoreCase) ||
+        return RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath) ||
+               fileName.EndsWith(".tt", StringComparison.OrdinalIgnoreCase) ||
                fileName.EndsWith(".tmpl", StringComparison.OrdinalIgnoreCase) ||
                fileName.EndsWith(".template", StringComparison.OrdinalIgnoreCase) ||
                fileName.EndsWith(".test", StringComparison.OrdinalIgnoreCase) ||
@@ -192,10 +196,17 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
     }
 
     private static bool IsBuildSupportDockerfile(string relativePath) =>
+        RepositoryPathClassifier.Classify(relativePath)
+            .HasAny(RepositoryPathClassification.Tooling) ||
         HasPathSegment(relativePath, "ci") ||
         HasPathSegment(relativePath, ".github") ||
         HasPathSegment(relativePath, ".circleci") ||
         HasPathSegment(relativePath, ".azure-pipelines");
+
+    private static bool IsNestedBuildOnlyDockerfile(string relativePath, string content) =>
+        relativePath.Contains('/', StringComparison.Ordinal) &&
+        (!RuntimeInstructionPattern().IsMatch(content) ||
+         TestRuntimeInstructionPattern().IsMatch(content));
 
     private static bool HasPathSegment(string relativePath, string segment) =>
         relativePath.Split('/').Contains(segment, StringComparer.OrdinalIgnoreCase);
@@ -257,6 +268,18 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?mi)^\s*USER\s+\S+")]
     private static partial Regex UserPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*EXPOSE\s+\S+")]
+    private static partial Regex ExposeInstructionPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*(?:CMD|ENTRYPOINT|EXPOSE|HEALTHCHECK)\b")]
+    private static partial Regex RuntimeInstructionPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*(?:CMD|ENTRYPOINT)\b.*\b(?:run[_-]?tests?|pytest|phpunit|rspec|go\s+test|dotnet\s+test)\b")]
+    private static partial Regex TestRuntimeInstructionPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*RUN\s+.*\b(?:dotnet\s+publish|npm\s+run\s+build|pnpm\s+build|yarn\s+build|go\s+build|cargo\s+build|cmake|make|mvn\s+package|gradle\s+build)\b")]
+    private static partial Regex BuildInstructionPattern();
 
     [GeneratedRegex(@"(?mi)^\s*HEALTHCHECK\b")]
     private static partial Regex HealthcheckPattern();
