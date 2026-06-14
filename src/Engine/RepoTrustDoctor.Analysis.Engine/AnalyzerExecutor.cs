@@ -24,7 +24,8 @@ public sealed class AnalyzerExecutor
 
         try
         {
-            var result = await analyzer.AnalyzeAsync(context, linkedCts.Token);
+            var analysisTask = analyzer.AnalyzeAsync(context, linkedCts.Token);
+            var result = await analysisTask.WaitAsync(analyzer.Timeout, cancellationToken);
 
             foreach (var artifact in result.Artifacts ?? [])
             {
@@ -64,14 +65,19 @@ public sealed class AnalyzerExecutor
                 result,
                 new ScanModule(analyzer.Id, analyzer.DisplayName, analyzer.Category, ModuleStatus.TimedOut, started, started.Add(stopwatch.Elapsed), 0, $"Analyzer timed out after {analyzer.Timeout.TotalSeconds}s."));
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (TimeoutException) when (!cancellationToken.IsCancellationRequested)
         {
+            timeoutCts.Cancel();
             stopwatch.Stop();
-            var result = new AnalyzerResult(ModuleStatus.Cancelled, []);
+            var result = new AnalyzerResult(ModuleStatus.TimedOut, []);
             return new AnalyzerExecutionResult(
                 analyzer,
                 result,
-                new ScanModule(analyzer.Id, analyzer.DisplayName, analyzer.Category, ModuleStatus.Cancelled, started, started.Add(stopwatch.Elapsed), 0));
+                new ScanModule(analyzer.Id, analyzer.DisplayName, analyzer.Category, ModuleStatus.TimedOut, started, started.Add(stopwatch.Elapsed), 0, $"Analyzer timed out after {analyzer.Timeout.TotalSeconds}s."));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

@@ -111,6 +111,8 @@ Static analyzers also apply bounded text reads so unusually large files are not 
 
 Repository code is untrusted input. Hosted scans should only allow static file reads and safe network metadata lookups unless execution is explicitly enabled in a sandboxed mode.
 
+The scan orchestrator enforces analyzer `ExecutionSafety` before execution. The default hosted path allows static analyzers and safe registry/advisory lookups; analyzers that would execute trusted tools or repository code are skipped and recorded as incomplete modules. Downstream analyzers are skipped when a required producer analyzer failed, timed out, was cancelled, or was skipped, so reports do not turn missing prerequisite evidence into a clean result.
+
 ## Scan Progress Contracts
 
 `RepoTrustDoctor.Contracts` exposes polling-friendly scan progress DTOs for future API and worker surfaces. The lifecycle states are:

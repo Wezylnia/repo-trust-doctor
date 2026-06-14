@@ -13,11 +13,13 @@ public sealed class ScanOrchestrator
     private readonly IReadOnlyList<IRepositoryAnalyzer> analyzers;
     private readonly AnalyzerExecutor executor;
     private readonly TrustScorer scorer;
+    private readonly AnalyzerExecutionSafety maximumExecutionSafety;
 
     public ScanOrchestrator(
         IEnumerable<IRepositoryAnalyzer> analyzers,
         AnalyzerExecutor executor,
-        TrustScorer scorer)
+        TrustScorer scorer,
+        AnalyzerExecutionSafety maximumExecutionSafety = AnalyzerExecutionSafety.NetworkLookup)
     {
         var analyzerList = analyzers.ToArray();
         ValidateAnalyzers(analyzerList);
@@ -25,6 +27,7 @@ public sealed class ScanOrchestrator
         this.analyzers = OrderAnalyzers(analyzerList);
         this.executor = executor;
         this.scorer = scorer;
+        this.maximumExecutionSafety = maximumExecutionSafety;
     }
 
     private static IReadOnlyList<IRepositoryAnalyzer> OrderAnalyzers(IReadOnlyList<IRepositoryAnalyzer> analyzers)
@@ -141,18 +144,45 @@ public sealed class ScanOrchestrator
         var context = new AnalysisContext(target, repositoryPath, depth);
         var modules = new List<ScanModule>();
         var findings = new List<Finding>();
+        var moduleStatuses = new Dictionary<string, ModuleStatus>(StringComparer.OrdinalIgnoreCase);
 
         using var fileIndex = RepositoryFileSystem.UseFileIndex(repositoryPath);
         foreach (var analyzer in analyzers.Where(analyzer => analyzer.MinimumDepth <= depth))
         {
+            if (TryGetBlockedDependency(analyzer, moduleStatuses, out var blockedDependency))
+            {
+                var skipped = CreateSkippedModule(
+                    analyzer,
+                    $"Required analyzer '{blockedDependency}' did not complete successfully.");
+                modules.Add(skipped);
+                moduleStatuses[analyzer.Id] = skipped.Status;
+                continue;
+            }
+
+            if (analyzer.ExecutionSafety > maximumExecutionSafety)
+            {
+                var skipped = CreateSkippedModule(
+                    analyzer,
+                    $"Analyzer requires {analyzer.ExecutionSafety} execution safety but the scan allows {maximumExecutionSafety}.");
+                modules.Add(skipped);
+                moduleStatuses[analyzer.Id] = skipped.Status;
+                continue;
+            }
+
             var execution = await executor.ExecuteAsync(analyzer, context, cancellationToken);
             modules.Add(execution.Module);
+            moduleStatuses[analyzer.Id] = execution.Module.Status;
             findings.AddRange(execution.Result.Findings);
         }
 
         var completed = DateTimeOffset.UtcNow;
         var score = scorer.ScoreScan(findings, trustProfile, modules);
-        var status = modules.Any(module => module.Status is ModuleStatus.Failed or ModuleStatus.TimedOut)
+        var status = modules.Any(module => module.Status is
+            ModuleStatus.CompletedWithWarnings or
+            ModuleStatus.Failed or
+            ModuleStatus.TimedOut or
+            ModuleStatus.Skipped or
+            ModuleStatus.Cancelled)
             ? ModuleStatus.CompletedWithWarnings
             : ModuleStatus.Completed;
 
@@ -169,5 +199,39 @@ public sealed class ScanOrchestrator
             findings,
             score,
             context.Artifacts);
+    }
+
+    private static bool TryGetBlockedDependency(
+        IRepositoryAnalyzer analyzer,
+        IReadOnlyDictionary<string, ModuleStatus> moduleStatuses,
+        out string? blockedDependency)
+    {
+        foreach (var dependency in analyzer.DependsOn)
+        {
+            var dependencyId = ResolveDependencyId(dependency);
+            if (moduleStatuses.TryGetValue(dependencyId, out var status) &&
+                status is ModuleStatus.Failed or ModuleStatus.TimedOut or ModuleStatus.Skipped or ModuleStatus.Cancelled)
+            {
+                blockedDependency = dependencyId;
+                return true;
+            }
+        }
+
+        blockedDependency = null;
+        return false;
+    }
+
+    private static ScanModule CreateSkippedModule(IRepositoryAnalyzer analyzer, string reason)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return new ScanModule(
+            analyzer.Id,
+            analyzer.DisplayName,
+            analyzer.Category,
+            ModuleStatus.Skipped,
+            now,
+            now,
+            0,
+            SkippedReason: reason);
     }
 }

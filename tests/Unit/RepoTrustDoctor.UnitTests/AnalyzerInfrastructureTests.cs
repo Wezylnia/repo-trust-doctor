@@ -89,6 +89,33 @@ public sealed class AnalyzerInfrastructureTests
     }
 
     [Fact]
+    public async Task AnalyzerExecutor_NonCooperativeAnalyzer_StopsAtTimeoutBoundary()
+    {
+        var slowAnalyzer = new NonCooperativeSlowAnalyzer(delayMs: 5000, timeoutMs: 100);
+        var executor = new AnalyzerExecutor();
+        var context = new AnalysisContext(".", ".", AnalysisDepth.Fast);
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        var result = await executor.ExecuteAsync(slowAnalyzer, context, CancellationToken.None);
+
+        stopwatch.Stop();
+        Assert.Equal(ModuleStatus.TimedOut, result.Module.Status);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task AnalyzerExecutor_ExternalCancellation_PropagatesCancellation()
+    {
+        var slowAnalyzer = new SlowAnalyzer(delayMs: 5000, timeoutMs: 5000);
+        var executor = new AnalyzerExecutor();
+        var context = new AnalysisContext(".", ".", AnalysisDepth.Fast);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            executor.ExecuteAsync(slowAnalyzer, context, cancellation.Token));
+    }
+
+    [Fact]
     public async Task ScanOrchestrator_TimedOutAnalyzer_CannotProduceSafeDecision()
     {
         using var directory = TemporaryDirectory.Create();
@@ -104,7 +131,7 @@ public sealed class AnalyzerInfrastructureTests
 
         Assert.Equal(ModuleStatus.CompletedWithWarnings, scan.Status);
         Assert.Equal(FinalDecisionKind.NeedsManualReview, scan.Score.Decision.Kind);
-        Assert.Equal(70, Assert.Single(scan.Score.Categories).Score);
+        Assert.Empty(scan.Score.Categories);
         Assert.Contains(scan.Score.Decision.Reasons, reason => reason.Contains("timed out", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -164,17 +191,64 @@ public sealed class AnalyzerInfrastructureTests
             module => Assert.Equal("a-dependent", module.ModuleId));
     }
 
+    [Fact]
+    public async Task ScanOrchestrator_SkipsAnalyzersAboveAllowedExecutionSafety()
+    {
+        var unsafeAnalyzer = new FakeAnalyzerWithRule(
+            "unsafe-analyzer",
+            "TRUST-SAFE001",
+            executionSafety: AnalyzerExecutionSafety.ExecutesRepositoryCode);
+        var orchestrator = new ScanOrchestrator([unsafeAnalyzer], new AnalyzerExecutor(), new TrustScorer());
+
+        var scan = await orchestrator.RunAsync(".", ".", AnalysisDepth.Fast, TrustProfile.Personal, CancellationToken.None);
+
+        var module = Assert.Single(scan.Modules);
+        Assert.Equal(ModuleStatus.Skipped, module.Status);
+        Assert.Contains("ExecutesRepositoryCode", module.SkippedReason);
+        Assert.Equal(ModuleStatus.CompletedWithWarnings, scan.Status);
+        Assert.Equal(FinalDecisionKind.NeedsManualReview, scan.Score.Decision.Kind);
+    }
+
+    [Fact]
+    public async Task ScanOrchestrator_SkipsDependentsWhenRequiredAnalyzerDoesNotComplete()
+    {
+        var dependent = new FakeAnalyzerWithRule("dependent", "TRUST-DEP002", ["unsafe-producer"]);
+        var producer = new FakeAnalyzerWithRule(
+            "unsafe-producer",
+            "TRUST-DEP001",
+            executionSafety: AnalyzerExecutionSafety.ExecutesRepositoryCode);
+        var orchestrator = new ScanOrchestrator([dependent, producer], new AnalyzerExecutor(), new TrustScorer());
+
+        var scan = await orchestrator.RunAsync(".", ".", AnalysisDepth.Fast, TrustProfile.Personal, CancellationToken.None);
+
+        Assert.Collection(
+            scan.Modules,
+            module => Assert.Equal("unsafe-producer", module.ModuleId),
+            module =>
+            {
+                Assert.Equal("dependent", module.ModuleId);
+                Assert.Equal(ModuleStatus.Skipped, module.Status);
+                Assert.Contains("unsafe-producer", module.SkippedReason);
+            });
+    }
+
     private sealed class FakeAnalyzerWithRule : IRepositoryAnalyzer
     {
         private readonly string id;
         private readonly string ruleId;
         private readonly IReadOnlyCollection<string> dependsOn;
+        private readonly AnalyzerExecutionSafety executionSafety;
 
-        public FakeAnalyzerWithRule(string id, string ruleId, IReadOnlyCollection<string>? dependsOn = null)
+        public FakeAnalyzerWithRule(
+            string id,
+            string ruleId,
+            IReadOnlyCollection<string>? dependsOn = null,
+            AnalyzerExecutionSafety executionSafety = AnalyzerExecutionSafety.StaticOnly)
         {
             this.id = id;
             this.ruleId = ruleId;
             this.dependsOn = dependsOn ?? [];
+            this.executionSafety = executionSafety;
         }
 
         public string Id => id;
@@ -182,7 +256,7 @@ public sealed class AnalyzerInfrastructureTests
         public AnalysisCategory Category => AnalysisCategory.RepositoryHealth;
         public AnalysisDepth MinimumDepth => AnalysisDepth.Fast;
         public IReadOnlyCollection<string> DependsOn => dependsOn;
-        public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
+        public AnalyzerExecutionSafety ExecutionSafety => executionSafety;
         public TimeSpan Timeout => TimeSpan.FromSeconds(10);
         public IReadOnlyCollection<RuleMetadata> Rules =>
         [
@@ -219,6 +293,36 @@ public sealed class AnalyzerInfrastructureTests
         public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
         {
             await Task.Delay(delayMs, cancellationToken);
+            return AnalyzerResult.Completed([]);
+        }
+    }
+
+    private sealed class NonCooperativeSlowAnalyzer : IRepositoryAnalyzer
+    {
+        private readonly int delayMs;
+        private readonly int timeoutMs;
+
+        public NonCooperativeSlowAnalyzer(int delayMs, int timeoutMs)
+        {
+            this.delayMs = delayMs;
+            this.timeoutMs = timeoutMs;
+        }
+
+        public string Id => "non-cooperative-slow-analyzer";
+        public string DisplayName => "Non Cooperative Slow Analyzer";
+        public AnalysisCategory Category => AnalysisCategory.RepositoryHealth;
+        public AnalysisDepth MinimumDepth => AnalysisDepth.Fast;
+        public IReadOnlyCollection<string> DependsOn => [];
+        public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
+        public TimeSpan Timeout => TimeSpan.FromMilliseconds(timeoutMs);
+        public IReadOnlyCollection<RuleMetadata> Rules =>
+        [
+            new("TRUST-SLOW002", "Slow rule", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "Slow", "Wait")
+        ];
+
+        public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
+        {
+            await Task.Delay(delayMs, CancellationToken.None);
             return AnalyzerResult.Completed([]);
         }
     }
