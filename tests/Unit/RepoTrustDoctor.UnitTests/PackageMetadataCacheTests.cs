@@ -202,6 +202,55 @@ public sealed class PackageMetadataCacheTests
         Assert.Equal("network", result!.Metadata?["lookup.source"]);
     }
 
+    [Theory]
+    [InlineData("{not-json}", "2026-06-14T10:00:00.0000000+00:00", "2026-06-15T10:00:00.0000000+00:00")]
+    [InlineData("null", "not-a-date", "2026-06-15T10:00:00.0000000+00:00")]
+    public async Task GetMetadataAsync_UsesNetworkWhenCachedRowIsMalformed(
+        string metadataJson,
+        string fetchedAt,
+        string expiresAt)
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var options = CreateOptions(fixture.Path);
+        var database = new LocalIntelligenceDatabase(options);
+        await database.EnsureInitializedAsync(TestContext.Current.CancellationToken);
+        await using (var connection = await database.OpenConnectionAsync(
+                         TestContext.Current.CancellationToken))
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                INSERT INTO registry_metadata(
+                    ecosystem,
+                    package_name,
+                    requested_version,
+                    metadata_json,
+                    fetched_at_utc,
+                    expires_at_utc,
+                    original_package_name)
+                VALUES($ecosystem, 'left-pad', '1.0.0', $json, $fetched, $expires, 'left-pad');
+                """;
+            command.Parameters.AddWithValue("$ecosystem", (int)DependencyEcosystem.Npm);
+            command.Parameters.AddWithValue("$json", metadataJson);
+            command.Parameters.AddWithValue("$fetched", fetchedAt);
+            command.Parameters.AddWithValue("$expires", expiresAt);
+            await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        }
+
+        var inner = new StubMetadataClient();
+        var client = new CachingPackageMetadataClient(
+            inner,
+            new SqlitePackageMetadataCache(database),
+            options.RegistryCacheTtl);
+
+        var result = await client.GetMetadataAsync(
+            CreatePackage("left-pad", "1.0.0"),
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Equal(1, inner.RequestCount);
+        Assert.Equal("network", result!.Metadata?["lookup.source"]);
+    }
+
     [Fact]
     public async Task GetMetadataAsync_ReturnsStaleEntryWhenRegistryThrows()
     {

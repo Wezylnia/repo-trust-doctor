@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using RepoTrustDoctor.Analysis.Abstractions;
 
@@ -131,7 +132,8 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
     }
 
     private static bool IsCacheFailure(Exception exception) =>
-        exception is SqliteException or IOException or UnauthorizedAccessException;
+        exception is SqliteException or IOException or UnauthorizedAccessException or
+            JsonException or FormatException;
 
     private static PackageRegistryMetadata? AddCacheMetadata(
         PackageRegistryMetadata? metadata,
