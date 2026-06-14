@@ -27,16 +27,16 @@ Recommendation: replace `write-all` with the narrowest permissions required by e
 ## TRUST-GHA003: Workflow Uses `pull_request_target`
 
 - Category: CI/CD
-- Default severity: High
-- Default confidence: High
+- Default severity: Medium
+- Default confidence: Medium
 
 Detects workflows triggered by `pull_request_target`.
 
-Why it matters: this trigger can run with elevated repository context and can be dangerous when combined with untrusted pull request code.
+Why it matters: this trigger can run with elevated repository context and deserves review, but it is not always unsafe by itself. Labeling or metadata-only workflows can be legitimate.
 
 Recommendation: review usage carefully and avoid running untrusted pull request code with repository privileges.
 
-Noise control: when the same workflow also checks out pull request code or uses secrets in a risky run context, the analyzer reports the more specific `TRUST-GHA015` finding instead of also emitting this general trigger finding.
+Noise control: when the same workflow checks out pull request head code, the analyzer reports the more specific `TRUST-GHA015` finding instead of also emitting this general trigger finding.
 
 ## TRUST-GHA004: Workflow Pipes Downloaded Scripts Into a Shell
 
@@ -128,7 +128,7 @@ Recommendation: upload only specific build outputs and avoid broad artifact path
 - Default severity: Medium
 - Default confidence: High
 
-Detects top-level workflow `permissions:` blocks that grant write access instead of keeping the workflow default read-only and moving write scopes to the specific job that needs them.
+Detects top-level workflow `permissions:` blocks that grant write access to scopes not covered by more specific write-permission rules. `contents`, `packages`, and `actions` workflow-level writes are reported as `TRUST-GHA016`; `permissions: write-all` is reported as `TRUST-GHA002`.
 
 Why it matters: without explicit job-level permission restrictions, the token may carry broader access than needed. If a job is compromised through a supply-chain or injection vector, the token may allow wider repository actions.
 
@@ -157,3 +157,27 @@ Detects `run:` steps containing inline shell interpolation of `${{ matrix.* }}` 
 Why it matters: matrix values may be controlled through workflow triggers or pull request data. Direct interpolation within a shell script run block can lead to command injection if the matrix values are not sanitized.
 
 Recommendation: pass matrix values as environment variables instead of interpolating them directly in shell commands.
+
+## TRUST-GHA015: pull_request_target Workflow Exposes Untrusted Code
+
+- Category: CI/CD
+- Default severity: High
+- Default confidence: Medium
+
+Detects `pull_request_target` workflows that explicitly check out pull request head code using expressions such as `github.event.pull_request.head.repo.full_name`, `github.event.pull_request.head.sha`, or `github.head_ref`.
+
+Why it matters: `pull_request_target` can run with repository privileges. Checking out attacker-controlled pull request code in that context can expose tokens or allow privileged repository actions.
+
+Recommendation: do not execute pull request head code from `pull_request_target`. Use a normal `pull_request` workflow for untrusted validation and keep privileged automation separate.
+
+## TRUST-GHA016: Workflow-Level Write Permissions Are Overly Broad
+
+- Category: CI/CD
+- Default severity: Medium
+- Default confidence: Medium
+
+Detects top-level workflow permissions that grant `contents: write`, `packages: write`, or `actions: write`.
+
+Why it matters: workflow-level write scopes apply broadly unless overridden. A compromised job or action may gain repository or package write access it does not need.
+
+Recommendation: keep top-level permissions read-only or empty, and grant write scopes only on the specific job that needs them.

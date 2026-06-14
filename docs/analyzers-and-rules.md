@@ -86,7 +86,7 @@ Analyzers implement `IRepositoryAnalyzer` and produce `Finding` records with rul
 |---------|-------|----------|------------|
 | TRUST-GHA001 | Workflow permissions are not declared | Medium | High |
 | TRUST-GHA002 | Workflow uses `permissions: write-all` | High | High |
-| TRUST-GHA003 | Workflow uses `pull_request_target` | High | High |
+| TRUST-GHA003 | Workflow uses `pull_request_target` | Medium | Medium |
 | TRUST-GHA004 | Workflow pipes downloaded scripts into a shell | High | High |
 | TRUST-GHA005 | External action is not pinned by SHA | Medium | High |
 | TRUST-GHA006 | Workflow uses self-hosted runner | Medium | High |
@@ -95,7 +95,6 @@ Analyzers implement `IRepositoryAnalyzer` and produce `Finding` records with rul
 | TRUST-GHA009 | Release workflow may publish without test dependency | High | Medium |
 | TRUST-GHA010 | Workflow uploads overly broad artifact path | Medium | Medium |
 | TRUST-GHA011 | Workflow does not restrict GITHUB_TOKEN scope | Medium | High |
-| TRUST-GHA012 | Workflow deploys to an unprotected environment | Medium | Medium |
 | TRUST-GHA013 | Workflow may contain hardcoded secret in step env | High | Medium |
 | TRUST-GHA014 | Workflow may interpolate matrix values in shell | High | Medium |
 | TRUST-GHA015 | `pull_request_target` workflow exposes secrets | High | Medium |

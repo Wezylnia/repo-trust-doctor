@@ -135,6 +135,12 @@ public sealed partial class GitHubActionsBasicAnalyzer
             return;
         }
 
+        if (WriteAllPattern().IsMatch(workflowHeader) ||
+            WorkflowWritePermPattern().IsMatch(workflowHeader))
+        {
+            return;
+        }
+
         if (!PermissionsGrantWriteScope(workflowHeader, permsMatch.Index))
         {
             return;
@@ -244,21 +250,54 @@ public sealed partial class GitHubActionsBasicAnalyzer
             return false;
         }
 
-        // Flag if PR target also checks out code or uses secrets
-        var hasCheckout = UsesCheckoutPattern().IsMatch(content);
-        var hasSecrets = content.Contains("secrets.", StringComparison.Ordinal);
-        var hasRunStep = RunBlockPattern().IsMatch(content);
-
-        if (hasCheckout || (hasSecrets && hasRunStep))
+        if (ChecksOutPullRequestHead(content))
         {
             AddFinding(findings, "TRUST-GHA015", "pull_request_target exposes secrets",
                 Severity.High, "Avoid checking out untrusted PR code or using secrets in pull_request_target workflows.",
-                relativePath, "pull_request_target workflow checks out code or uses secrets.");
+                relativePath, "pull_request_target workflow checks out pull request head code.");
             return true;
         }
 
         return false;
     }
+
+    private static bool ChecksOutPullRequestHead(string content)
+    {
+        var lines = SplitLines(content);
+        for (var index = 0; index < lines.Length; index++)
+        {
+            if (!UsesCheckoutPattern().IsMatch(lines[index]))
+            {
+                continue;
+            }
+
+            var baseIndentation = GetCheckoutStepBaseIndentation(lines, index);
+            for (var cursor = index + 1; cursor < lines.Length; cursor++)
+            {
+                var line = lines[cursor];
+                if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith("#", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (GetIndentation(line) <= baseIndentation)
+                {
+                    break;
+                }
+
+                if (ReferencesPullRequestHead(line))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ReferencesPullRequestHead(string line) =>
+        line.Contains("github.event.pull_request.head", StringComparison.OrdinalIgnoreCase) ||
+        line.Contains("github.head_ref", StringComparison.OrdinalIgnoreCase);
 
     private static void CheckWorkflowWritePermissions(string content, string relativePath, List<Finding> findings)
     {
