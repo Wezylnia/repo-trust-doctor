@@ -23,7 +23,7 @@ POST /api/scans
 Content-Type: application/json
 
 {
-  "target": ".",
+  "target": "https://github.com/owner/repo",
   "depth": "standard",
   "trustProfile": "production"
 }
@@ -38,6 +38,8 @@ The response is `202 Accepted` with a scan ID and status URL:
   "statusUrl": "/api/scans/00000000-0000-0000-0000-000000000000"
 }
 ```
+
+The API accepts absolute `https://github.com/owner/repo` targets and rejects local paths, non-GitHub hosts, credentialed URLs, query strings, and fragments. Local path scans remain a CLI-only workflow for trusted local development.
 
 API lifecycle and domain enum values are serialized as strings, for example `Completed`, `Fast`, and `ProductionDependency`. Active trust profile values are `Personal`, `ProductionDependency`, and `SecuritySensitiveDependency`; legacy CI/CD and container profile inputs are normalized to production.
 

@@ -22,6 +22,18 @@ public sealed class RepositoryWorkspaceTests
             RepositoryWorkspace.CloneFromUrlAsync("file:///tmp/repo", CancellationToken.None));
     }
 
+    [Theory]
+    [InlineData("http://github.com/owner/repo.git")]
+    [InlineData("https://gitlab.com/owner/repo.git")]
+    [InlineData("https://localhost/owner/repo.git")]
+    [InlineData("https://127.0.0.1/owner/repo.git")]
+    [InlineData("https://github.com/owner/repo.git?token=secret")]
+    public async Task CloneFromUrlAsync_RejectsNonAllowlistedOrUnsafeUrls(string url)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            RepositoryWorkspace.CloneFromUrlAsync(url, CancellationToken.None));
+    }
+
     [Fact]
     public async Task CloneFromUrlAsync_RejectsUrlsWithCredentials()
     {

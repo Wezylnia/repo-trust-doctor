@@ -52,23 +52,40 @@ public sealed class InMemoryScanStore(TimeProvider? timeProvider = null) : IScan
     {
         while (scans.TryGetValue(scanId, out var existing))
         {
+            if (IsTerminal(existing.State))
+            {
+                return true;
+            }
+
             var updated = update(existing) with { UpdatedAt = timeProvider.GetUtcNow() };
+            CancellationTokenSource? cancellationToDispose = null;
+            if (IsTerminal(updated.State))
+            {
+                cancellationToDispose = existing.Cancellation;
+                updated = updated with { Cancellation = null };
+            }
+
             if (scans.TryUpdate(scanId, updated, existing))
             {
+                cancellationToDispose?.Dispose();
                 return true;
             }
         }
 
         return false;
     }
+
+    private static bool IsTerminal(ScanLifecycleState state) =>
+        state is ScanLifecycleState.Completed or ScanLifecycleState.Failed or ScanLifecycleState.Cancelled;
 }
 
 public sealed class InMemoryScanJobQueue : IScanJobQueue
 {
-    private readonly Channel<ScanJob> channel = Channel.CreateUnbounded<ScanJob>(new UnboundedChannelOptions
+    private readonly Channel<ScanJob> channel = Channel.CreateBounded<ScanJob>(new BoundedChannelOptions(100)
     {
         SingleReader = false,
-        SingleWriter = false
+        SingleWriter = false,
+        FullMode = BoundedChannelFullMode.Wait
     });
 
     public ValueTask EnqueueAsync(ScanJob job, CancellationToken cancellationToken) =>
@@ -93,16 +110,15 @@ public sealed class ScanRequestValidator
             return false;
         }
 
-        if (request.Target.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-            request.Target.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        if (!Uri.TryCreate(request.Target, UriKind.Absolute, out var uri) ||
+            uri.Scheme != Uri.UriSchemeHttps ||
+            !uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ||
+            !string.IsNullOrWhiteSpace(uri.UserInfo) ||
+            !string.IsNullOrWhiteSpace(uri.Fragment) ||
+            !string.IsNullOrWhiteSpace(uri.Query))
         {
-            if (!Uri.TryCreate(request.Target, UriKind.Absolute, out var uri) ||
-                !string.IsNullOrWhiteSpace(uri.UserInfo) ||
-                !string.IsNullOrWhiteSpace(uri.Fragment))
-            {
-                error = "Repository URL must be an absolute HTTP(S) URL without credentials or fragments.";
-                return false;
-            }
+            error = "API scans require an absolute https://github.com/owner/repo URL without credentials, query strings, or fragments.";
+            return false;
         }
 
         if (!SupportedDepths.Contains(request.Depth, StringComparer.OrdinalIgnoreCase))
@@ -167,7 +183,25 @@ public sealed class ScanCoordinator(IScanStore store, IScanJobQueue queue, ScanR
 
         var cancellation = new CancellationTokenSource();
         var state = store.CreateQueued(options, cancellation);
-        await queue.EnqueueAsync(new ScanJob(state.ScanId, options, state.CreatedAt), cancellationToken);
+        try
+        {
+            await queue.EnqueueAsync(new ScanJob(state.ScanId, options, state.CreatedAt), cancellationToken);
+        }
+        catch
+        {
+            if (!store.TryUpdate(state.ScanId, current => current with
+            {
+                State = ScanLifecycleState.Failed,
+                CompletedAt = DateTimeOffset.UtcNow,
+                StatusMessage = "Scan could not be queued."
+            }))
+            {
+                cancellation.Dispose();
+            }
+
+            throw;
+        }
+
         return new EnqueueScanResult(state.ScanId, true, null);
     }
 
@@ -198,6 +232,11 @@ public sealed class ScanJobProcessor(IScanStore store, IRepositoryScanRunner run
     public async Task ProcessAsync(ScanJob job, CancellationToken workerCancellationToken)
     {
         if (!store.TryGet(job.ScanId, out var state) || state is null)
+        {
+            return;
+        }
+
+        if (state.State is ScanLifecycleState.Completed or ScanLifecycleState.Failed or ScanLifecycleState.Cancelled)
         {
             return;
         }

@@ -150,14 +150,14 @@ Start and poll a scan:
 ```text
 curl -X POST http://localhost:5000/api/scans \
   -H "Content-Type: application/json" \
-  -d "{\"target\":\".\",\"depth\":\"standard\",\"trustProfile\":\"production\"}"
+  -d "{\"target\":\"https://github.com/owner/repo\",\"depth\":\"standard\",\"trustProfile\":\"production\"}"
 
 curl http://localhost:5000/api/scans/{scanId}
 curl http://localhost:5000/api/scans/{scanId}/progress
 curl http://localhost:5000/api/scans/{scanId}/report?format=json
 ```
 
-The worker host uses the same application scan lifecycle and repository scan runner as the API:
+The API accepts absolute `https://github.com/owner/repo` targets and rejects local paths, credentialed URLs, query strings, and fragments. The CLI still supports local path scans for trusted local development. The worker host uses the same application scan lifecycle and repository scan runner as the API:
 
 ```text
 dotnet run --project src/Apps/RepoTrustDoctor.Worker

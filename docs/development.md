@@ -56,10 +56,10 @@ In another shell:
 
 ```powershell
 Invoke-RestMethod http://localhost:5000/health
-Invoke-RestMethod http://localhost:5000/api/scans -Method Post -ContentType "application/json" -Body '{"target":".","depth":"fast","trustProfile":"production"}'
+Invoke-RestMethod http://localhost:5000/api/scans -Method Post -ContentType "application/json" -Body '{"target":"https://github.com/owner/repo","depth":"fast","trustProfile":"production"}'
 ```
 
-The API uses in-memory state in `v1.0.0`, so local smoke tests should treat scan IDs as process-local.
+The API uses in-memory state in `v1.0.0`, so local smoke tests should treat scan IDs as process-local. API scans accept GitHub HTTPS repository URLs; use the CLI for trusted local path scans.
 
 ## Local Worker Smoke Test
 

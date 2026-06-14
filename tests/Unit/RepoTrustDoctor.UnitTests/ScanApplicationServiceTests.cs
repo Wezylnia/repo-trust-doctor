@@ -12,10 +12,13 @@ public sealed class ScanApplicationServiceTests
     {
         var validator = new ScanRequestValidator();
 
-        var ok = validator.TryCreateOptions(new StartScanRequest(".", "deep", TrustProfile: "enterprise"), out var options, out _);
+        var ok = validator.TryCreateOptions(
+            new StartScanRequest("https://github.com/owner/repo", "deep", TrustProfile: "enterprise"),
+            out var options,
+            out _);
 
         Assert.True(ok);
-        Assert.Equal(".", options.Target);
+        Assert.Equal("https://github.com/owner/repo", options.Target);
         Assert.Equal(AnalysisDepth.Deep, options.Depth);
         Assert.Equal(TrustProfile.SecuritySensitiveDependency, options.TrustProfile);
     }
@@ -29,7 +32,10 @@ public sealed class ScanApplicationServiceTests
     {
         var validator = new ScanRequestValidator();
 
-        var ok = validator.TryCreateOptions(new StartScanRequest(".", "fast", TrustProfile: profile), out var options, out _);
+        var ok = validator.TryCreateOptions(
+            new StartScanRequest("https://github.com/owner/repo", "fast", TrustProfile: profile),
+            out var options,
+            out _);
 
         Assert.True(ok);
         Assert.Equal(TrustProfile.ProductionDependency, options.TrustProfile);
@@ -40,10 +46,26 @@ public sealed class ScanApplicationServiceTests
     {
         var validator = new ScanRequestValidator();
 
-        var ok = validator.TryCreateOptions(new StartScanRequest("https://token@example.com/owner/repo", "fast"), out _, out var error);
+        var ok = validator.TryCreateOptions(new StartScanRequest("https://token@github.com/owner/repo", "fast"), out _, out var error);
 
         Assert.False(ok);
         Assert.Contains("without credentials", error);
+    }
+
+    [Theory]
+    [InlineData(".")]
+    [InlineData("C:\\Users")]
+    [InlineData("http://github.com/owner/repo")]
+    [InlineData("https://gitlab.com/owner/repo")]
+    [InlineData("https://github.com/owner/repo?token=secret")]
+    public void ScanRequestValidator_RejectsNonGitHubApiTargets(string target)
+    {
+        var validator = new ScanRequestValidator();
+
+        var ok = validator.TryCreateOptions(new StartScanRequest(target, "fast"), out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("https://github.com", error);
     }
 
     [Fact]
@@ -53,7 +75,7 @@ public sealed class ScanApplicationServiceTests
         var queue = new InMemoryScanJobQueue();
         var coordinator = new ScanCoordinator(store, queue, new ScanRequestValidator());
 
-        var result = await coordinator.StartAsync(new StartScanRequest(".", "standard"), CancellationToken.None);
+        var result = await coordinator.StartAsync(new StartScanRequest("https://github.com/owner/repo", "standard"), CancellationToken.None);
         var job = await queue.DequeueAsync(CancellationToken.None);
 
         Assert.True(result.Accepted);
@@ -68,7 +90,7 @@ public sealed class ScanApplicationServiceTests
         var store = new InMemoryScanStore();
         var queue = new InMemoryScanJobQueue();
         var coordinator = new ScanCoordinator(store, queue, new ScanRequestValidator());
-        var result = await coordinator.StartAsync(new StartScanRequest(".", "fast"), CancellationToken.None);
+        var result = await coordinator.StartAsync(new StartScanRequest("https://github.com/owner/repo", "fast"), CancellationToken.None);
         var job = await queue.DequeueAsync(CancellationToken.None);
         var processor = new ScanJobProcessor(store, new FakeScanRunner());
 
@@ -89,7 +111,7 @@ public sealed class ScanApplicationServiceTests
         var store = new InMemoryScanStore();
         var queue = new InMemoryScanJobQueue();
         var coordinator = new ScanCoordinator(store, queue, new ScanRequestValidator());
-        var result = await coordinator.StartAsync(new StartScanRequest(".", "fast"), CancellationToken.None);
+        var result = await coordinator.StartAsync(new StartScanRequest("https://github.com/owner/repo", "fast"), CancellationToken.None);
         var job = await queue.DequeueAsync(CancellationToken.None);
         var processor = new ScanJobProcessor(store, new ThrowingScanRunner());
 
@@ -106,7 +128,7 @@ public sealed class ScanApplicationServiceTests
         var store = new InMemoryScanStore();
         var queue = new InMemoryScanJobQueue();
         var coordinator = new ScanCoordinator(store, queue, new ScanRequestValidator());
-        var result = await coordinator.StartAsync(new StartScanRequest(".", "fast"), CancellationToken.None);
+        var result = await coordinator.StartAsync(new StartScanRequest("https://github.com/owner/repo", "fast"), CancellationToken.None);
         var job = await queue.DequeueAsync(CancellationToken.None);
         var processor = new ScanJobProcessor(store, new FakeScanRunner());
         await processor.ProcessAsync(job, CancellationToken.None);
@@ -118,6 +140,23 @@ public sealed class ScanApplicationServiceTests
         Assert.Equal(ScanLifecycleState.Completed, state!.State);
         Assert.Equal("Scan completed.", state.StatusMessage);
         Assert.NotNull(state.Result);
+    }
+
+    [Fact]
+    public async Task ScanJobProcessor_DoesNotOverwriteCancelledScan()
+    {
+        var store = new InMemoryScanStore();
+        var queue = new InMemoryScanJobQueue();
+        var coordinator = new ScanCoordinator(store, queue, new ScanRequestValidator());
+        var result = await coordinator.StartAsync(new StartScanRequest("https://github.com/owner/repo", "fast"), CancellationToken.None);
+        var job = await queue.DequeueAsync(CancellationToken.None);
+
+        Assert.True(coordinator.TryCancel(result.ScanId));
+        await new ScanJobProcessor(store, new FakeScanRunner()).ProcessAsync(job, CancellationToken.None);
+
+        Assert.True(store.TryGet(result.ScanId, out var state));
+        Assert.Equal(ScanLifecycleState.Cancelled, state!.State);
+        Assert.Null(state.Result);
     }
 
     [Fact]
