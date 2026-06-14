@@ -61,7 +61,10 @@ internal sealed partial class NuGetDependencyCollector
         DependencyInventoryState state)
     {
         var missingProjects = packageProjects
-            .Where(project => FindProjectLockfile(project, lockfilesByDirectory) is null)
+            .Where(project =>
+                !DependencyInventorySupport.IsLikelyExampleOrTestPath(
+                    DependencyInventorySupport.Relative(context, project)) &&
+                FindProjectLockfile(project, lockfilesByDirectory) is null)
             .Select(project => DependencyInventorySupport.Relative(context, project))
             .ToArray();
         if (missingProjects.Length == 0)

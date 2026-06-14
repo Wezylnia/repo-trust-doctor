@@ -13,6 +13,8 @@ internal interface IDependencyInventoryCollector
 
 internal sealed class DependencyInventoryState
 {
+    private readonly HashSet<string> findingKeys = new(StringComparer.OrdinalIgnoreCase);
+
     public List<Finding> Findings { get; } = [];
 
     public List<string> Warnings { get; } = [];
@@ -24,6 +26,8 @@ internal sealed class DependencyInventoryState
     public List<DependencyPackageInfo> Packages { get; } = [];
 
     public List<DependencyPackageSourceInfo> PackageSources { get; } = [];
+
+    public bool TryMarkFinding(string key) => findingKeys.Add(key);
 }
 
 internal static partial class DependencyInventorySupport

@@ -63,6 +63,10 @@ internal sealed partial class NuGetPackageLockResolver
         return true;
     }
 
+    internal static bool IsExactVersion(string? version) =>
+        !string.IsNullOrWhiteSpace(version) &&
+        ExactVersionPattern().IsMatch(version);
+
     private static IReadOnlyDictionary<string, IReadOnlySet<string>> ReadDirectVersions(JsonElement root)
     {
         var versions = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
@@ -116,7 +120,7 @@ internal sealed partial class NuGetPackageLockResolver
         }
 
         version = resolvedElement.GetString()?.Trim() ?? string.Empty;
-        return ExactVersionPattern().IsMatch(version);
+        return IsExactVersion(version);
     }
 
     [GeneratedRegex(

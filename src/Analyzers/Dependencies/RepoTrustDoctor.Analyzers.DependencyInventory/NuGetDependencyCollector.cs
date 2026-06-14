@@ -170,73 +170,6 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
         return false;
     }
 
-    private static void AddPackage(
-        string relativePath,
-        string name,
-        string? version,
-        DependencyScope scope,
-        string? lockfilePath,
-        NuGetPackageLockResolver? lockResolver,
-        DependencyInventoryState state)
-    {
-        var requestedVersion = DependencyInventorySupport.NormalizeVersion(version);
-        var resolvedVersion = string.Empty;
-        var lockResolved = lockResolver is not null &&
-                           lockResolver.TryResolve(name, out resolvedVersion);
-        var effectiveVersion = lockResolved ? resolvedVersion : requestedVersion;
-        var pinned = IsPinnedVersion(effectiveVersion);
-        var prerelease = DependencyInventorySupport.IsPrereleaseVersion(effectiveVersion);
-        Dictionary<string, string>? metadata = null;
-        if (lockResolved)
-        {
-            metadata = new Dictionary<string, string>
-            {
-                ["requestedVersion"] = requestedVersion ?? string.Empty,
-                ["versionSource"] = "packages.lock.json"
-            };
-        }
-
-        state.Packages.Add(new DependencyPackageInfo(
-            DependencyEcosystem.NuGet,
-            name,
-            effectiveVersion,
-            scope,
-            relativePath,
-            lockfilePath,
-            true,
-            pinned,
-            prerelease,
-            metadata));
-
-        if (!pinned && !ContainsMsBuildExpression(requestedVersion))
-        {
-            state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
-                "TRUST-DEP004",
-                "NuGet dependency uses a floating or unpinned version",
-                Severity.Medium,
-                Confidence.High,
-                $"NuGet dependency `{name}` is missing an exact pinned version.",
-                "nuget-package",
-                $"Package `{name}` version is `{DependencyInventorySupport.DisplayVersion(requestedVersion)}`.",
-                relativePath,
-                "Pin direct NuGet dependency versions or resolve them through Central Package Management."));
-        }
-
-        if (prerelease)
-        {
-            state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
-                "TRUST-DEP005",
-                "NuGet dependency uses a prerelease version",
-                Severity.Low,
-                Confidence.High,
-                $"NuGet dependency `{name}` uses prerelease version `{effectiveVersion}`.",
-                "nuget-package",
-                $"Package `{name}` version is `{effectiveVersion}`.",
-                relativePath,
-                "Review whether the prerelease dependency is intentional before production use."));
-        }
-    }
-
     private static DependencyScope InferProjectScope(string relativePath, XDocument document)
     {
         if (IsTestPath(relativePath) ||
@@ -429,15 +362,6 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
 
         return builder.Length <= MaxResolvedMsBuildValueLength ? builder.ToString() : null;
     }
-
-    private static bool IsPinnedVersion(string? version) =>
-        !string.IsNullOrWhiteSpace(version) &&
-        !ContainsMsBuildExpression(version) &&
-        !version.Contains('*', StringComparison.Ordinal) &&
-        !version.Contains('[', StringComparison.Ordinal) &&
-        !version.Contains(']', StringComparison.Ordinal) &&
-        !version.Contains('(', StringComparison.Ordinal) &&
-        !version.Contains(')', StringComparison.Ordinal);
 
     private static bool ContainsMsBuildExpression(string? value) =>
         !string.IsNullOrWhiteSpace(value) &&

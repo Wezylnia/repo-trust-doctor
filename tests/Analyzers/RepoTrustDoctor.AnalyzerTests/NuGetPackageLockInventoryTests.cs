@@ -7,6 +7,63 @@ namespace RepoTrustDoctor.AnalyzerTests;
 public sealed class NuGetPackageLockInventoryTests
 {
     [Fact]
+    public async Task AnalyzeAsync_ExactBracketRangeIsNormalizedAsPinnedVersion()
+    {
+        using var fixture = TemporaryRepository.Create();
+        WriteProject(fixture.Path, "Project.csproj", "Exact.Range.Package", "[3.1.3]");
+
+        var result = await AnalyzeAsync(fixture.Path);
+        var package = Assert.Single(GetInventory(result).Packages);
+
+        Assert.Equal("3.1.3", package.Version);
+        Assert.True(package.IsVersionPinned);
+        Assert.Equal("[3.1.3]", package.Metadata?["requestedVersion"]);
+        Assert.Equal("exact-range", package.Metadata?["versionSyntax"]);
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DEP004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ConditionalVersionsEmitOneUnpinnedFindingPerPackage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Project.csproj"), """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+            <PackageReference Include="Conditional.Package" Version="8.*" />
+          </ItemGroup>
+          <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+            <PackageReference Include="Conditional.Package" Version="9.*" />
+          </ItemGroup>
+        </Project>
+        """);
+
+        var result = await AnalyzeAsync(fixture.Path);
+
+        Assert.Equal(2, GetInventory(result).Packages.Count);
+        Assert.Single(
+            result.Findings,
+            finding => finding.RuleId == "TRUST-DEP004" &&
+                       finding.Message.Contains("Conditional.Package", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_TestFixturePackagesRemainInInventoryWithoutHygieneFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var testDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "tests", "targets"));
+        WriteProject(testDirectory.FullName, "Fixture.csproj", "Fixture.Package", "2.*");
+
+        var result = await AnalyzeAsync(fixture.Path);
+        var package = Assert.Single(GetInventory(result).Packages);
+
+        Assert.Equal("Fixture.Package", package.Name);
+        Assert.False(package.IsVersionPinned);
+        Assert.DoesNotContain(
+            result.Findings,
+            finding => finding.RuleId is "TRUST-DEP002" or "TRUST-DEP004");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_RangeResolvesConsistentDirectVersionAcrossTargets()
     {
         using var fixture = TemporaryRepository.Create();

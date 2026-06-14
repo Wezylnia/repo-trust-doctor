@@ -48,6 +48,8 @@ Why it matters: floating and range-based dependencies can change without a sourc
 
 Recommendation: pin direct NuGet dependency versions or resolve them through Central Package Management.
 
+NuGet's single-version bracket syntax, such as `[3.1.3]`, is treated as an exact pin and normalized to `3.1.3` for registry and advisory lookup. Conditional references to the same package in one project retain all inventory variants but emit at most one hygiene finding. Test, fixture, example, and documentation projects remain in the dependency inventory while their lockfile and version-hygiene findings are suppressed.
+
 ## TRUST-DEP005: NuGet Dependency Uses a Prerelease Version
 
 - Category: Dependencies
