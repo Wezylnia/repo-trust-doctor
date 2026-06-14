@@ -31,6 +31,9 @@ internal sealed partial class PubDependencyCollector : IDependencyInventoryColle
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Pub, relativePath, "pubspec.yaml"));
 
         var hasSiblingLockfile = HasSiblingLockfile(filePath);
+        var lockfile = hasSiblingLockfile
+            ? CreateLockfileResolver(context, filePath, state)
+            : null;
         var reportReproducibilityFindings =
             !hasSiblingLockfile &&
             IsLikelyPubApplicationManifest(filePath, relativePath) &&
@@ -116,21 +119,37 @@ internal sealed partial class PubDependencyCollector : IDependencyInventoryColle
                 : ReadPubDependencyBlock(lines, index + 1, dependencyIndent);
 
             var constraint = dependencyInfo.Constraint;
+            var resolvedVersion = string.Empty;
+            var resolved = dependencyInfo.Metadata?.ContainsKey("sourceKind") != true &&
+                           lockfile is not null &&
+                           lockfile.TryResolve(pkgName, out resolvedVersion);
+            var effectiveVersion = resolved ? resolvedVersion : constraint;
+            var metadata = dependencyInfo.Metadata is null
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(
+                    dependencyInfo.Metadata,
+                    StringComparer.OrdinalIgnoreCase);
+            if (resolved)
+            {
+                metadata["requestedVersion"] = constraint ?? string.Empty;
+                metadata["versionSource"] = "pubspec.lock";
+            }
 
-            var isPinned = constraint != null && ExactVersionPattern().IsMatch(constraint);
-            var isPrerelease = constraint != null && DependencyInventorySupport.IsPrereleaseVersion(constraint);
+            var isPinned = resolved || effectiveVersion != null && ExactVersionPattern().IsMatch(effectiveVersion);
+            var isPrerelease = effectiveVersion != null &&
+                               DependencyInventorySupport.IsPrereleaseVersion(effectiveVersion);
 
             state.Packages.Add(new DependencyPackageInfo(
                 DependencyEcosystem.Pub,
                 pkgName,
-                constraint,
+                effectiveVersion,
                 currentScope,
                 relativePath,
-                null,
+                resolved ? lockfile!.RelativePath : null,
                 true,
                 isPinned,
                 isPrerelease,
-                dependencyInfo.Metadata));
+                metadata.Count > 0 ? metadata : null));
 
             if (!isPinned && constraint != null && reportReproducibilityFindings)
             {
@@ -292,6 +311,18 @@ internal sealed partial class PubDependencyCollector : IDependencyInventoryColle
     {
         var directory = Path.GetDirectoryName(pubspecPath);
         return directory is not null && File.Exists(Path.Combine(directory, "pubspec.lock"));
+    }
+
+    private static PubLockfileResolver? CreateLockfileResolver(
+        AnalysisContext context,
+        string pubspecPath,
+        DependencyInventoryState state)
+    {
+        var lockfilePath = Path.Combine(Path.GetDirectoryName(pubspecPath)!, "pubspec.lock");
+        return PubLockfileResolver.TryCreate(
+            lockfilePath,
+            DependencyInventorySupport.Relative(context, lockfilePath),
+            state);
     }
 
     private sealed record PubDependencyInfo(string? Constraint, IReadOnlyDictionary<string, string>? Metadata);

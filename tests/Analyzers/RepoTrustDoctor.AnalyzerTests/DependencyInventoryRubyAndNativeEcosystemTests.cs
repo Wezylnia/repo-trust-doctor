@@ -325,6 +325,52 @@ public sealed class DependencyInventoryRubyAndNativeEcosystemTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_PubspecLock_ResolvesHostedDependencyVersions()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "pubspec.yaml"), """
+        name: myapp
+        dependencies:
+          http: ^1.0.0
+          flutter:
+            sdk: flutter
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "pubspec.lock"), """
+        packages:
+          flutter:
+            dependency: "direct main"
+            description: flutter
+            source: sdk
+            version: "0.0.0"
+          http:
+            dependency: "direct main"
+            description:
+              name: http
+              url: "https://pub.dev"
+            source: hosted
+            version: "1.2.2"
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        var http = Assert.Single(inventory.Packages, package => package.Name == "http");
+        Assert.Equal("1.2.2", http.Version);
+        Assert.True(http.IsVersionPinned);
+        Assert.Equal("pubspec.lock", http.LockfilePath);
+        Assert.Equal("^1.0.0", http.Metadata?["requestedVersion"]);
+        Assert.Equal("pubspec.lock", http.Metadata?["versionSource"]);
+
+        var flutter = Assert.Single(inventory.Packages, package => package.Name == "flutter");
+        Assert.Null(flutter.Version);
+        Assert.Null(flutter.LockfilePath);
+        Assert.Equal("sdk", flutter.Metadata?["sourceKind"]);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_PubspecNestedDependencyMetadata_IsNotRecordedAsPackage()
     {
         using var fixture = TemporaryRepository.Create();
@@ -457,6 +503,47 @@ public sealed class DependencyInventoryRubyAndNativeEcosystemTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
 
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP044");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PackageResolved_ResolvesRemoteDependencyVersion()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Package.swift"), """
+        let package = Package(
+            dependencies: [
+                .package(url: "https://github.com/apple/swift-nio.git", from: "2.70.0")
+            ]
+        )
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "Package.resolved"), """
+        {
+          "pins": [
+            {
+              "identity": "swift-nio",
+              "kind": "remoteSourceControl",
+              "location": "https://github.com/apple/swift-nio.git",
+              "state": {
+                "revision": "0123456789abcdef",
+                "version": "2.81.0"
+              }
+            }
+          ],
+          "version": 3
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        var package = Assert.Single(GetInventory(result).Packages);
+        Assert.Equal("2.81.0", package.Version);
+        Assert.True(package.IsVersionPinned);
+        Assert.Equal("Package.resolved", package.LockfilePath);
+        Assert.Equal("2.70.0", package.Metadata?["requestedVersion"]);
+        Assert.Equal("Package.resolved", package.Metadata?["versionSource"]);
     }
 
     [Fact]

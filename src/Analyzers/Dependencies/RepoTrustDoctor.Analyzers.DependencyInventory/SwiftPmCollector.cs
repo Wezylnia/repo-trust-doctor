@@ -35,7 +35,15 @@ internal sealed partial class SwiftPmCollector : IDependencyInventoryCollector
             return;
         }
 
-        if (RequiresResolvedFile(content, relativePath) && !HasResolvedFile(filePath))
+        var resolvedFilePath = FindResolvedFile(filePath);
+        var resolvedFile = resolvedFilePath is not null
+            ? SwiftResolvedFileResolver.TryCreate(
+                resolvedFilePath,
+                DependencyInventorySupport.Relative(context, resolvedFilePath),
+                state)
+            : null;
+
+        if (RequiresResolvedFile(content, relativePath) && resolvedFilePath is null)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP043",
@@ -64,21 +72,38 @@ internal sealed partial class SwiftPmCollector : IDependencyInventoryCollector
 
             var pkgName = url ?? path ?? "unknown";
             var constraint = isBranch ? $"branch:{match.Groups["branch"].Value}" : version;
+            var resolvedVersion = string.Empty;
+            var resolved = url is not null &&
+                           !isBranch &&
+                           resolvedFile is not null &&
+                           resolvedFile.TryResolve(url, out resolvedVersion);
+            var effectiveVersion = resolved ? resolvedVersion : constraint;
 
-            var isPinned = isExact && version != null;
-            var isPrerelease = version != null && DependencyInventorySupport.IsPrereleaseVersion(version);
+            var isPinned = resolved || isExact && version != null;
+            var isPrerelease = effectiveVersion != null &&
+                               DependencyInventorySupport.IsPrereleaseVersion(effectiveVersion);
+            var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (isBranch)
+            {
+                metadata["sourceKind"] = "branch";
+            }
+            if (resolved)
+            {
+                metadata["requestedVersion"] = constraint ?? string.Empty;
+                metadata["versionSource"] = "Package.resolved";
+            }
 
             state.Packages.Add(new DependencyPackageInfo(
                 DependencyEcosystem.Swift,
                 pkgName,
-                constraint,
+                effectiveVersion,
                 DependencyScope.Production,
                 relativePath,
-                null,
+                resolved ? resolvedFile!.RelativePath : null,
                 true,
                 isPinned,
                 isPrerelease,
-                isBranch ? new Dictionary<string, string> { ["sourceKind"] = "branch" } : null));
+                metadata.Count > 0 ? metadata : null));
 
             if (isBranch)
             {
@@ -103,12 +128,22 @@ internal sealed partial class SwiftPmCollector : IDependencyInventoryCollector
         !RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath) &&
         content.Contains(".executable(", StringComparison.Ordinal);
 
-    private static bool HasResolvedFile(string packageSwiftPath)
+    private static string? FindResolvedFile(string packageSwiftPath)
     {
         var directory = Path.GetDirectoryName(packageSwiftPath);
-        return directory is not null &&
-               (File.Exists(Path.Combine(directory, "Package.resolved")) ||
-                File.Exists(Path.Combine(directory, ".swiftpm", "Package.resolved")));
+        if (directory is null)
+        {
+            return null;
+        }
+
+        var sibling = Path.Combine(directory, "Package.resolved");
+        if (File.Exists(sibling))
+        {
+            return sibling;
+        }
+
+        var swiftPm = Path.Combine(directory, ".swiftpm", "Package.resolved");
+        return File.Exists(swiftPm) ? swiftPm : null;
     }
 
     private static bool IsCommentedOut(string content, int matchIndex)
