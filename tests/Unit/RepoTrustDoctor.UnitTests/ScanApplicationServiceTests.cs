@@ -119,7 +119,8 @@ public sealed class ScanApplicationServiceTests
 
         Assert.True(store.TryGet(result.ScanId, out var state));
         Assert.Equal(ScanLifecycleState.Failed, state!.State);
-        Assert.Contains("Scan failed", state.StatusMessage);
+        Assert.Equal("Scan failed unexpectedly.", state.StatusMessage);
+        Assert.DoesNotContain("secret", state.StatusMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -210,6 +211,6 @@ public sealed class ScanApplicationServiceTests
     private sealed class ThrowingScanRunner : IRepositoryScanRunner
     {
         public Task<RepositoryScan> RunAsync(ScanRequestOptions options, CancellationToken cancellationToken) =>
-            throw new InvalidOperationException("boom");
+            throw new InvalidOperationException("boom token=secret");
     }
 }

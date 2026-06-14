@@ -63,6 +63,8 @@ Markdown reports include a dependency inventory summary when the artifact is pre
 
 The dependency inventory is static-only. It does not fetch registry metadata, resolve latest versions, look up vulnerabilities, or make license claims. Package-origin fields are review signals derived only from manifests and config files already present in the repository.
 
+Markdown output treats finding titles, messages, evidence text, recommendations, decision reasons, target values, and file paths as untrusted text. Inline fields are normalized to one line and escaped so repository-controlled content cannot inject new headings, tables, list items, or raw HTML into a generated Markdown report. Secret-like evidence values remain excluded from SARIF properties and stable fingerprints.
+
 ## Deep Code Intelligence Artifacts
 
 `v0.8.0` adds deep code intelligence artifacts. They are produced only by deep scans and remain static/imported-evidence based.
@@ -85,6 +87,8 @@ The final trust score distinguishes clean evidence from missing evidence:
 - module warnings and metrics remain available in JSON/API reports and are summarized by the React Scan coverage panel.
 
 These caps do not invent vulnerability or security findings. They prevent an absence of evidence from being scored as evidence that a category is clean.
+
+Unexpected analyzer exceptions are reported as module failures with a generic user-facing message. Detailed exception text is not copied into status, progress, or report fields.
 
 ## Trust Diff Format
 

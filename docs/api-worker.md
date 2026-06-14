@@ -92,4 +92,5 @@ API and worker scans use the same safety posture as CLI scans:
 - public HTTP(S) Git URLs are shallow-cloned with the existing Git workspace safeguards,
 - credentialed repository URLs are rejected,
 - dependency metadata and advisory downloads remain behind allowlisted safe HTTP clients, while repeated lookups use the local SQLite intelligence database,
-- analyzer failures are isolated and surfaced as scan/module failures instead of crashing the host.
+- analyzer failures are isolated and surfaced as scan/module failures instead of crashing the host,
+- unexpected scan and analyzer exceptions use generic user-facing status messages so raw exception text is not exposed through API status, progress, module, or report responses.

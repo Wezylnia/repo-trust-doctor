@@ -116,6 +116,22 @@ public sealed class AnalyzerInfrastructureTests
     }
 
     [Fact]
+    public async Task AnalyzerExecutor_UnexpectedAnalyzerException_DoesNotExposeRawExceptionMessage()
+    {
+        var analyzer = new ThrowingAnalyzer("token=secret at C:\\Users\\example\\.npmrc");
+        var executor = new AnalyzerExecutor();
+        var context = new AnalysisContext(".", ".", AnalysisDepth.Fast);
+
+        var result = await executor.ExecuteAsync(analyzer, context, CancellationToken.None);
+
+        Assert.Equal(ModuleStatus.Failed, result.Module.Status);
+        Assert.Equal("Analyzer failed unexpectedly.", result.Module.ErrorMessage);
+        Assert.Equal("Analyzer failed unexpectedly.", result.Result.ErrorMessage);
+        Assert.DoesNotContain("secret", result.Module.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("secret", result.Result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ScanOrchestrator_TimedOutAnalyzer_CannotProduceSafeDecision()
     {
         using var directory = TemporaryDirectory.Create();
@@ -325,6 +341,31 @@ public sealed class AnalyzerInfrastructureTests
             await Task.Delay(delayMs, CancellationToken.None);
             return AnalyzerResult.Completed([]);
         }
+    }
+
+    private sealed class ThrowingAnalyzer : IRepositoryAnalyzer
+    {
+        private readonly string message;
+
+        public ThrowingAnalyzer(string message)
+        {
+            this.message = message;
+        }
+
+        public string Id => "throwing-analyzer";
+        public string DisplayName => "Throwing Analyzer";
+        public AnalysisCategory Category => AnalysisCategory.RepositoryHealth;
+        public AnalysisDepth MinimumDepth => AnalysisDepth.Fast;
+        public IReadOnlyCollection<string> DependsOn => [];
+        public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
+        public TimeSpan Timeout => TimeSpan.FromSeconds(10);
+        public IReadOnlyCollection<RuleMetadata> Rules =>
+        [
+            new("TRUST-THROW001", "Throwing rule", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "Throw", "Review")
+        ];
+
+        public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException(message);
     }
 
     private sealed class WarningAnalyzer : IRepositoryAnalyzer

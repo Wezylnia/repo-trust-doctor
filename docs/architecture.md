@@ -115,6 +115,8 @@ The scan orchestrator enforces analyzer `ExecutionSafety` before execution. The 
 
 Repository traversal uses a shared file-system helper that skips ignored heavy directories and reparse-point entries. This prevents symlinks or junctions inside an untrusted repository from expanding analysis into files outside the prepared workspace.
 
+Report writers also treat repository-derived text as untrusted presentation data. Markdown output escapes inline finding and evidence fields, and unexpected analyzer exceptions are converted to generic module failure messages before they reach scan progress or reports.
+
 ## Scan Progress Contracts
 
 `RepoTrustDoctor.Contracts` exposes polling-friendly scan progress DTOs for future API and worker surfaces. The lifecycle states are:
