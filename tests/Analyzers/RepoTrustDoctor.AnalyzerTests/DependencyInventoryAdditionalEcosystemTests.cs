@@ -840,6 +840,50 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_ComposerLock_ResolvesDirectDependencyVersions()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.json"), """
+        {
+            "type": "project",
+            "require": {
+                "monolog/monolog": "^3.0"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "~10.0"
+            }
+        }
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "composer.lock"), """
+        {
+            "packages": [
+                { "name": "monolog/monolog", "version": "3.9.0" }
+            ],
+            "packages-dev": [
+                { "name": "phpunit/phpunit", "version": "10.5.46" }
+            ]
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        var runtime = Assert.Single(inventory.Packages, package => package.Name == "monolog/monolog");
+        Assert.Equal("3.9.0", runtime.Version);
+        Assert.True(runtime.IsVersionPinned);
+        Assert.Equal("composer.lock", runtime.LockfilePath);
+        Assert.Equal("^3.0", runtime.Metadata?["requestedVersion"]);
+        Assert.Equal("composer.lock", runtime.Metadata?["versionSource"]);
+
+        var development = Assert.Single(inventory.Packages, package => package.Name == "phpunit/phpunit");
+        Assert.Equal("10.5.46", development.Version);
+        Assert.Equal(DependencyScope.Development, development.Scope);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ComposerDevDependencies_AreScopedCorrectly()
     {
         using var fixture = TemporaryRepository.Create();

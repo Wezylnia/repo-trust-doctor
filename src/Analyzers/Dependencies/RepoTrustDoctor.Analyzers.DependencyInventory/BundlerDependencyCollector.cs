@@ -42,6 +42,9 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Ruby, relativePath, "Gemfile"));
 
         var hasSiblingLockfile = HasSiblingLockfile(filePath);
+        var lockfile = hasSiblingLockfile
+            ? CreateLockfileResolver(context, filePath, state)
+            : null;
         if (!hasSiblingLockfile)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
@@ -89,7 +92,7 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
                 continue;
             }
 
-            ParseGemDeclaration(relativePath, line, currentScope, hasSiblingLockfile, state);
+            ParseGemDeclaration(relativePath, line, currentScope, hasSiblingLockfile, lockfile, state);
         }
     }
 
@@ -139,6 +142,7 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
         string line,
         DependencyScope scope,
         bool hasSiblingLockfile,
+        BundlerLockfileResolver? lockfile,
         DependencyInventoryState state)
     {
         var match = GemDeclarationPattern().Match(line);
@@ -151,6 +155,11 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
         var constraint = match.Groups["constraint"].Success ? match.Groups["constraint"].Value.Trim('"', '\'') : null;
         var isGit = match.Groups["git"].Success;
         var isPath = match.Groups["path"].Success;
+        var resolvedVersion = string.Empty;
+        var resolved = !isGit &&
+                       !isPath &&
+                       lockfile is not null &&
+                       lockfile.TryResolve(gemName, out resolvedVersion);
 
         var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -184,7 +193,22 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
                 "Review path-sourced gems because they depend on repository layout and may bypass registry provenance."));
         }
 
-        AddRubyPackage(manifestPath, gemName, constraint, scope, !hasSiblingLockfile, state, metadata);
+        if (resolved)
+        {
+            metadata["requestedVersion"] = constraint ?? string.Empty;
+            metadata["versionSource"] = "Gemfile.lock";
+        }
+
+        AddRubyPackage(
+            manifestPath,
+            gemName,
+            resolved ? resolvedVersion : constraint,
+            scope,
+            !hasSiblingLockfile,
+            state,
+            metadata,
+            resolved ? lockfile!.RelativePath : null,
+            resolved);
     }
 
     private static void AddRubyPackage(
@@ -194,9 +218,11 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
         DependencyScope scope,
         bool emitConstraintFinding,
         DependencyInventoryState state,
-        Dictionary<string, string>? metadata = null)
+        Dictionary<string, string>? metadata = null,
+        string? lockfilePath = null,
+        bool versionResolved = false)
     {
-        var isPinned = IsExactGemConstraint(constraint);
+        var isPinned = versionResolved || IsExactGemConstraint(constraint);
         var isPrerelease = IsRubyPrerelease(constraint);
 
         state.Packages.Add(new DependencyPackageInfo(
@@ -205,7 +231,7 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
             constraint,
             scope,
             manifestPath,
-            null,
+            lockfilePath,
             true,
             isPinned,
             isPrerelease,
@@ -244,6 +270,18 @@ internal sealed partial class BundlerDependencyCollector : IDependencyInventoryC
     {
         var directory = Path.GetDirectoryName(gemfilePath);
         return directory is not null && File.Exists(Path.Combine(directory, "Gemfile.lock"));
+    }
+
+    private static BundlerLockfileResolver? CreateLockfileResolver(
+        AnalysisContext context,
+        string gemfilePath,
+        DependencyInventoryState state)
+    {
+        var lockfilePath = Path.Combine(Path.GetDirectoryName(gemfilePath)!, "Gemfile.lock");
+        return BundlerLockfileResolver.TryCreate(
+            lockfilePath,
+            DependencyInventorySupport.Relative(context, lockfilePath),
+            state);
     }
 
     private static bool IsExactGemConstraint(string? constraint)

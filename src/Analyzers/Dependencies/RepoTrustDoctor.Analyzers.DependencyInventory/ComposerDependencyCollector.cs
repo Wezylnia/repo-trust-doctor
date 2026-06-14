@@ -45,6 +45,9 @@ internal sealed class ComposerDependencyCollector : IDependencyInventoryCollecto
 
             var root = document.RootElement;
             var hasComposerLock = HasComposerLock(filePath);
+            var lockfile = hasComposerLock
+                ? CreateLockfileResolver(context, filePath, state)
+                : null;
             var isApplicationManifest = IsApplicationManifest(relativePath, root);
             if (isApplicationManifest && !hasComposerLock)
             {
@@ -61,8 +64,8 @@ internal sealed class ComposerDependencyCollector : IDependencyInventoryCollecto
             }
 
             var nonExactConstraints = new List<ComposerConstraint>();
-            ParseDependencySection(root, "require", relativePath, DependencyScope.Production, state, nonExactConstraints);
-            ParseDependencySection(root, "require-dev", relativePath, DependencyScope.Development, state, nonExactConstraints);
+            ParseDependencySection(root, "require", relativePath, DependencyScope.Production, lockfile, state, nonExactConstraints);
+            ParseDependencySection(root, "require-dev", relativePath, DependencyScope.Development, lockfile, state, nonExactConstraints);
 
             if (isApplicationManifest && !hasComposerLock && nonExactConstraints.Count > 0)
             {
@@ -80,6 +83,7 @@ internal sealed class ComposerDependencyCollector : IDependencyInventoryCollecto
         string sectionName,
         string manifestPath,
         DependencyScope scope,
+        ComposerLockfileResolver? lockfile,
         DependencyInventoryState state,
         List<ComposerConstraint> nonExactConstraints)
     {
@@ -103,20 +107,31 @@ internal sealed class ComposerDependencyCollector : IDependencyInventoryCollecto
                 continue;
             }
 
-            var isPinned = IsExactVersion(versionConstraint);
-            var isPrerelease = DependencyInventorySupport.IsPrereleaseVersion(versionConstraint);
+            var resolvedVersion = string.Empty;
+            var resolved = lockfile is not null &&
+                           lockfile.TryResolve(packageName, out resolvedVersion);
+            var effectiveVersion = resolved ? resolvedVersion : versionConstraint;
+            var isPinned = resolved || IsExactVersion(versionConstraint);
+            var isPrerelease = DependencyInventorySupport.IsPrereleaseVersion(effectiveVersion);
+            IReadOnlyDictionary<string, string>? metadata = resolved
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["requestedVersion"] = versionConstraint,
+                    ["versionSource"] = "composer.lock"
+                }
+                : null;
 
             state.Packages.Add(new DependencyPackageInfo(
                 DependencyEcosystem.Composer,
                 packageName,
-                versionConstraint,
+                effectiveVersion,
                 scope,
                 manifestPath,
-                null,
+                resolved ? lockfile!.RelativePath : null,
                 true,
                 isPinned,
                 isPrerelease,
-                null));
+                metadata));
 
             if (!isPinned)
             {
@@ -175,6 +190,18 @@ internal sealed class ComposerDependencyCollector : IDependencyInventoryCollecto
 
         var composerLockPath = Path.Combine(directory, "composer.lock");
         return File.Exists(composerLockPath);
+    }
+
+    private static ComposerLockfileResolver? CreateLockfileResolver(
+        AnalysisContext context,
+        string composerJsonPath,
+        DependencyInventoryState state)
+    {
+        var lockfilePath = Path.Combine(Path.GetDirectoryName(composerJsonPath)!, "composer.lock");
+        return ComposerLockfileResolver.TryCreate(
+            lockfilePath,
+            DependencyInventorySupport.Relative(context, lockfilePath),
+            state);
     }
 
     private static bool IsApplicationManifest(string relativePath, JsonElement root)

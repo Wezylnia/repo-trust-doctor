@@ -114,6 +114,52 @@ public sealed class DependencyInventoryRubyAndNativeEcosystemTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_GemfileLock_ResolvesRegistryGemVersionsOnly()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile"), """
+        source "https://rubygems.org"
+        gem "rails", "~> 7.1"
+        gem "private-gem", git: "https://github.com/example/private-gem.git"
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "Gemfile.lock"), """
+        GIT
+          remote: https://github.com/example/private-gem.git
+          revision: 0123456789abcdef
+          specs:
+            private-gem (2.0.0)
+
+        GEM
+          remote: https://rubygems.org/
+          specs:
+            rails (7.1.5)
+              rack (>= 2.2.4)
+
+        DEPENDENCIES
+          private-gem!
+          rails (~> 7.1)
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        var rails = Assert.Single(inventory.Packages, package => package.Name == "rails");
+        Assert.Equal("7.1.5", rails.Version);
+        Assert.True(rails.IsVersionPinned);
+        Assert.Equal("Gemfile.lock", rails.LockfilePath);
+        Assert.Equal("~> 7.1", rails.Metadata?["requestedVersion"]);
+        Assert.Equal("Gemfile.lock", rails.Metadata?["versionSource"]);
+
+        var privateGem = Assert.Single(inventory.Packages, package => package.Name == "private-gem");
+        Assert.Null(privateGem.Version);
+        Assert.Null(privateGem.LockfilePath);
+        Assert.Equal("git", privateGem.Metadata?["sourceKind"]);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_GemfilePrereleaseVersion_ReportsDep049()
     {
         using var fixture = TemporaryRepository.Create();
