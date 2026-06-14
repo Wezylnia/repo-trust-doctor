@@ -37,6 +37,14 @@ with lexical string ordering. The parser selects the latest NuGet version using
 numeric release components and prerelease precedence before freshness rules use
 that value.
 
+npm and PyPI metadata distinguish the requested dependency version from the
+registry's latest release. Freshness comparison uses the latest version, while
+license, deprecation, yanked status, repository URL, and publication time come
+from the requested version. PyPI loads the exact-version endpoint when the
+requested version differs from latest. If exact-version metadata is unavailable,
+the scanner leaves those fields unknown instead of attributing latest-release
+metadata to the installed dependency.
+
 Real scan validation across NuGet, npm, Maven, and PyPI confirmed that a second
 scan against the same database performed zero registry requests. The measured
 metadata analyzer times were:

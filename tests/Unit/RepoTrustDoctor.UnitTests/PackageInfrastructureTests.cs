@@ -132,13 +132,22 @@ public sealed class PackageInfrastructureTests
         var metadata = PackageMetadataParser.ParseNpm(package, """
         {
           "dist-tags": { "latest": "2.0.0" },
-          "time": { "2.0.0": "2026-01-01T00:00:00.000Z" },
+          "time": {
+            "1.0.0": "2025-01-01T00:00:00.000Z",
+            "2.0.0": "2026-01-01T00:00:00.000Z"
+          },
           "versions": {
+            "1.0.0": {
+              "version": "1.0.0",
+              "license": "GPL-3.0-only",
+              "repository": { "url": "git+https://github.com/example/left-pad-v1.git" },
+              "deprecated": "use version 2"
+            },
             "2.0.0": {
               "version": "2.0.0",
               "license": "MIT",
               "repository": { "url": "git+https://github.com/example/left-pad.git" },
-              "deprecated": "use something else"
+              "deprecated": ""
             }
           }
         }
@@ -146,9 +155,134 @@ public sealed class PackageInfrastructureTests
 
         Assert.NotNull(metadata);
         Assert.Equal("2.0.0", metadata!.LatestVersion);
-        Assert.Equal("MIT", metadata.LicenseExpression);
+        Assert.Equal("GPL-3.0-only", metadata.LicenseExpression);
         Assert.True(metadata.IsDeprecated);
-        Assert.Contains("github.com", metadata.RepositoryUrl);
+        Assert.Contains("left-pad-v1", metadata.RepositoryUrl);
+        Assert.Equal(DateTimeOffset.Parse("2025-01-01T00:00:00Z"), metadata.PublishedAt);
+        Assert.Equal("True", metadata.Metadata!["requestedVersionMatched"]);
+    }
+
+    [Fact]
+    public void PackageMetadataParser_ParsesPyPiRequestedVersionMetadataSeparatelyFromLatest()
+    {
+        var package = CreatePackage(DependencyEcosystem.Python, "example", "1.0.0");
+        var metadata = PackageMetadataParser.ParsePyPi(
+            package,
+            """
+            {
+              "info": {
+                "version": "2.0.0",
+                "license_expression": "MIT",
+                "home_page": "https://example.test/latest"
+              },
+              "releases": {
+                "1.0.0": [
+                  {
+                    "upload_time_iso_8601": "2025-01-01T00:00:00Z",
+                    "yanked": true
+                  }
+                ]
+              }
+            }
+            """,
+            """
+            {
+              "info": {
+                "version": "1.0.0",
+                "license_expression": "GPL-3.0-only",
+                "home_page": "https://example.test/v1",
+                "project_urls": {
+                  "Source": "https://github.com/example/v1"
+                }
+              },
+              "urls": [
+                {
+                  "upload_time_iso_8601": "2025-01-01T00:00:00Z",
+                  "yanked": true
+                }
+              ]
+            }
+            """);
+
+        Assert.NotNull(metadata);
+        Assert.Equal("2.0.0", metadata!.LatestVersion);
+        Assert.Equal("GPL-3.0-only", metadata.LicenseExpression);
+        Assert.Equal("https://example.test/v1", metadata.HomepageUrl);
+        Assert.Equal("https://github.com/example/v1", metadata.RepositoryUrl);
+        Assert.True(metadata.IsYanked);
+        Assert.Equal(DateTimeOffset.Parse("2025-01-01T00:00:00Z"), metadata.PublishedAt);
+        Assert.Equal("True", metadata.Metadata!["requestedVersionMatched"]);
+    }
+
+    [Fact]
+    public void PackageMetadataParser_DoesNotUseLatestPyPiMetadataWhenRequestedVersionDetailsAreMissing()
+    {
+        var package = CreatePackage(DependencyEcosystem.Python, "example", "1.0.0");
+        var metadata = PackageMetadataParser.ParsePyPi(package, """
+        {
+          "info": {
+            "version": "2.0.0",
+            "license_expression": "MIT",
+            "home_page": "https://example.test/latest"
+          },
+          "releases": {
+            "1.0.0": [
+              { "upload_time_iso_8601": "2025-01-01T00:00:00Z", "yanked": true },
+              { "upload_time_iso_8601": "2025-01-01T00:00:00Z", "yanked": false }
+            ]
+          }
+        }
+        """);
+
+        Assert.NotNull(metadata);
+        Assert.Equal("2.0.0", metadata!.LatestVersion);
+        Assert.Null(metadata.LicenseExpression);
+        Assert.Null(metadata.HomepageUrl);
+        Assert.Null(metadata.RepositoryUrl);
+        Assert.False(metadata.IsYanked);
+        Assert.Equal("False", metadata.Metadata!["requestedVersionMatched"]);
+    }
+
+    [Fact]
+    public async Task PyPiPackageMetadataClient_LoadsRequestedVersionDetailsWhenLatestDiffers()
+    {
+        var requestedPaths = new List<string>();
+        var lookup = new SafeHttpLookup(
+            ["pypi.org"],
+            new StubHttpHandler(request =>
+            {
+                requestedPaths.Add(request.RequestUri!.AbsolutePath);
+                return request.RequestUri.AbsolutePath.EndsWith("/1.0.0/json", StringComparison.Ordinal)
+                    ? JsonResponse("""
+                      {
+                        "info": {
+                          "version": "1.0.0",
+                          "license_expression": "GPL-3.0-only"
+                        },
+                        "urls": [
+                          { "upload_time_iso_8601": "2025-01-01T00:00:00Z", "yanked": true }
+                        ]
+                      }
+                      """)
+                    : JsonResponse("""
+                      {
+                        "info": {
+                          "version": "2.0.0",
+                          "license_expression": "MIT"
+                        },
+                        "releases": {}
+                      }
+                      """);
+            }));
+        var client = new PyPiPackageMetadataClient(lookup);
+
+        var metadata = await client.GetMetadataAsync(
+            CreatePackage(DependencyEcosystem.Python, "example", "1.0.0"),
+            CancellationToken.None);
+
+        Assert.NotNull(metadata);
+        Assert.Equal("GPL-3.0-only", metadata!.LicenseExpression);
+        Assert.Equal(["/pypi/example/json", "/pypi/example/1.0.0/json"], requestedPaths);
     }
 
     [Fact]

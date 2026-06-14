@@ -190,7 +190,7 @@ Recommendation: review the dependency changelog and plan an update if compatible
 - Default severity: High
 - Default confidence: High
 
-Detects package metadata that clearly marks a production dependency as deprecated or yanked. Development dependencies and packages declared only in common test, fixture, example, or playground manifests are skipped for metadata deprecation findings.
+Detects package metadata that clearly marks the requested production dependency version as deprecated or yanked. Development dependencies and packages declared only in common test, fixture, example, or playground manifests are skipped for metadata deprecation findings. Registry metadata from a newer release is not attributed to the installed version when exact-version metadata is unavailable.
 
 Why it matters: deprecated or yanked packages may no longer receive fixes or may have been withdrawn because of correctness, security, or maintenance concerns.
 

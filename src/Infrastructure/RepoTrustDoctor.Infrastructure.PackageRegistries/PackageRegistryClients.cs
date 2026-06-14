@@ -49,11 +49,25 @@ public sealed class PyPiPackageMetadataClient(SafeHttpLookup lookup) : IPackageM
     public async Task<PackageRegistryMetadata?> GetMetadataAsync(DependencyPackageInfo package, CancellationToken cancellationToken)
     {
         var name = Uri.EscapeDataString(package.Name);
-        var uri = new Uri($"https://pypi.org/pypi/{name}/json");
-        var result = await lookup.GetStringAsync(uri, cancellationToken);
-        return result.Success && result.Body is not null
-            ? PackageMetadataParser.ParsePyPi(package, result.Body)
-            : null;
+        var latestUri = new Uri($"https://pypi.org/pypi/{name}/json");
+        var latestResult = await lookup.GetStringAsync(latestUri, cancellationToken);
+        if (!latestResult.Success || latestResult.Body is null)
+        {
+            return null;
+        }
+
+        var latestVersion = PackageMetadataParser.ReadPyPiVersion(latestResult.Body);
+        if (string.Equals(latestVersion, package.Version, StringComparison.OrdinalIgnoreCase))
+        {
+            return PackageMetadataParser.ParsePyPi(package, latestResult.Body, latestResult.Body);
+        }
+
+        var requestedUri = new Uri($"https://pypi.org/pypi/{name}/{Uri.EscapeDataString(package.Version!)}/json");
+        var requestedResult = await lookup.GetStringAsync(requestedUri, cancellationToken);
+        return PackageMetadataParser.ParsePyPi(
+            package,
+            latestResult.Body,
+            requestedResult.Success ? requestedResult.Body : null);
     }
 }
 
@@ -122,84 +136,125 @@ public static class PackageMetadataParser
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var latest = root.TryGetProperty("dist-tags", out var tags) ? ReadString(tags, "latest") : null;
-        JsonElement versionElement = default;
+        JsonElement latestVersionElement = default;
+        JsonElement requestedVersionElement = default;
         if (!string.IsNullOrWhiteSpace(latest) &&
             root.TryGetProperty("versions", out var versions) &&
             versions.ValueKind == JsonValueKind.Object &&
             versions.TryGetProperty(latest, out var latestElement))
         {
-            versionElement = latestElement;
+            latestVersionElement = latestElement;
         }
 
-        if (versionElement.ValueKind == JsonValueKind.Undefined && root.TryGetProperty("versions", out versions))
+        if (root.TryGetProperty("versions", out versions) &&
+            versions.ValueKind == JsonValueKind.Object &&
+            !string.IsNullOrWhiteSpace(package.Version))
         {
-            versionElement = versions.EnumerateObject().LastOrDefault().Value;
+            versions.TryGetProperty(package.Version, out requestedVersionElement);
         }
 
-        if (versionElement.ValueKind == JsonValueKind.Undefined)
+        if (latestVersionElement.ValueKind == JsonValueKind.Undefined &&
+            versions.ValueKind == JsonValueKind.Object)
+        {
+            latestVersionElement = versions.EnumerateObject().LastOrDefault().Value;
+        }
+
+        if (latestVersionElement.ValueKind == JsonValueKind.Undefined)
         {
             return null;
         }
 
-        var repositoryUrl = ReadString(versionElement, "repository");
-        if (versionElement.TryGetProperty("repository", out var repository) &&
+        var repositoryUrl = ReadString(requestedVersionElement, "repository");
+        if (requestedVersionElement.ValueKind == JsonValueKind.Object &&
+            requestedVersionElement.TryGetProperty("repository", out var repository) &&
             repository.ValueKind == JsonValueKind.Object)
         {
             repositoryUrl = ReadString(repository, "url");
         }
 
         DateTimeOffset? publishedAt = null;
-        if (!string.IsNullOrWhiteSpace(latest) &&
+        if (!string.IsNullOrWhiteSpace(package.Version) &&
             root.TryGetProperty("time", out var time))
         {
-            publishedAt = ReadDate(time, latest);
+            publishedAt = ReadDate(time, package.Version);
         }
 
+        var metadata = BuildPackageMetadata(package, requestedVersionElement.ValueKind == JsonValueKind.Object);
         return new PackageRegistryMetadata(
             package.Ecosystem,
             package.Name,
             package.Version,
-            latest ?? ReadString(versionElement, "version"),
+            latest ?? ReadString(latestVersionElement, "version"),
             publishedAt,
-            !string.IsNullOrWhiteSpace(ReadString(versionElement, "deprecated")),
+            !string.IsNullOrWhiteSpace(ReadString(requestedVersionElement, "deprecated")),
             false,
             repositoryUrl,
-            ReadString(versionElement, "homepage"),
-            ReadString(versionElement, "license"),
+            ReadString(requestedVersionElement, "homepage"),
+            ReadString(requestedVersionElement, "license"),
             null,
             "registry.npmjs.org",
-            BuildPackageMetadata(package));
+            metadata);
     }
 
-    public static PackageRegistryMetadata? ParsePyPi(DependencyPackageInfo package, string json)
+    public static string? ReadPyPiVersion(string json)
     {
         using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
-        if (!root.TryGetProperty("info", out var info))
+        return document.RootElement.TryGetProperty("info", out var info)
+            ? ReadString(info, "version")
+            : null;
+    }
+
+    public static PackageRegistryMetadata? ParsePyPi(
+        DependencyPackageInfo package,
+        string latestJson,
+        string? requestedVersionJson = null)
+    {
+        using var latestDocument = JsonDocument.Parse(latestJson);
+        var latestRoot = latestDocument.RootElement;
+        if (!latestRoot.TryGetProperty("info", out var latestInfo))
         {
             return null;
         }
 
-        var latest = ReadString(info, "version");
+        var latest = ReadString(latestInfo, "version");
+        using var requestedDocument = !string.IsNullOrWhiteSpace(requestedVersionJson)
+            ? JsonDocument.Parse(requestedVersionJson)
+            : null;
+        JsonElement requestedRoot = default;
+        JsonElement requestedInfo = default;
+        if (requestedDocument is not null)
+        {
+            requestedRoot = requestedDocument.RootElement;
+            if (requestedRoot.TryGetProperty("info", out var info) &&
+                string.Equals(ReadString(info, "version"), package.Version, StringComparison.OrdinalIgnoreCase))
+            {
+                requestedInfo = info;
+            }
+        }
+
         DateTimeOffset? publishedAt = null;
         var yanked = false;
-        if (!string.IsNullOrWhiteSpace(latest) &&
-            root.TryGetProperty("releases", out var releases) &&
-            releases.TryGetProperty(latest, out var releaseArray) &&
-            releaseArray.ValueKind == JsonValueKind.Array &&
-            releaseArray.GetArrayLength() > 0)
+        var releaseArray = FindPyPiReleaseFiles(
+            requestedRoot.ValueKind == JsonValueKind.Object ? requestedRoot : latestRoot,
+            package.Version);
+        if (releaseArray.ValueKind == JsonValueKind.Array && releaseArray.GetArrayLength() > 0)
         {
             var release = releaseArray[0];
             publishedAt = ReadDate(release, "upload_time_iso_8601") ?? ReadDate(release, "upload_time");
-            yanked = release.TryGetProperty("yanked", out var yankedElement) && yankedElement.ValueKind == JsonValueKind.True;
+            yanked = releaseArray.EnumerateArray().All(file =>
+                file.TryGetProperty("yanked", out var yankedElement) &&
+                yankedElement.ValueKind == JsonValueKind.True);
         }
 
         string? repositoryUrl = null;
-        if (info.TryGetProperty("project_urls", out var urls) && urls.ValueKind == JsonValueKind.Object)
+        if (requestedInfo.ValueKind == JsonValueKind.Object &&
+            requestedInfo.TryGetProperty("project_urls", out var urls) &&
+            urls.ValueKind == JsonValueKind.Object)
         {
             repositoryUrl = ReadString(urls, "Source") ?? ReadString(urls, "Repository") ?? ReadString(urls, "Source Code");
         }
 
+        var metadata = BuildPackageMetadata(package, requestedInfo.ValueKind == JsonValueKind.Object);
         return new PackageRegistryMetadata(
             package.Ecosystem,
             package.Name,
@@ -209,11 +264,11 @@ public static class PackageMetadataParser
             yanked,
             yanked,
             repositoryUrl,
-            ReadString(info, "home_page"),
-            ReadString(info, "license_expression") ?? ReadString(info, "license"),
+            ReadString(requestedInfo, "home_page"),
+            ReadString(requestedInfo, "license_expression") ?? ReadString(requestedInfo, "license"),
             null,
             "pypi.org",
-            BuildPackageMetadata(package));
+            metadata);
     }
 
     public static PackageRegistryMetadata? ParseMavenCentral(DependencyPackageInfo package, string json)
@@ -244,12 +299,34 @@ public static class PackageMetadataParser
             BuildPackageMetadata(package));
     }
 
-    private static IReadOnlyDictionary<string, string> BuildPackageMetadata(DependencyPackageInfo package) =>
+    private static IReadOnlyDictionary<string, string> BuildPackageMetadata(
+        DependencyPackageInfo package,
+        bool requestedVersionMatched = true) =>
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["scope"] = package.Scope.ToString(),
-            ["isDirect"] = package.IsDirect.ToString()
+            ["isDirect"] = package.IsDirect.ToString(),
+            ["requestedVersionMatched"] = requestedVersionMatched.ToString()
         };
+
+    private static JsonElement FindPyPiReleaseFiles(JsonElement root, string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return default;
+        }
+
+        if (root.TryGetProperty("releases", out var releases) &&
+            releases.ValueKind == JsonValueKind.Object &&
+            releases.TryGetProperty(version, out var releaseArray))
+        {
+            return releaseArray;
+        }
+
+        return root.TryGetProperty("urls", out var urls) && urls.ValueKind == JsonValueKind.Array
+            ? urls
+            : default;
+    }
 
     private static void CollectCatalogEntries(JsonElement element, List<JsonElement> entries)
     {
@@ -276,7 +353,8 @@ public static class PackageMetadataParser
 
     private static string? ReadString(JsonElement element, string propertyName)
     {
-        if (!element.TryGetProperty(propertyName, out var property))
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var property))
         {
             return null;
         }
@@ -298,98 +376,5 @@ public static class PackageMetadataParser
         }
 
         return property.TryGetInt64(out var millis) ? DateTimeOffset.FromUnixTimeMilliseconds(millis) : null;
-    }
-}
-
-public static class PackageLicenseNormalizer
-{
-    private const int MaxExpressionLength = 120;
-    private static readonly string[] PermissiveLicenses = ["MIT", "APACHE-2.0", "BSD-2-CLAUSE", "BSD-3-CLAUSE", "ISC"];
-    private static readonly string[] CopyleftLicenses = ["AGPL", "LGPL", "GPL"];
-
-    public static NormalizedPackageLicense Normalize(string? expression)
-    {
-        if (string.IsNullOrWhiteSpace(expression) || expression.Length > MaxExpressionLength)
-        {
-            return new NormalizedPackageLicense(PackageLicenseFamily.Unknown, null, Truncate(expression), false, false);
-        }
-
-        var normalized = expression.Trim();
-        var upper = normalized.ToUpperInvariant();
-        var spdx = upper
-            .Replace("APACHE 2.0", "APACHE-2.0", StringComparison.Ordinal)
-            .Replace("BSD 2-CLAUSE", "BSD-2-CLAUSE", StringComparison.Ordinal)
-            .Replace("BSD 3-CLAUSE", "BSD-3-CLAUSE", StringComparison.Ordinal);
-
-        var permissiveId = FindLicenseId(spdx, PermissiveLicenses);
-        var copyleftId = FindLicenseId(spdx, CopyleftLicenses);
-        if (copyleftId is not null)
-        {
-            if (permissiveId is not null && IsPermissiveAlternative(spdx))
-            {
-                return new NormalizedPackageLicense(PackageLicenseFamily.Permissive, permissiveId, normalized, true, false);
-            }
-
-            return new NormalizedPackageLicense(PackageLicenseFamily.Copyleft, copyleftId, normalized, true, true);
-        }
-
-        if (permissiveId is not null)
-        {
-            return new NormalizedPackageLicense(PackageLicenseFamily.Permissive, permissiveId, normalized, true, false);
-        }
-
-        return new NormalizedPackageLicense(PackageLicenseFamily.Unknown, null, normalized, false, false);
-    }
-
-    private static string? FindLicenseId(string expression, IReadOnlyList<string> licenseIds)
-    {
-        foreach (var id in licenseIds)
-        {
-            if (ContainsLicenseToken(expression, id))
-            {
-                return id;
-            }
-        }
-
-        return null;
-    }
-
-    private static bool ContainsLicenseToken(string expression, string id)
-    {
-        var start = 0;
-        while (start < expression.Length)
-        {
-            var index = expression.IndexOf(id, start, StringComparison.Ordinal);
-            if (index < 0)
-            {
-                return false;
-            }
-
-            var beforeBoundary = index == 0 || !char.IsLetterOrDigit(expression[index - 1]);
-            var end = index + id.Length;
-            var afterBoundary = end >= expression.Length || !char.IsLetterOrDigit(expression[end]);
-            if (beforeBoundary && afterBoundary)
-            {
-                return true;
-            }
-
-            start = index + id.Length;
-        }
-
-        return false;
-    }
-
-    private static bool IsPermissiveAlternative(string expression) =>
-        expression.Contains(" OR ", StringComparison.Ordinal) &&
-        !expression.Contains(" AND ", StringComparison.Ordinal);
-
-    private static string? Truncate(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        return value.Length <= MaxExpressionLength ? value : value[..MaxExpressionLength];
     }
 }
