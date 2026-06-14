@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Engine\RepoTrustDoctor.Analysis.Abstractions\RepoTrustDoctor.Analysis.Abstractions.csproj" />
     <ProjectReference Include="..\..\Core\RepoTrustDoctor.Domain\RepoTrustDoctor.Domain.csproj" />
+    <ProjectReference Include="..\RepoTrustDoctor.Infrastructure.LocalData\RepoTrustDoctor.Infrastructure.LocalData.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

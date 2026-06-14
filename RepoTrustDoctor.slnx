@@ -54,6 +54,7 @@
   </Folder>
   <Folder Name="/src/Infrastructure/">
     <Project Path="src/Infrastructure/RepoTrustDoctor.Infrastructure.Git/RepoTrustDoctor.Infrastructure.Git.csproj" />
+    <Project Path="src/Infrastructure/RepoTrustDoctor.Infrastructure.LocalData/RepoTrustDoctor.Infrastructure.LocalData.csproj" />
     <Project Path="src/Infrastructure/RepoTrustDoctor.Infrastructure.PackageRegistries/RepoTrustDoctor.Infrastructure.PackageRegistries.csproj" />
     <Project Path="src/Infrastructure/RepoTrustDoctor.Infrastructure.Scanning/RepoTrustDoctor.Infrastructure.Scanning.csproj" />
     <Project Path="src/Infrastructure/RepoTrustDoctor.Infrastructure.SecurityFeeds/RepoTrustDoctor.Infrastructure.SecurityFeeds.csproj" />
