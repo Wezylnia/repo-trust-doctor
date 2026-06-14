@@ -24,8 +24,8 @@ public sealed partial class GitLabCiAnalyzer : IRepositoryAnalyzer
     [
         new("TRUST-GLCI001", "GitLab CI uses remote includes", AnalysisCategory.CiCd, Severity.Medium, Confidence.High,
             "The pipeline configuration references remote include files.", "Remote includes may change without repository changes. Review their content and provenance."),
-        new("TRUST-GLCI002", "GitLab CI interpolates CI variables in shell", AnalysisCategory.CiCd, Severity.High, Confidence.Medium,
-            "A script block interpolates a CI/CD variable inline.", "Avoid direct shell interpolation of CI variables. Pass them as environment variables instead."),
+        new("TRUST-GLCI002", "GitLab CI dynamically executes CI variables", AnalysisCategory.CiCd, Severity.High, Confidence.Medium,
+            "A script block passes a CI/CD variable to dynamic shell execution.", "Avoid eval and shell -c with CI variables. Pass validated values as ordinary command arguments."),
         new("TRUST-GLCI003", "GitLab CI uses latest image tag", AnalysisCategory.CiCd, Severity.Medium, Confidence.High,
             "A job uses an image or service with the latest tag.", "Pin container images to specific versions or digests for reproducible CI runs."),
         new("TRUST-GLCI004", "GitLab CI uses deprecated only/except", AnalysisCategory.CiCd, Severity.Low, Confidence.High,
@@ -40,8 +40,17 @@ public sealed partial class GitLabCiAnalyzer : IRepositoryAnalyzer
     {
         var findings = new List<Finding>();
 
-        foreach (var file in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, ".gitlab-ci.yml"))
+        var pending = new Queue<string>(
+            RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, ".gitlab-ci.yml"));
+        var visited = new HashSet<string>(PathComparer);
+        while (pending.Count > 0)
         {
+            var file = Path.GetFullPath(pending.Dequeue());
+            if (!visited.Add(file))
+            {
+                continue;
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
             if (!RepositoryFileSystem.CanReadAsText(file))
             {
@@ -57,6 +66,13 @@ public sealed partial class GitLabCiAnalyzer : IRepositoryAnalyzer
             CheckDeprecatedOnlyExcept(content, relativePath, findings);
             CheckDockerInDocker(content, relativePath, findings);
             CheckBroadCachePaths(content, relativePath, findings);
+
+            foreach (var includedFile in ResolveLocalIncludes(
+                         context.RepositoryPath,
+                         content))
+            {
+                pending.Enqueue(includedFile);
+            }
         }
 
         return AnalyzerResult.Completed(findings);
@@ -101,13 +117,14 @@ public sealed partial class GitLabCiAnalyzer : IRepositoryAnalyzer
                 {
                     break;
                 }
-                if (CiVariablePattern().IsMatch(subLine))
+                if (CiVariablePattern().IsMatch(subLine) &&
+                    DynamicShellExecutionPattern().IsMatch(subLine))
                 {
                     findings.Add(CreateFinding("TRUST-GLCI002",
-                        "GitLab CI interpolates CI variables in shell",
+                        "GitLab CI dynamically executes CI variable",
                         Severity.High,
                         relativePath,
-                        "A script block interpolates CI/CD variables inline. Use environment variables instead.",
+                        "A script block passes a CI/CD variable to eval or shell -c.",
                         j + 1,
                         Confidence.Medium));
                     break;
@@ -221,6 +238,42 @@ public sealed partial class GitLabCiAnalyzer : IRepositoryAnalyzer
         return line;
     }
 
+    private static IEnumerable<string> ResolveLocalIncludes(string repositoryPath, string content)
+    {
+        var repositoryRoot = Path.GetFullPath(repositoryPath);
+        foreach (Match match in LocalIncludePattern().Matches(content))
+        {
+            var includePath = match.Groups["path"].Value.Trim().Trim('"', '\'').TrimStart('/', '\\');
+            if (includePath.Length == 0 ||
+                includePath.Contains('*', StringComparison.Ordinal) ||
+                includePath.Contains('?', StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var fullPath = Path.GetFullPath(Path.Combine(
+                repositoryRoot,
+                includePath.Replace('/', Path.DirectorySeparatorChar)));
+            if (IsSameOrChildPath(fullPath, repositoryRoot) && File.Exists(fullPath))
+            {
+                yield return fullPath;
+            }
+        }
+    }
+
+    private static bool IsSameOrChildPath(string path, string parent)
+    {
+        var normalizedParent = parent.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return path.Equals(normalizedParent, PathComparison) ||
+               path.StartsWith(normalizedParent + Path.DirectorySeparatorChar, PathComparison);
+    }
+
+    private static StringComparison PathComparison =>
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+    private static StringComparer PathComparer =>
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
     [GeneratedRegex(@"include:\s*.*remote:\s*['""](?<url>[^'""]+)['""]", RegexOptions.IgnoreCase)]
     private static partial Regex RemoteIncludePattern();
 
@@ -229,6 +282,16 @@ public sealed partial class GitLabCiAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"\$(?:CI_[A-Z_]+|\{[A-Z_]+\})", RegexOptions.IgnoreCase)]
     private static partial Regex CiVariablePattern();
+
+    [GeneratedRegex(
+        @"(?:^|\s)(?:eval|(?:ba|z|k)?sh\s+-c|pwsh\s+-(?:Command|c)|powershell(?:\.exe)?\s+-(?:Command|c))\b",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex DynamicShellExecutionPattern();
+
+    [GeneratedRegex(
+        @"(?m)^\s*(?:-\s*)?local\s*:\s*(?<path>[^\s#]+)",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex LocalIncludePattern();
 
     [GeneratedRegex(@"(?:image|services):\s*['""]?(?<image>[^'""\s]+:latest)['""]?", RegexOptions.IgnoreCase)]
     private static partial Regex LatestImagePattern();

@@ -37,6 +37,47 @@ public sealed class AzurePipelinesAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_PrVariablePassedThroughEnvironment_NoAZP001()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "azure-pipelines.yml"), """
+        steps:
+        - script: node validate-branch.js
+          env:
+            BUILD_SOURCEBRANCH: "$(Build.SourceBranch)"
+        """);
+
+        var analyzer = new AzurePipelinesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-AZP001");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PrVariableInMultilineScript_ReportsAZP001()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "azure-pipelines.yml"), """
+        steps:
+        - script: |
+            echo "$(System.PullRequest.SourceBranch)"
+            make build
+          env:
+            SAFE_VALUE: "$(Build.SourceBranch)"
+        """);
+
+        var analyzer = new AzurePipelinesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-AZP001");
+        Assert.Equal(3, finding.Evidence[0].LineNumber);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_DetectsPersistCredentials()
     {
         using var fixture = TemporaryRepository.Create();
@@ -207,6 +248,25 @@ public sealed class AzurePipelinesAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_TemplateArtifactPath_NoAZP005()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "azure-pipelines.yml"), """
+        steps:
+        - task: PublishPipelineArtifact@1
+          inputs:
+            targetPath: ${{ parameters.targetPath }}
+        """);
+
+        var analyzer = new AzurePipelinesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-AZP005");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_NoAzurePipelineFile_NoFindings()
     {
         using var fixture = TemporaryRepository.Create();
@@ -232,5 +292,26 @@ public sealed class AzurePipelinesAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-AZP001");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DotAzurePipelinesNestedTemplate_IsScanned()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var pipelineDir = Path.Combine(fixture.Path, ".azure-pipelines", "templates");
+        Directory.CreateDirectory(pipelineDir);
+        File.WriteAllText(Path.Combine(pipelineDir, "container.yml"), """
+        jobs:
+        - job: build
+          container:
+            image: ubuntu:latest
+        """);
+
+        var analyzer = new AzurePipelinesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-AZP003");
     }
 }

@@ -14,6 +14,9 @@ public sealed partial class AzurePipelinesAnalyzer : IRepositoryAnalyzer
 
     private static readonly string[] PipelineDirectories =
     [
+        ".azure-pipelines",
+        "azure-pipelines",
+        "build/azure-pipelines",
         ".azure/pipelines",
         ".pipelines"
     ];
@@ -74,49 +77,76 @@ public sealed partial class AzurePipelinesAnalyzer : IRepositoryAnalyzer
     private static void CheckPrVariablesInScripts(string content, string relativePath, List<Finding> findings)
     {
         var lines = SplitLines(content);
-        bool inScriptBlock = false;
-
-        for (int i = 0; i < lines.Length; i++)
+        for (var i = 0; i < lines.Length; i++)
         {
-            var line = lines[i].Trim();
-            if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#'))
+            if (!ScriptStepPattern().IsMatch(lines[i]))
             {
-                if (inScriptBlock && line.Length == 0)
-                    continue;
-                inScriptBlock = false;
                 continue;
             }
 
-            if (ScriptStepPattern().IsMatch(line))
+            if (PrVariablePattern().IsMatch(lines[i]))
             {
-                inScriptBlock = true;
-                // Check same line for PR variables (inline script)
-                if (PrVariablePattern().IsMatch(line))
+                AddPrVariableFinding(relativePath, i + 1, findings);
+                continue;
+            }
+
+            if (!BlockScalarScriptPattern().IsMatch(lines[i]))
+            {
+                continue;
+            }
+
+            var contentIndent = FindBlockContentIndent(lines, i + 1);
+            if (contentIndent is null)
+            {
+                continue;
+            }
+
+            for (var cursor = i + 1; cursor < lines.Length; cursor++)
+            {
+                if (string.IsNullOrWhiteSpace(lines[cursor]))
                 {
-                    findings.Add(CreateFinding("TRUST-AZP001",
-                        "Azure pipeline script uses untrusted variable",
-                        Severity.High,
-                        relativePath,
-                        "Script step interpolates a PR-controlled variable.",
-                        i + 1,
-                        Confidence.Medium));
-                    inScriptBlock = false;
+                    continue;
                 }
-                continue;
-            }
 
-            if (inScriptBlock && PrVariablePattern().IsMatch(line))
-            {
-                findings.Add(CreateFinding("TRUST-AZP001",
-                    "Azure pipeline script uses untrusted variable",
-                    Severity.High,
-                    relativePath,
-                    "Script step interpolates a PR-controlled variable.",
-                    i + 1,
-                    Confidence.Medium));
-                inScriptBlock = false;
+                if (GetIndentation(lines[cursor]) < contentIndent)
+                {
+                    break;
+                }
+
+                if (PrVariablePattern().IsMatch(lines[cursor]))
+                {
+                    AddPrVariableFinding(relativePath, cursor + 1, findings);
+                    break;
+                }
             }
         }
+    }
+
+    private static int? FindBlockContentIndent(string[] lines, int startIndex)
+    {
+        for (var index = startIndex; index < lines.Length; index++)
+        {
+            if (!string.IsNullOrWhiteSpace(lines[index]))
+            {
+                return GetIndentation(lines[index]);
+            }
+        }
+
+        return null;
+    }
+
+    private static void AddPrVariableFinding(
+        string relativePath,
+        int lineNumber,
+        ICollection<Finding> findings)
+    {
+        findings.Add(CreateFinding("TRUST-AZP001",
+            "Azure pipeline script uses untrusted variable",
+            Severity.High,
+            relativePath,
+            "Script step interpolates a PR-controlled variable.",
+            lineNumber,
+            Confidence.Medium));
     }
 
     // ── AZP002: persistCredentials ────────────────────────────────────
@@ -242,6 +272,9 @@ public sealed partial class AzurePipelinesAnalyzer : IRepositoryAnalyzer
             var path = match.Groups["path"].Value.Trim();
             var normalized = path.TrimEnd('/', '*');
 
+            if (IsExpression(path))
+                continue;
+
             // Skip narrow paths
             if (normalized is "dist" or "build/output" or "artifacts" ||
                 normalized.Contains('/') && !normalized.Contains("System.DefaultWorkingDirectory", StringComparison.OrdinalIgnoreCase))
@@ -271,10 +304,15 @@ public sealed partial class AzurePipelinesAnalyzer : IRepositoryAnalyzer
 
     private static IEnumerable<string> EnumeratePipelineFiles(string root)
     {
+        var seen = new HashSet<string>(
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
         foreach (var pattern in FileNames)
         {
             foreach (var file in RepositoryFileSystem.EnumerateFiles(root, pattern))
-                yield return file;
+            {
+                if (seen.Add(Path.GetFullPath(file)))
+                    yield return file;
+            }
         }
 
         foreach (var relativeDirectory in PipelineDirectories)
@@ -283,13 +321,19 @@ public sealed partial class AzurePipelinesAnalyzer : IRepositoryAnalyzer
             if (!Directory.Exists(directory))
                 continue;
 
-            foreach (var file in RepositoryFileSystem.EnumerateFiles(directory, "*.yml", SearchOption.TopDirectoryOnly)
-                         .Concat(RepositoryFileSystem.EnumerateFiles(directory, "*.yaml", SearchOption.TopDirectoryOnly)))
+            foreach (var file in RepositoryFileSystem.EnumerateFiles(directory, "*.yml")
+                         .Concat(RepositoryFileSystem.EnumerateFiles(directory, "*.yaml")))
             {
-                yield return file;
+                if (seen.Add(Path.GetFullPath(file)))
+                    yield return file;
             }
         }
     }
+
+    private static bool IsExpression(string value) =>
+        value.Contains("${{", StringComparison.Ordinal) ||
+        value.Contains("$(", StringComparison.Ordinal) ||
+        value.Contains("$[", StringComparison.Ordinal);
 
     private static int GetIndentation(string line)
     {
@@ -322,6 +366,9 @@ public sealed partial class AzurePipelinesAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?m)^\s*(?:-\s*)?(?:script|bash|pwsh|powershell)\s*:")]
     private static partial Regex ScriptStepPattern();
+
+    [GeneratedRegex(@"^\s*(?:-\s*)?(?:script|bash|pwsh|powershell)\s*:\s*[|>][-+]?\s*$")]
+    private static partial Regex BlockScalarScriptPattern();
 
     [GeneratedRegex(@"\$\((System\.PullRequest\.(SourceBranch|SourceRepositoryURI)|Build\.SourceBranch(Name)?)\)")]
     private static partial Regex PrVariablePattern();

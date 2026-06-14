@@ -168,7 +168,7 @@ public sealed class CircleCiAnalyzerTests
     }
 
     [Fact]
-    public async Task AnalyzeAsync_DetectsRemoteDockerNoVersion()
+    public async Task AnalyzeAsync_DefaultRemoteDockerVersion_NoCIRCLE005()
     {
         using var fixture = TemporaryRepository.Create();
         Directory.CreateDirectory(Path.Combine(fixture.Path, ".circleci"));
@@ -181,6 +181,27 @@ public sealed class CircleCiAnalyzerTests
 
         var analyzer = new CircleCiAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-CIRCLE005");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_EdgeRemoteDockerVersion_ReportsCIRCLE005()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, ".circleci"));
+        File.WriteAllText(Path.Combine(fixture.Path, ".circleci", "config.yml"), """
+        jobs:
+          build:
+            steps:
+              - setup_remote_docker:
+                  version: edge
+        """);
+
+        var analyzer = new CircleCiAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
 
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-CIRCLE005");
     }

@@ -24,7 +24,7 @@ public sealed class GitLabCiAnalyzerTests
     }
 
     [Fact]
-    public async Task AnalyzeAsync_DetectsCiVariableInjection()
+    public async Task AnalyzeAsync_NormalCiVariableUse_DoesNotReportInjection()
     {
         using var fixture = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fixture.Path, ".gitlab-ci.yml"), """
@@ -38,7 +38,51 @@ public sealed class GitLabCiAnalyzerTests
         var analyzer = new GitLabCiAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GLCI002");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DetectsCiVariablePassedToEval()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".gitlab-ci.yml"), """
+        build:
+          script:
+            - eval "$CI_DEPLOY_COMMAND"
+        """);
+
+        var analyzer = new GitLabCiAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-GLCI002");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ScansLocallyIncludedPipelineFile()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var pipelineDirectory = Path.Combine(fixture.Path, ".gitlab", "ci");
+        Directory.CreateDirectory(pipelineDirectory);
+        File.WriteAllText(Path.Combine(fixture.Path, ".gitlab-ci.yml"), """
+        include:
+          - local: .gitlab/ci/build.yml
+        """);
+        File.WriteAllText(Path.Combine(pipelineDirectory, "build.yml"), """
+        build:
+          image: node:latest
+          script:
+            - npm test
+        """);
+
+        var analyzer = new GitLabCiAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-GLCI003");
+        Assert.Equal(Path.Combine(".gitlab", "ci", "build.yml"), finding.Evidence[0].FilePath);
     }
 
     [Fact]

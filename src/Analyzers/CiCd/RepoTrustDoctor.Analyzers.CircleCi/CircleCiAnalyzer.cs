@@ -30,8 +30,8 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
             "Workspace persist uses root . or ~/project.", "Persist only build output directories."),
         new("TRUST-CIRCLE004", "CircleCI inline secret-looking environment variable", AnalysisCategory.Security, Severity.High, Confidence.Medium,
             "A literal secret-looking value is defined in a CircleCI environment block.", "Use CircleCI contexts or external secret management."),
-        new("TRUST-CIRCLE005", "CircleCI remote Docker enabled without explicit version", AnalysisCategory.CiCd, Severity.Low, Confidence.Medium,
-            "setup_remote_docker without a version.", "Specify an explicit Docker version."),
+        new("TRUST-CIRCLE005", "CircleCI remote Docker uses preview version", AnalysisCategory.CiCd, Severity.Low, Confidence.High,
+            "setup_remote_docker explicitly selects the floating edge version.", "Use CircleCI's default stable Docker version or pin a supported production version."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -57,7 +57,7 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
             CheckLatestDockerImage(content, relativePath, findings);
             CheckWorkspacePersistRoot(content, relativePath, findings);
             CheckInlineSecrets(content, relativePath, findings);
-            CheckRemoteDockerNoVersion(content, relativePath, findings);
+            CheckRemoteDockerPreviewVersion(content, relativePath, findings);
         }
 
         return AnalyzerResult.Completed(findings);
@@ -156,21 +156,14 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
         }
     }
 
-    private static void CheckRemoteDockerNoVersion(string content, string relativePath, List<Finding> findings)
+    private static void CheckRemoteDockerPreviewVersion(string content, string relativePath, List<Finding> findings)
     {
-        var idx = content.IndexOf("setup_remote_docker", StringComparison.OrdinalIgnoreCase);
-        if (idx < 0)
-            return;
-
-        // Check if a version is specified nearby (within 200 chars after)
-        var after = content.Substring(idx, Math.Min(200, content.Length - idx));
-        if (after.Contains("version:", StringComparison.OrdinalIgnoreCase))
-            return;
-
-        findings.Add(CreateFinding("TRUST-CIRCLE005", "Remote Docker missing version",
-            Severity.Low, relativePath, "setup_remote_docker without explicit version.",
-            GetLineNumber(content, idx),
-            Confidence.Medium));
+        foreach (Match match in RemoteDockerEdgePattern().Matches(content))
+        {
+            findings.Add(CreateFinding("TRUST-CIRCLE005", "Remote Docker uses preview version",
+                Severity.Low, relativePath, "setup_remote_docker selects the floating edge version.",
+                GetLineNumber(content, match.Index)));
+        }
     }
 
     private static bool IsPlaceholder(string value)
@@ -245,4 +238,9 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?m)^\s*(?<key>\w*(?:TOKEN|SECRET|PASSWORD|PRIVATE_KEY|API_KEY)\w*)\s*:\s*(?<value>\S+)")]
     private static partial Regex InlineSecretPattern();
+
+    [GeneratedRegex(
+        @"setup_remote_docker\s*:\s*(?:\r?\n)+\s+version\s*:\s*['""]?edge['""]?",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex RemoteDockerEdgePattern();
 }
