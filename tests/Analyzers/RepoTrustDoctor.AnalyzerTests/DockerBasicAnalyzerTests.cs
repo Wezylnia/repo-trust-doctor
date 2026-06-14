@@ -316,7 +316,7 @@ public sealed class DockerBasicAnalyzerTests
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
         File.WriteAllText(filePath, """
         FROM php:8.4
-        RUN docker-php-ext-install grpc
+        RUN make extension
         """);
 
         var analyzer = new DockerBasicAnalyzer();
@@ -326,6 +326,25 @@ public sealed class DockerBasicAnalyzerTests
 
         Assert.DoesNotContain(result.Findings, finding =>
             finding.RuleId is "TRUST-DOCKER003" or "TRUST-DOCKER004" or "TRUST-DOCKER006");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_NestedRuntimeImageWithoutEntrypoint_StillChecksUser()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var filePath = Path.Combine(fixture.Path, "deploy", "web", "Dockerfile");
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, """
+        FROM nginx:1.29
+        COPY public /usr/share/nginx/html
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DOCKER003");
     }
 
     [Fact]

@@ -205,8 +205,9 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
     private static bool IsNestedBuildOnlyDockerfile(string relativePath, string content) =>
         relativePath.Contains('/', StringComparison.Ordinal) &&
-        (!RuntimeInstructionPattern().IsMatch(content) ||
-         TestRuntimeInstructionPattern().IsMatch(content));
+        (TestRuntimeInstructionPattern().IsMatch(content) ||
+         (!RuntimeInstructionPattern().IsMatch(content) &&
+          BuildInstructionPattern().IsMatch(content)));
 
     private static bool HasPathSegment(string relativePath, string segment) =>
         relativePath.Split('/').Contains(segment, StringComparer.OrdinalIgnoreCase);
