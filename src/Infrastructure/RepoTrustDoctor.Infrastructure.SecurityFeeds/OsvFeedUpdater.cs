@@ -6,7 +6,12 @@ namespace RepoTrustDoctor.Infrastructure.SecurityFeeds;
 public sealed record OsvEcosystemRefreshResult(
     string Ecosystem,
     string Mode,
-    int AdvisoryCount);
+    int AdvisoryCount)
+{
+    public string? Error { get; init; }
+
+    public bool Succeeded => Error is null;
+}
 
 public sealed class OsvFeedUpdater(
     LocalIntelligenceOptions options,
@@ -25,7 +30,17 @@ public sealed class OsvFeedUpdater(
         foreach (var ecosystem in options.OsvEcosystems)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            results.Add(await RefreshEcosystemAsync(ecosystem, cancellationToken));
+            try
+            {
+                results.Add(await RefreshEcosystemAsync(ecosystem, cancellationToken));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                results.Add(new OsvEcosystemRefreshResult(ecosystem, "failed", 0)
+                {
+                    Error = ex.Message
+                });
+            }
         }
 
         return results;

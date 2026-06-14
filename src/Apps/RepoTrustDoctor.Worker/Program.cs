@@ -14,6 +14,13 @@ var localIntelligenceOptions = builder.Configuration
 builder.Services.AddSingleton(localIntelligenceOptions);
 builder.Services.AddSingleton<IRepositoryScanRunner>(
     _ => new DefaultRepositoryScanRunner(localIntelligenceOptions));
+if (localIntelligenceOptions.BackgroundRefreshEnabled)
+{
+    builder.Services.AddSingleton(
+        _ => new LocalIntelligenceRefreshCoordinator(localIntelligenceOptions));
+    builder.Services.AddHostedService<LocalIntelligenceRefreshBackgroundService>();
+}
+
 builder.Services.AddSingleton<ScanJobProcessor>();
 builder.Services.AddHostedService<QueuedScanWorkerService>();
 

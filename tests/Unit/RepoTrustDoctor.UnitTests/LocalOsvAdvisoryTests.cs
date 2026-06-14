@@ -249,6 +249,33 @@ public sealed class LocalOsvAdvisoryTests
         Assert.Equal("GHSA-new", Assert.Single(Assert.Single(query.Packages).Advisories).Id);
     }
 
+    [Fact]
+    public async Task RefreshAsync_ContinuesAfterOneEcosystemFails()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var store = CreateStore(fixture.Path);
+        var source = new MultiEcosystemOsvFeedSource();
+        var options = new LocalIntelligenceOptions
+        {
+            OsvEcosystems = ["npm", "NuGet"]
+        };
+        var updater = new OsvFeedUpdater(
+            options,
+            store,
+            new OsvDumpImporter(store),
+            source);
+
+        var results = await updater.RefreshAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        Assert.False(results[0].Succeeded);
+        Assert.True(results[1].Succeeded);
+        var query = await new LocalOsvAdvisoryClient(store, null).QueryBatchAsync(
+            [CreatePackage(DependencyEcosystem.NuGet, "Example.Package", "1.0.0")],
+            TestContext.Current.CancellationToken);
+        Assert.Equal("GHSA-nuget", Assert.Single(Assert.Single(query.Packages).Advisories).Id);
+    }
+
     private static SqliteOsvAdvisoryStore CreateStore(string directory)
     {
         var options = new LocalIntelligenceOptions
@@ -383,5 +410,46 @@ public sealed class LocalOsvAdvisoryTests
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    private sealed class MultiEcosystemOsvFeedSource : IOsvFeedSource
+    {
+        public Task<Stream> OpenFullArchiveAsync(
+            string ecosystem,
+            CancellationToken cancellationToken)
+        {
+            if (ecosystem == "npm")
+            {
+                throw new HttpRequestException("simulated npm feed failure");
+            }
+
+            const string advisory = """
+                {
+                  "id": "GHSA-nuget",
+                  "summary": "NuGet advisory",
+                  "affected": [
+                    {
+                      "package": {
+                        "ecosystem": "NuGet",
+                        "name": "Example.Package"
+                      },
+                      "versions": ["1.0.0"]
+                    }
+                  ]
+                }
+                """;
+            return Task.FromResult<Stream>(CreateArchive(advisory));
+        }
+
+        public Task<string> GetModifiedIndexAsync(
+            string ecosystem,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(string.Empty);
+
+        public Task<string> GetAdvisoryAsync(
+            string ecosystem,
+            string advisoryId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(string.Empty);
     }
 }
