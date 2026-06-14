@@ -157,6 +157,25 @@ public sealed class PnpmAndYarnLockInventoryTests
         Assert.DoesNotContain("versionSource", package.Metadata!.Keys);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_YarnAlias_UsesDeclaredSelectorAndRealPackageIdentity()
+    {
+        using var fixture = TemporaryRepository.Create();
+        WritePackageJson(fixture.Path, "compat-package", "npm:real-package@^3.0.0");
+        File.WriteAllText(Path.Combine(fixture.Path, "yarn.lock"), """
+        "compat-package@npm:real-package@^3.0.0":
+          version "3.2.1"
+        """);
+
+        var package = await AnalyzeSinglePackageAsync(fixture.Path);
+
+        Assert.Equal("real-package", package.Name);
+        Assert.Equal("3.2.1", package.Version);
+        Assert.True(package.IsVersionPinned);
+        Assert.Equal("compat-package", package.Metadata!["declaredName"]);
+        Assert.Equal("yarn-lock", package.Metadata["versionSource"]);
+    }
+
     private static void WritePackageJson(string directory, string packageName, string version)
     {
         File.WriteAllText(Path.Combine(directory, "package.json"), $$"""

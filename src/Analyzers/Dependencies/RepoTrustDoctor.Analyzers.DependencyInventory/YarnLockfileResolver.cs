@@ -120,7 +120,11 @@ internal sealed class YarnLockfileResolver : INpmLockfileResolver
         var requestedVersion = selector[(separator + 1)..];
         if (requestedVersion.StartsWith("npm:", StringComparison.OrdinalIgnoreCase))
         {
-            requestedVersion = requestedVersion["npm:".Length..];
+            var npmTarget = requestedVersion["npm:".Length..];
+            if (FindVersionSeparator(npmTarget) < 0)
+            {
+                requestedVersion = npmTarget;
+            }
         }
 
         return BuildSelector(packageName, requestedVersion);

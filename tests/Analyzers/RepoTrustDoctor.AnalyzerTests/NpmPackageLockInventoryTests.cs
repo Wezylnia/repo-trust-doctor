@@ -159,7 +159,7 @@ public sealed class NpmPackageLockInventoryTests
     }
 
     [Fact]
-    public async Task AnalyzeAsync_NpmAliasIsNotResolvedAsAliasedPackageName()
+    public async Task AnalyzeAsync_NpmAliasResolvesRegistryIdentityAndLockedVersion()
     {
         using var fixture = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fixture.Path, "package.json"), """
@@ -181,11 +181,34 @@ public sealed class NpmPackageLockInventoryTests
         }
         """);
 
-        var package = Assert.Single((await AnalyzeAsync(fixture.Path)).Packages, item => item.Name == "compat-package");
+        var package = Assert.Single((await AnalyzeAsync(fixture.Path)).Packages, item => item.Name == "real-package");
 
-        Assert.Equal("npm:real-package@^3.0.0", package.Version);
-        Assert.False(package.IsVersionPinned);
-        Assert.Equal("alias", package.Metadata?["sourceKind"]);
+        Assert.Equal("3.2.1", package.Version);
+        Assert.True(package.IsVersionPinned);
+        Assert.Equal("registry", package.Metadata?["sourceKind"]);
+        Assert.Equal("compat-package", package.Metadata?["declaredName"]);
+        Assert.Equal("real-package", package.Metadata?["aliasTarget"]);
+        Assert.Equal("npm:real-package@^3.0.0", package.Metadata?["requestedSpec"]);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ExactNpmAliasIsPinnedWithoutLockfile()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "package.json"), """
+        {
+          "dependencies": {
+            "compat-package": "npm:@scope/real-package@2.4.1"
+          }
+        }
+        """);
+
+        var package = Assert.Single((await AnalyzeAsync(fixture.Path)).Packages);
+
+        Assert.Equal("@scope/real-package", package.Name);
+        Assert.Equal("2.4.1", package.Version);
+        Assert.True(package.IsVersionPinned);
+        Assert.Equal("compat-package", package.Metadata?["declaredName"]);
     }
 
     private static async Task<DependencyInventoryArtifact> AnalyzeAsync(string repositoryPath)

@@ -81,7 +81,6 @@ internal sealed partial class NpmPackageLockResolver : INpmLockfileResolver
         foreach (var key in CandidatePackagePaths(relativeManifestDirectory, packageName))
         {
             if (packagesByPath.TryGetValue(key, out var package) &&
-                PackageMatches(package, packageName) &&
                 IsExactVersion(package.Version))
             {
                 version = package.Version;
@@ -90,7 +89,6 @@ internal sealed partial class NpmPackageLockResolver : INpmLockfileResolver
         }
 
         if (rootDependencies.TryGetValue(packageName, out var rootPackage) &&
-            PackageMatches(rootPackage, packageName) &&
             IsExactVersion(rootPackage.Version))
         {
             version = rootPackage.Version;
@@ -173,10 +171,6 @@ internal sealed partial class NpmPackageLockResolver : INpmLockfileResolver
             current = separator < 0 ? string.Empty : current[..separator];
         }
     }
-
-    private static bool PackageMatches(LockedPackage package, string requestedName) =>
-        string.IsNullOrWhiteSpace(package.Name) ||
-        package.Name.Equals(requestedName, StringComparison.OrdinalIgnoreCase);
 
     private static bool TryReadVersion(JsonElement element, out string version)
     {

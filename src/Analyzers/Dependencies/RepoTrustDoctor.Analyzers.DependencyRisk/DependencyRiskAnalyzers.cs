@@ -50,6 +50,7 @@ public sealed class PackageMetadataAnalyzer : IRepositoryAnalyzer
                     package.IsDirect &&
                     package.IsVersionPinned &&
                     !string.IsNullOrWhiteSpace(package.Version) &&
+                    DependencyRiskPathFilters.IsRegistryLookupEligible(package) &&
                     !DependencyRiskPathFilters.IsLikelyExampleOrTestManifest(package.ManifestPath)))
             .ToArray();
         var packages = candidates
@@ -152,14 +153,6 @@ public sealed class PackageMetadataAnalyzer : IRepositoryAnalyzer
     }
 
     private sealed record PackageMetadataLookup(PackageRegistryMetadata? Metadata, string? Warning);
-}
-
-internal static class DependencyRiskPathFilters
-{
-    public static bool IsLikelyExampleOrTestManifest(string manifestPath)
-    {
-        return RepositoryPathClassifier.IsTestFixtureExampleOrDocumentationPath(manifestPath);
-    }
 }
 
 public sealed class PackageFreshnessAnalyzer : IRepositoryAnalyzer
@@ -295,6 +288,7 @@ public sealed class DependencyVulnerabilityAnalyzer : IRepositoryAnalyzer
         var candidates = PackageMetadataAnalyzer.DistinctPackagesForLookup(inventory.Packages
                  .Where(package =>
                      !string.IsNullOrWhiteSpace(package.Version) &&
+                     DependencyRiskPathFilters.IsRegistryLookupEligible(package) &&
                      !DependencyRiskPathFilters.IsLikelyExampleOrTestManifest(package.ManifestPath))
                  .OrderByDescending(package => package.IsDirect))
                  .ToArray();

@@ -108,12 +108,12 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
         foreach (var dependency in section.EnumerateObject())
         {
             var version = dependency.Value.ValueKind == JsonValueKind.String ? dependency.Value.GetString() : null;
-            var requestedVersion = DependencyInventorySupport.NormalizeVersion(version);
-            var sourceKind = ClassifyVersionSpec(requestedVersion);
+            var requestedSpec = DependencyInventorySupport.NormalizeVersion(version);
+            var spec = NpmDependencySpecParser.Parse(dependency.Name, requestedSpec);
             var resolved = TryResolveLockedVersion(
-                dependency.Name,
-                requestedVersion,
-                sourceKind,
+                spec.DeclaredName,
+                spec.LockSelector,
+                spec.SourceKind,
                 manifestDirectory,
                 coveringLockfiles,
                 lockResolvers,
@@ -122,23 +122,36 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
                 out var resolvedVersion,
                 out var resolvingLockfile,
                 out var versionSource);
-            var effectiveVersion = resolved ? resolvedVersion : requestedVersion;
+            var effectiveVersion = resolved ? resolvedVersion : spec.EffectiveVersion;
             var pinned = IsPinnedVersion(effectiveVersion);
             var prerelease = DependencyInventorySupport.IsPrereleaseVersion(effectiveVersion);
             var metadata = new Dictionary<string, string>
             {
                 ["section"] = sectionName,
-                ["sourceKind"] = sourceKind.Kind
+                ["sourceKind"] = spec.SourceKind.Kind,
+                ["requestedSpec"] = requestedSpec ?? string.Empty
             };
+            if (spec.IsAlias)
+            {
+                metadata["declaredName"] = spec.DeclaredName;
+                metadata["aliasTarget"] = spec.PackageName;
+                metadata["protocol"] = "npm-alias";
+            }
+
+            if (spec.SourceKind.Kind.Equals("workspace", StringComparison.OrdinalIgnoreCase))
+            {
+                metadata["registryLookup"] = bool.FalseString;
+            }
+
             if (resolved)
             {
-                metadata["requestedVersion"] = requestedVersion ?? string.Empty;
+                metadata["requestedVersion"] = spec.EffectiveVersion ?? string.Empty;
                 metadata["versionSource"] = versionSource!;
             }
 
             state.Packages.Add(new DependencyPackageInfo(
                 DependencyEcosystem.Npm,
-                dependency.Name,
+                spec.PackageName,
                 effectiveVersion,
                 scope,
                 manifestPath,
@@ -149,12 +162,12 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
                 metadata));
 
             AddVersionFindings(
-                dependency.Name,
+                spec.PackageName,
                 sectionName,
-                requestedVersion,
+                spec.EffectiveVersion,
                 pinned,
                 prerelease,
-                sourceKind,
+                spec.SourceKind,
                 manifestPath,
                 coveringLockfiles.Length > 0,
                 IsLowSignalPrereleaseManifest(manifestPath),
@@ -344,35 +357,6 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
     private static bool IsPinnedVersion(string? version) =>
         NpmPackageLockResolver.IsExactVersion(version);
 
-    private static NpmSourceKind ClassifyVersionSpec(string? version)
-    {
-        if (string.IsNullOrWhiteSpace(version))
-        {
-            return new NpmSourceKind("registry", false, false);
-        }
-
-        var value = version.Trim();
-        if (value.StartsWith("git+", StringComparison.OrdinalIgnoreCase) ||
-            value.StartsWith("git://", StringComparison.OrdinalIgnoreCase) ||
-            value.StartsWith("github:", StringComparison.OrdinalIgnoreCase) ||
-            value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-            value.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
-            value.Contains(".git#", StringComparison.OrdinalIgnoreCase))
-        {
-            return new NpmSourceKind("remote", true, false);
-        }
-
-        return value.StartsWith("file:", StringComparison.OrdinalIgnoreCase) ||
-               value.StartsWith("link:", StringComparison.OrdinalIgnoreCase) ||
-            value.StartsWith("portal:", StringComparison.OrdinalIgnoreCase)
-            ? new NpmSourceKind("local", false, true)
-            : value.StartsWith("npm:", StringComparison.OrdinalIgnoreCase)
-            ? new NpmSourceKind("alias", false, false)
-            : value.StartsWith("workspace:", StringComparison.OrdinalIgnoreCase)
-            ? new NpmSourceKind("workspace", false, false)
-            : new NpmSourceKind("registry", false, false);
-    }
-
     private static string[] FindCoveringLockfiles(string repositoryPath, string manifestDirectory)
     {
         var root = Path.GetFullPath(repositoryPath);
@@ -460,8 +444,6 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
 
         return false;
     }
-
-    private sealed record NpmSourceKind(string Kind, bool IsRemote, bool IsLocal);
 
     private sealed record NpmLocalSourceDependency(string Name, string SectionName, string Version);
 }
