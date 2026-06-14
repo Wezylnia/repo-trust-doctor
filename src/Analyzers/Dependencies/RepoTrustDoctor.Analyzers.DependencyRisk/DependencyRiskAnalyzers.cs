@@ -86,7 +86,13 @@ public sealed class PackageMetadataAnalyzer : IRepositoryAnalyzer
             ["dependency.metadata.unsupported.count"] = (candidates.Length - packages.Length).ToString(),
             ["dependency.metadata.lookup.completed.count"] = lookupResults.CompletedCount.ToString(),
             ["dependency.metadata.lookup.incomplete.count"] = (lookupResults.TotalCount - lookupResults.CompletedCount).ToString(),
-            ["dependency.metadata.package.count"] = metadata.Count.ToString()
+            ["dependency.metadata.package.count"] = metadata.Count.ToString(),
+            ["dependency.metadata.cache.hit.count"] = metadata.Count(item =>
+                item.Metadata?.TryGetValue("lookup.source", out var source) == true &&
+                source.StartsWith("sqlite", StringComparison.OrdinalIgnoreCase)).ToString(),
+            ["dependency.metadata.network.count"] = metadata.Count(item =>
+                item.Metadata?.TryGetValue("lookup.source", out var source) == true &&
+                source.Equals("network", StringComparison.OrdinalIgnoreCase)).ToString()
         };
         var artifact = new PackageMetadataArtifact(metadata, metrics);
         return AnalyzerResult.Completed([], [new AnalyzerArtifact(PackageMetadataArtifact.ArtifactKey, artifact)], metrics, warnings);

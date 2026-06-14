@@ -19,6 +19,7 @@ using RepoTrustDoctor.Analyzers.Secrets;
 using RepoTrustDoctor.Application.Scanning;
 using RepoTrustDoctor.Domain;
 using RepoTrustDoctor.Infrastructure.Git;
+using RepoTrustDoctor.Infrastructure.LocalData;
 using RepoTrustDoctor.Infrastructure.PackageRegistries;
 using RepoTrustDoctor.Infrastructure.SecurityFeeds;
 using RepoTrustDoctor.Scoring;
@@ -27,17 +28,35 @@ namespace RepoTrustDoctor.Infrastructure.Scanning;
 
 public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
 {
+    private readonly LocalIntelligenceOptions localOptions;
+
+    public DefaultRepositoryScanRunner()
+        : this(LocalIntelligenceOptions.CreateDefault())
+    {
+    }
+
+    public DefaultRepositoryScanRunner(LocalIntelligenceOptions localOptions)
+    {
+        this.localOptions = localOptions;
+    }
+
     public async Task<RepositoryScan> RunAsync(ScanRequestOptions options, CancellationToken cancellationToken)
     {
         using var workspace = await PrepareWorkspaceAsync(options.Target, cancellationToken);
-        var orchestrator = new ScanOrchestrator(CreateAnalyzers(), new AnalyzerExecutor(), new TrustScorer());
+        var orchestrator = new ScanOrchestrator(
+            CreateAnalyzers(localOptions),
+            new AnalyzerExecutor(),
+            new TrustScorer());
         return await orchestrator.RunAsync(options.Target, workspace.Path, options.Depth, options.TrustProfile, cancellationToken);
     }
 
-    public static IReadOnlyList<IRepositoryAnalyzer> CreateAnalyzers()
+    public static IReadOnlyList<IRepositoryAnalyzer> CreateAnalyzers(
+        LocalIntelligenceOptions? localOptions = null)
     {
+        localOptions ??= LocalIntelligenceOptions.CreateDefault();
         var packageLookup = new SafeHttpLookup(["api.nuget.org", "registry.npmjs.org", "pypi.org"]);
         var osvLookup = new SafeHttpLookup(["api.osv.dev"]);
+        var metadataClients = CreateMetadataClients(packageLookup, localOptions);
         return
         [
             new RepositoryHealthAnalyzer(),
@@ -61,18 +80,38 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
             new PublicApiAnalyzer(),
             new ImportGraphAnalyzer(),
             new FrameworkRouteAnalyzer(),
-            new PackageMetadataAnalyzer(
-            [
-                new NuGetPackageMetadataClient(packageLookup),
-                new NpmPackageMetadataClient(packageLookup),
-                new PyPiPackageMetadataClient(packageLookup),
-                new MavenCentralPackageMetadataClient(packageLookup)
-            ]),
+            new PackageMetadataAnalyzer(metadataClients),
             new PackageFreshnessAnalyzer(),
             new DependencyVulnerabilityAnalyzer(new OsvAdvisoryClient(osvLookup)),
             new DependencyLicenseAnalyzer(),
             new PackageOriginAnalyzer()
         ];
+    }
+
+    private static IReadOnlyCollection<IPackageMetadataClient> CreateMetadataClients(
+        SafeHttpLookup packageLookup,
+        LocalIntelligenceOptions options)
+    {
+        IPackageMetadataClient[] clients =
+        [
+            new NuGetPackageMetadataClient(packageLookup),
+            new NpmPackageMetadataClient(packageLookup),
+            new PyPiPackageMetadataClient(packageLookup),
+            new MavenCentralPackageMetadataClient(packageLookup)
+        ];
+        if (!options.RegistryCacheEnabled)
+        {
+            return clients;
+        }
+
+        var database = new LocalIntelligenceDatabase(options);
+        var cache = new SqlitePackageMetadataCache(database);
+        return clients
+            .Select(client => (IPackageMetadataClient)new CachingPackageMetadataClient(
+                client,
+                cache,
+                options.RegistryCacheTtl))
+            .ToArray();
     }
 
     private static Task<RepositoryWorkspace> PrepareWorkspaceAsync(string target, CancellationToken cancellationToken)

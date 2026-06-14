@@ -1,5 +1,6 @@
 using RepoTrustDoctor.Application.Scanning;
 using RepoTrustDoctor.Infrastructure.Scanning;
+using RepoTrustDoctor.Infrastructure.LocalData;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -7,7 +8,12 @@ builder.Services.AddSingleton<IScanStore, InMemoryScanStore>();
 builder.Services.AddSingleton<IScanJobQueue, InMemoryScanJobQueue>();
 builder.Services.AddSingleton<ScanRequestValidator>();
 builder.Services.AddSingleton<ScanCoordinator>();
-builder.Services.AddSingleton<IRepositoryScanRunner, DefaultRepositoryScanRunner>();
+var localIntelligenceOptions = builder.Configuration
+    .GetSection("RepoTrustDoctor:LocalIntelligence")
+    .Get<LocalIntelligenceOptions>() ?? LocalIntelligenceOptions.CreateDefault();
+builder.Services.AddSingleton(localIntelligenceOptions);
+builder.Services.AddSingleton<IRepositoryScanRunner>(
+    _ => new DefaultRepositoryScanRunner(localIntelligenceOptions));
 builder.Services.AddSingleton<ScanJobProcessor>();
 builder.Services.AddHostedService<QueuedScanWorkerService>();
 

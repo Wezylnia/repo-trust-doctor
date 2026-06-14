@@ -18,7 +18,7 @@ public sealed class LocalIntelligenceDatabase
             DataSource = DatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
             Cache = SqliteCacheMode.Shared,
-            Pooling = true,
+            Pooling = options.ConnectionPoolingEnabled,
             DefaultTimeout = 30
         };
         connectionString = builder.ToString();

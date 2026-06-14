@@ -4,6 +4,8 @@ public sealed record LocalIntelligenceOptions
 {
     public string DatabasePath { get; init; } = DefaultDatabasePath();
 
+    public bool ConnectionPoolingEnabled { get; init; } = true;
+
     public bool RegistryCacheEnabled { get; init; } = true;
 
     public TimeSpan RegistryCacheTtl { get; init; } = TimeSpan.FromHours(24);
