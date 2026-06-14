@@ -453,6 +453,66 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_CargoLock_ResolvesOnlyUnambiguousRegistryVersions()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.toml"), """
+        [package]
+        name = "sample"
+        version = "0.1.0"
+
+        [dependencies]
+        tokio = "1"
+        serde = "1"
+        http_alias = { package = "http", version = "1" }
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "Cargo.lock"), """
+        version = 4
+
+        [[package]]
+        name = "http"
+        version = "1.3.1"
+        source = "registry+https://github.com/rust-lang/crates.io-index"
+
+        [[package]]
+        name = "serde"
+        version = "1.0.210"
+        source = "registry+https://github.com/rust-lang/crates.io-index"
+
+        [[package]]
+        name = "serde"
+        version = "1.0.219"
+        source = "registry+https://github.com/rust-lang/crates.io-index"
+
+        [[package]]
+        name = "tokio"
+        version = "1.45.1"
+        source = "registry+https://github.com/rust-lang/crates.io-index"
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        var inventory = GetInventory(result);
+        var tokio = Assert.Single(inventory.Packages, package => package.Name == "tokio");
+        Assert.Equal("1.45.1", tokio.Version);
+        Assert.True(tokio.IsVersionPinned);
+        Assert.Equal("Cargo.lock", tokio.LockfilePath);
+        Assert.Equal("1", tokio.Metadata?["requestedVersion"]);
+
+        var aliased = Assert.Single(inventory.Packages, package => package.Name == "http");
+        Assert.Equal("1.3.1", aliased.Version);
+        Assert.Equal("http_alias", aliased.Metadata?["manifestAlias"]);
+
+        var serde = Assert.Single(inventory.Packages, package => package.Name == "serde");
+        Assert.Equal("1", serde.Version);
+        Assert.False(serde.IsVersionPinned);
+        Assert.Null(serde.LockfilePath);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_CargoWorkspaceLock_CoversMemberManifests()
     {
         using var fixture = TemporaryRepository.Create();

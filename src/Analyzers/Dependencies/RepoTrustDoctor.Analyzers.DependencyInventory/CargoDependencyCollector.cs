@@ -43,7 +43,14 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Cargo, relativePath, "Cargo.toml"));
 
-        var hasCargoLock = HasCargoLock(filePath, workspaceLockRoots);
+        var cargoLockPath = FindCargoLock(filePath, workspaceLockRoots);
+        var hasCargoLock = cargoLockPath is not null;
+        var lockfile = cargoLockPath is not null
+            ? CargoLockfileResolver.TryCreate(
+                cargoLockPath,
+                DependencyInventorySupport.Relative(context, cargoLockPath),
+                state)
+            : null;
         if (!hasCargoLock)
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
@@ -77,7 +84,7 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
 
             if (line.StartsWith('[') && line.EndsWith(']'))
             {
-                FlushCargoTableDependency(ref tableDependency, context.RepositoryPath, relativePath, hasCargoLock, state);
+                FlushCargoTableDependency(ref tableDependency, context.RepositoryPath, relativePath, hasCargoLock, lockfile, state);
 
                 if (CargoDependencyParsing.TryParseDependencyTable(line, out var tableCrateName, out var tableScope))
                 {
@@ -128,32 +135,38 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
 
             if (valuePart.StartsWith('{'))
             {
-                ParseCargoInlineTable(context.RepositoryPath, relativePath, crateName, valuePart, scope, hasCargoLock, state);
+                ParseCargoInlineTable(context.RepositoryPath, relativePath, crateName, valuePart, scope, hasCargoLock, lockfile, state);
             }
             else
             {
-                ParseCargoSimpleVersion(relativePath, crateName, valuePart.Trim('"'), scope, hasCargoLock, state);
+                ParseCargoSimpleVersion(relativePath, crateName, valuePart.Trim('"'), scope, hasCargoLock, lockfile, state);
             }
         }
 
-        FlushCargoTableDependency(ref tableDependency, context.RepositoryPath, relativePath, hasCargoLock, state);
+        FlushCargoTableDependency(ref tableDependency, context.RepositoryPath, relativePath, hasCargoLock, lockfile, state);
     }
 
-    private static bool HasCargoLock(string cargoTomlPath, IReadOnlyCollection<string> workspaceLockRoots)
+    private static string? FindCargoLock(
+        string cargoTomlPath,
+        IReadOnlyCollection<string> workspaceLockRoots)
     {
         var directory = Path.GetDirectoryName(cargoTomlPath);
         if (directory == null)
         {
-            return false;
+            return null;
         }
 
         var cargoLockPath = Path.Combine(directory, "Cargo.lock");
         if (File.Exists(cargoLockPath))
         {
-            return true;
+            return cargoLockPath;
         }
 
-        return workspaceLockRoots.Any(root => CargoDependencyParsing.IsSameOrChildPath(directory, root));
+        var workspaceRoot = workspaceLockRoots
+            .Where(root => CargoDependencyParsing.IsSameOrChildPath(directory, root))
+            .OrderByDescending(root => root.Length)
+            .FirstOrDefault();
+        return workspaceRoot is null ? null : Path.Combine(workspaceRoot, "Cargo.lock");
     }
 
     private void ParseCargoInlineTable(
@@ -163,6 +176,7 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         string valuePart,
         DependencyScope scope,
         bool hasCargoLock,
+        CargoLockfileResolver? lockfile,
         DependencyInventoryState state)
     {
         // Extract version from inline table like { version = "1.2.3", features = [...] }
@@ -174,8 +188,19 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
             : null;
         var isPath = pathSource != null;
         var isRepositoryLocalPath = CargoDependencyParsing.IsRepositoryLocalPathDependency(repositoryPath, manifestPath, pathSource);
+        var packageName = CargoDependencyParsing.ExtractInlineValue(valuePart, "package") ?? crateName;
+        var resolvedVersion = string.Empty;
+        var resolved = !isGit &&
+                       !isPath &&
+                       lockfile is not null &&
+                       lockfile.TryResolve(packageName, out resolvedVersion);
+        var effectiveVersion = resolved ? resolvedVersion : version;
 
         var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!packageName.Equals(crateName, StringComparison.OrdinalIgnoreCase))
+        {
+            metadata["manifestAlias"] = crateName;
+        }
         if (isGit)
         {
             metadata["sourceKind"] = "git";
@@ -208,17 +233,22 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
                     "Review path-sourced dependencies because they can bypass registry provenance and may depend on local filesystem state."));
             }
         }
+        if (resolved)
+        {
+            metadata["requestedVersion"] = version ?? string.Empty;
+            metadata["versionSource"] = "Cargo.lock";
+        }
 
-        var isPinned = CargoDependencyParsing.IsExactRequirement(version);
-        var isPrerelease = DependencyInventorySupport.IsPrereleaseVersion(version);
+        var isPinned = resolved || CargoDependencyParsing.IsExactRequirement(version);
+        var isPrerelease = DependencyInventorySupport.IsPrereleaseVersion(effectiveVersion);
 
         state.Packages.Add(new DependencyPackageInfo(
             DependencyEcosystem.Cargo,
-            crateName,
-            version,
+            packageName,
+            effectiveVersion,
             scope,
             manifestPath,
-            null,
+            resolved ? lockfile!.RelativePath : null,
             true,
             isPinned,
             isPrerelease,
@@ -258,6 +288,7 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         string repositoryPath,
         string manifestPath,
         bool hasCargoLock,
+        CargoLockfileResolver? lockfile,
         DependencyInventoryState state)
     {
         if (tableDependency is null)
@@ -278,6 +309,10 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
         {
             parts.Add($"path = \"{tableDependency.Path}\"");
         }
+        if (!string.IsNullOrWhiteSpace(tableDependency.Package))
+        {
+            parts.Add($"package = \"{tableDependency.Package}\"");
+        }
 
         ParseCargoInlineTable(
             repositoryPath,
@@ -286,26 +321,45 @@ internal sealed partial class CargoDependencyCollector : IDependencyInventoryCol
             "{ " + string.Join(", ", parts) + " }",
             tableDependency.Scope,
             hasCargoLock,
+            lockfile,
             state);
         tableDependency = null;
     }
 
-    private void ParseCargoSimpleVersion(string manifestPath, string crateName, string version, DependencyScope scope, bool hasCargoLock, DependencyInventoryState state)
+    private void ParseCargoSimpleVersion(
+        string manifestPath,
+        string crateName,
+        string version,
+        DependencyScope scope,
+        bool hasCargoLock,
+        CargoLockfileResolver? lockfile,
+        DependencyInventoryState state)
     {
-        var isPinned = CargoDependencyParsing.IsExactRequirement(version);
-        var isPrerelease = DependencyInventorySupport.IsPrereleaseVersion(version);
+        var resolvedVersion = string.Empty;
+        var resolved = lockfile is not null &&
+                       lockfile.TryResolve(crateName, out resolvedVersion);
+        var effectiveVersion = resolved ? resolvedVersion : version;
+        var isPinned = resolved || CargoDependencyParsing.IsExactRequirement(version);
+        var isPrerelease = DependencyInventorySupport.IsPrereleaseVersion(effectiveVersion);
+        IReadOnlyDictionary<string, string>? metadata = resolved
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["requestedVersion"] = version,
+                ["versionSource"] = "Cargo.lock"
+            }
+            : null;
 
         state.Packages.Add(new DependencyPackageInfo(
             DependencyEcosystem.Cargo,
             crateName,
-            version,
+            effectiveVersion,
             scope,
             manifestPath,
-            null,
+            resolved ? lockfile!.RelativePath : null,
             true,
             isPinned,
             isPrerelease,
-            null));
+            metadata));
 
         if (!isPinned && !hasCargoLock)
         {

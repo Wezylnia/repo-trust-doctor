@@ -105,6 +105,10 @@ internal static partial class CargoDependencyParsing
         {
             tableDependency.Path = value;
         }
+        else if (key.Equals("package", StringComparison.OrdinalIgnoreCase))
+        {
+            tableDependency.Package = value;
+        }
     }
 
     internal static string? ExtractInlineValue(string inlineTable, string key)
@@ -229,6 +233,8 @@ internal sealed class CargoTableDependency(string crateName, DependencyScope sco
     public string? Git { get; set; }
 
     public string? Path { get; set; }
+
+    public string? Package { get; set; }
 }
 
 internal enum CargoSection
