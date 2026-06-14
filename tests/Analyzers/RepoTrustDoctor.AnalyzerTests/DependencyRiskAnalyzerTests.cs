@@ -235,6 +235,61 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
+    public async Task DependencyVulnerabilityAnalyzer_MergesAliasAdvisories()
+    {
+        var context = CreateContextWithInventory([
+            CreatePackage(DependencyEcosystem.Npm, "vulnerable-lib", "1.0.0")
+        ]);
+        var analyzer = new DependencyVulnerabilityAnalyzer(new FakeOsvClient([
+            new VulnerabilityAdvisory(
+                "GHSA-example",
+                ["CVE-2026-1234"],
+                "GitHub advisory",
+                Severity.High,
+                ["1.1.0"],
+                null,
+                new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero)),
+            new VulnerabilityAdvisory(
+                "NPM-2026-1",
+                ["CVE-2026-1234"],
+                "Registry advisory with more detail",
+                Severity.Critical,
+                ["1.0.5"],
+                null,
+                new DateTimeOffset(2026, 6, 2, 0, 0, 0, TimeSpan.Zero))
+        ]));
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        var vulnerability = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-VULN001");
+        Assert.Equal(Severity.Critical, vulnerability.Severity);
+        Assert.Contains("CVE-2026-1234", vulnerability.Message, StringComparison.Ordinal);
+        Assert.Contains("GHSA-example", vulnerability.Tags!);
+        Assert.Contains("NPM-2026-1", vulnerability.Tags!);
+
+        var fixedVersion = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-VULN003");
+        Assert.Contains("1.0.5", fixedVersion.Evidence[0].Message, StringComparison.Ordinal);
+        Assert.Contains("1.1.0", fixedVersion.Evidence[0].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DependencyVulnerabilityAnalyzer_MergesTransitivelyConnectedAliases()
+    {
+        var context = CreateContextWithInventory([
+            CreatePackage(DependencyEcosystem.Npm, "vulnerable-lib", "1.0.0")
+        ]);
+        var analyzer = new DependencyVulnerabilityAnalyzer(new FakeOsvClient([
+            new VulnerabilityAdvisory("GHSA-chain", ["CVE-2026-5678"], "first", Severity.High, [], null, null),
+            new VulnerabilityAdvisory("NPM-CHAIN", ["GHSA-chain"], "second", Severity.High, [], null, null),
+            new VulnerabilityAdvisory("OSV-CHAIN", ["NPM-CHAIN"], "third", Severity.High, [], null, null)
+        ]));
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-VULN001");
+    }
+
+    [Fact]
     public async Task DependencyVulnerabilityAnalyzer_ReportsDirectBeforeDuplicateTransitive()
     {
         var context = CreateContextWithInventory([

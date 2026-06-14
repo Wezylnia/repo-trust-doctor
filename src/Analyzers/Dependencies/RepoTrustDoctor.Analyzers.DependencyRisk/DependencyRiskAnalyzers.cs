@@ -333,7 +333,8 @@ public sealed class DependencyVulnerabilityAnalyzer : IRepositoryAnalyzer
             cancellationToken.ThrowIfCancellationRequested();
             var package = lookupResult.Package;
 
-            foreach (var advisory in lookupResult.Advisories)
+            foreach (var advisory in VulnerabilityAdvisoryDeduplicator.MergeAliases(
+                         lookupResult.Advisories))
             {
                 var reportKey = $"{package.Ecosystem}:{package.Name}:{package.Version}:{advisory.Id}";
                 if (!reported.Add(reportKey))
@@ -351,7 +352,7 @@ public sealed class DependencyVulnerabilityAnalyzer : IRepositoryAnalyzer
                     "vulnerability-advisory",
                     $"Advisory `{advisory.Id}`: {advisory.Summary}",
                     "Review the advisory and update the dependency to a fixed version when available.",
-                    tags: ["vulnerability", advisory.Id]));
+                    tags: BuildVulnerabilityTags(advisory)));
 
                 if (advisory.FixedVersions.Count > 0)
                 {
@@ -364,7 +365,7 @@ public sealed class DependencyVulnerabilityAnalyzer : IRepositoryAnalyzer
                         "vulnerability-advisory",
                         $"Fixed versions include `{string.Join(", ", advisory.FixedVersions.Take(3))}`.",
                         $"Upgrade `{package.Name}` to a fixed version listed by advisory `{advisory.Id}`.",
-                        tags: ["vulnerability", advisory.Id]));
+                        tags: BuildVulnerabilityTags(advisory)));
                 }
             }
         }
@@ -410,6 +411,14 @@ public sealed class DependencyVulnerabilityAnalyzer : IRepositoryAnalyzer
         Severity.High => Severity.Medium,
         _ => severity
     };
+
+    private static IReadOnlyList<string> BuildVulnerabilityTags(
+        VulnerabilityAdvisory advisory) =>
+        advisory.Aliases
+            .Prepend(advisory.Id)
+            .Prepend("vulnerability")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
 }
 
