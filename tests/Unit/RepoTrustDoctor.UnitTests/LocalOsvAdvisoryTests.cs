@@ -220,6 +220,54 @@ public sealed class LocalOsvAdvisoryTests
     }
 
     [Fact]
+    public async Task QueryBatchAsync_MergesCertainLocalAdvisoriesWithOnlineFallback()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var store = CreateStore(fixture.Path);
+        await ImportAsync(store, "Go", """
+        {
+          "id": "GO-EXPLICIT",
+          "affected": [
+            {
+              "package": { "ecosystem": "Go", "name": "github.com/acme/tool" },
+              "versions": ["1.0.0"]
+            }
+          ]
+        }
+        """);
+        await new OsvDumpImporter(store).ImportAdvisoryAsync(
+            "Go",
+            """
+            {
+              "id": "GO-INCONCLUSIVE",
+              "affected": [
+                {
+                  "package": { "ecosystem": "Go", "name": "github.com/acme/tool" },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [{ "introduced": "0" }]
+                    }
+                  ]
+                }
+              ]
+            }
+            """,
+            CancellationToken.None);
+        var fallback = new StubOsvClient();
+        var client = new LocalOsvAdvisoryClient(store, fallback);
+
+        var result = await client.QueryBatchAsync(
+            [CreatePackage(DependencyEcosystem.Go, "github.com/acme/tool", "1.0.0")],
+            CancellationToken.None);
+
+        var advisories = Assert.Single(result.Packages).Advisories;
+        Assert.Contains(advisories, advisory => advisory.Id == "GO-EXPLICIT");
+        Assert.Contains(advisories, advisory => advisory.Id == "ONLINE-1");
+        Assert.Equal(1, fallback.BatchRequestCount);
+    }
+
+    [Fact]
     public void ParseModifiedIndex_AcceptsOfficialTimestampFirstFormat()
     {
         var result = OsvFeedUpdater.ParseModifiedIndex("""
@@ -272,6 +320,36 @@ public sealed class LocalOsvAdvisoryTests
 
         Assert.Empty(Assert.Single(oldResult.Packages).Advisories);
         Assert.Equal("GHSA-new", Assert.Single(Assert.Single(newResult.Packages).Advisories).Id);
+    }
+
+    [Fact]
+    public async Task ImportAdvisoryAsync_RemovesStaleMappingsWhenAdvisoryNoLongerAffectsEcosystem()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var store = CreateStore(fixture.Path);
+        await ImportAsync(store, "npm", AdvisoryWithExplicitVersion("GHSA-moved", "old-package", "1.0.0"));
+        var importer = new OsvDumpImporter(store);
+
+        var imported = await importer.ImportAdvisoryAsync(
+            "npm",
+            """
+            {
+              "id": "GHSA-moved",
+              "affected": [
+                {
+                  "package": { "ecosystem": "Maven", "name": "com.acme:library" },
+                  "versions": ["1.0.0"]
+                }
+              ]
+            }
+            """,
+            CancellationToken.None);
+
+        var result = await new LocalOsvAdvisoryClient(store, null).QueryBatchAsync(
+            [CreatePackage(DependencyEcosystem.Npm, "old-package", "1.0.0")],
+            CancellationToken.None);
+        Assert.False(imported);
+        Assert.Empty(Assert.Single(result.Packages).Advisories);
     }
 
     [Fact]

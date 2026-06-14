@@ -58,6 +58,8 @@ Each archive is validated for entry count, single-entry size, and expanded size 
 
 After a full import, daily refreshes read the official `modified_id.csv` index and fetch only advisories modified since the last successful update. A full ecosystem archive is imported again every seven days by default. Failure in one ecosystem does not prevent the remaining ecosystems from refreshing.
 
+Incremental imports first clear the modified advisory's previous package mappings for that ecosystem. If the updated advisory no longer affects the ecosystem, stale package matches are removed instead of lingering until the next full archive import.
+
 Local matching supports exact affected-version lists and OSV `SEMVER` ranges.
 OSV range boundaries with one, two, or three numeric components are normalized
 to semantic versions, so feed values such as `10.0` are evaluated as
@@ -76,7 +78,12 @@ Local lookup failures degrade to the online client when fallback is enabled,
 and a corrupt or temporarily unavailable SQLite cache does not discard
 successful registry metadata. Confirmed local advisories are preserved even
 when another candidate advisory for the same package has range semantics that
-require online evaluation.
+require online evaluation. Online fallback results are merged with the certain
+local advisories instead of replacing them.
+
+Advisory severity uses explicit OSV severity fields when available. Numeric
+CVSS scores are mapped to the usual critical/high/medium/low bands, and CVSS
+v3 vector strings are scored locally before classification.
 
 Completion is counted per package rather than per batch. A mixed batch can
 therefore report locally completed packages and preserved findings while also

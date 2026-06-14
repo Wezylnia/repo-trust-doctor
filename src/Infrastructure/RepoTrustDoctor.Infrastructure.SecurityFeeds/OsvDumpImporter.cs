@@ -89,21 +89,28 @@ public sealed class OsvDumpImporter(SqliteOsvAdvisoryStore store)
         CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 128 });
+        var advisoryId = ReadString(document.RootElement, "id");
         var record = ParseRecord(document.RootElement, ecosystem);
+        await using var connection = await store.OpenConnectionAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(advisoryId))
+        {
+            await DeleteAdvisoryMappingsAsync(
+                connection,
+                transaction,
+                advisoryId,
+                ecosystem,
+                cancellationToken);
+        }
+
         if (record is null)
         {
+            await DeleteOrphanAdvisoriesAsync(connection, transaction, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return false;
         }
 
-        await using var connection = await store.OpenConnectionAsync(cancellationToken);
-        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
         await using var commands = new PreparedImportCommands(connection, transaction);
-        await DeleteAdvisoryMappingsAsync(
-            connection,
-            transaction,
-            record.Id,
-            ecosystem,
-            cancellationToken);
         await commands.UpsertAsync(record, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return true;

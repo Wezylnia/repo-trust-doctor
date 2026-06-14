@@ -213,6 +213,22 @@ public sealed class PackageInfrastructureTests
     }
 
     [Fact]
+    public void OsvAdvisoryClient_ParsesCvssV3VectorSeverity()
+    {
+        var advisory = OsvAdvisoryClient.ParseAdvisory("""
+        {
+          "id": "GHSA-vector-critical",
+          "summary": "critical vector",
+          "severity": [
+            { "type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" }
+          ]
+        }
+        """);
+
+        Assert.Equal(Severity.Critical, advisory.Severity);
+    }
+
+    [Fact]
     public void OsvAdvisoryClient_RejectsTruncatedBatchResponses()
     {
         var exception = Assert.Throws<System.Text.Json.JsonException>(() =>

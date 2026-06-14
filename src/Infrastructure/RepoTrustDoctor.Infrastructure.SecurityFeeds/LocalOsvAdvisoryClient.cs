@@ -30,9 +30,13 @@ public sealed class LocalOsvAdvisoryClient(
                 return local.Advisories;
             }
 
-            return onlineFallback is null
-                ? local.Advisories
-                : await onlineFallback.QueryAsync(package, cancellationToken);
+            if (onlineFallback is null)
+            {
+                return local.Advisories;
+            }
+
+            var online = await onlineFallback.QueryAsync(package, cancellationToken);
+            return MergeAdvisories(local.Advisories, online);
         }
         catch (Exception ex) when (IsLocalStoreFailure(ex))
         {
@@ -160,7 +164,14 @@ public sealed class LocalOsvAdvisoryClient(
                 warnings.AddRange(online.Warnings);
                 for (var index = 0; index < online.Packages.Count; index++)
                 {
-                    results[fallbackIndexes[index]] = online.Packages[index];
+                    var resultIndex = fallbackIndexes[index];
+                    var localResult = results[resultIndex];
+                    results[resultIndex] = online.Packages[index] with
+                    {
+                        Advisories = MergeAdvisories(
+                            localResult?.Advisories ?? [],
+                            online.Packages[index].Advisories)
+                    };
                 }
             }
         }
@@ -237,4 +248,44 @@ public sealed class LocalOsvAdvisoryClient(
             : result.QuerySucceeded
                 ? result.Packages.Count
                 : 0;
+
+    private static IReadOnlyList<VulnerabilityAdvisory> MergeAdvisories(
+        IReadOnlyList<VulnerabilityAdvisory> local,
+        IReadOnlyList<VulnerabilityAdvisory> online)
+    {
+        var merged = new List<VulnerabilityAdvisory>(local.Count + online.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var advisory in local.Concat(online))
+        {
+            var identifiers = GetIdentifiers(advisory).ToArray();
+            if (identifiers.Any(seen.Contains))
+            {
+                continue;
+            }
+
+            merged.Add(advisory);
+            foreach (var identifier in identifiers)
+            {
+                seen.Add(identifier);
+            }
+        }
+
+        return merged;
+    }
+
+    private static IEnumerable<string> GetIdentifiers(VulnerabilityAdvisory advisory)
+    {
+        if (!string.IsNullOrWhiteSpace(advisory.Id))
+        {
+            yield return advisory.Id;
+        }
+
+        foreach (var alias in advisory.Aliases)
+        {
+            if (!string.IsNullOrWhiteSpace(alias))
+            {
+                yield return alias;
+            }
+        }
+    }
 }

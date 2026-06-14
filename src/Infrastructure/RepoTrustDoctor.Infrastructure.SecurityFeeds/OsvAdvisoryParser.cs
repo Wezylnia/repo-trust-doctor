@@ -125,6 +125,11 @@ internal static class OsvAdvisoryParser
                 {
                     return SeverityFromScore(numericScore);
                 }
+
+                if (TryParseCvssV3Vector(ReadString(severity, "score"), out var vectorScore))
+                {
+                    return SeverityFromScore(vectorScore);
+                }
             }
         }
 
@@ -214,6 +219,89 @@ internal static class OsvAdvisoryParser
         >= 4 => Severity.Medium,
         _ => Severity.Low
     };
+
+    private static bool TryParseCvssV3Vector(string? vector, out double score)
+    {
+        score = 0;
+        if (string.IsNullOrWhiteSpace(vector) ||
+            !vector.StartsWith("CVSS:3.", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var metrics = vector
+            .Split('/', StringSplitOptions.RemoveEmptyEntries)
+            .Skip(1)
+            .Select(part => part.Split(':', 2))
+            .Where(parts => parts.Length == 2)
+            .ToDictionary(parts => parts[0], parts => parts[1], StringComparer.OrdinalIgnoreCase);
+
+        if (!TryGetMetric(metrics, "AV", out var av) ||
+            !TryGetMetric(metrics, "AC", out var ac) ||
+            !TryGetMetric(metrics, "PR", out var pr) ||
+            !TryGetMetric(metrics, "UI", out var ui) ||
+            !TryGetMetric(metrics, "S", out var scope) ||
+            !TryGetMetric(metrics, "C", out var confidentiality) ||
+            !TryGetMetric(metrics, "I", out var integrity) ||
+            !TryGetMetric(metrics, "A", out var availability))
+        {
+            return false;
+        }
+
+        var impactSubScore = 1 -
+                             (1 - confidentiality) *
+                             (1 - integrity) *
+                             (1 - availability);
+        var impact = scope == 0
+            ? 6.42 * impactSubScore
+            : 7.52 * (impactSubScore - 0.029) -
+              3.25 * Math.Pow(impactSubScore - 0.02, 15);
+        if (impact <= 0)
+        {
+            score = 0;
+            return true;
+        }
+
+        var exploitability = 8.22 * av * ac * pr * ui;
+        var rawScore = scope == 0
+            ? Math.Min(impact + exploitability, 10)
+            : Math.Min(1.08 * (impact + exploitability), 10);
+        score = Math.Ceiling(rawScore * 10) / 10;
+        return true;
+    }
+
+    private static bool TryGetMetric(
+        IReadOnlyDictionary<string, string> metrics,
+        string name,
+        out double value)
+    {
+        value = 0;
+        if (!metrics.TryGetValue(name, out var raw))
+        {
+            return false;
+        }
+
+        value = name.ToUpperInvariant() switch
+        {
+            "AV" => raw switch { "N" => 0.85, "A" => 0.62, "L" => 0.55, "P" => 0.2, _ => 0 },
+            "AC" => raw switch { "L" => 0.77, "H" => 0.44, _ => 0 },
+            "PR" => GetPrivilegesRequiredMetric(raw, metrics.GetValueOrDefault("S")),
+            "UI" => raw switch { "N" => 0.85, "R" => 0.62, _ => 0 },
+            "S" => raw switch { "U" => 0, "C" => 1, _ => -1 },
+            "C" or "I" or "A" => raw switch { "H" => 0.56, "L" => 0.22, "N" => 0, _ => -1 },
+            _ => -1
+        };
+        return value >= 0;
+    }
+
+    private static double GetPrivilegesRequiredMetric(string raw, string? scope) =>
+        raw switch
+        {
+            "N" => 0.85,
+            "L" => string.Equals(scope, "C", StringComparison.OrdinalIgnoreCase) ? 0.68 : 0.62,
+            "H" => string.Equals(scope, "C", StringComparison.OrdinalIgnoreCase) ? 0.5 : 0.27,
+            _ => -1
+        };
 
     private static string? ReadString(JsonElement element, string propertyName)
     {
