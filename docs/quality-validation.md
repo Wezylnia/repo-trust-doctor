@@ -14,6 +14,9 @@ Use a rotating corpus of large public repositories that stress different ecosyst
 | Python | `ansible/ansible`, `apache/airflow` |
 | Dart / Flutter | `flutter/flutter` |
 | Rust | `rust-lang/rust`, `denoland/deno` |
+| Elixir / Hex | `phoenixframework/phoenix` |
+| Swift / SwiftPM | `apple/swift-nio` |
+| C / C++ / polyglot build | `grpc/grpc` |
 | Multi-language platform | `grafana/grafana`, `home-assistant/core` |
 
 Avoid relying on one repository family. A good validation pass includes at least one dependency-heavy repository, one CI-heavy repository, one infrastructure-heavy repository, and one framework repository with many tests/examples.
@@ -52,6 +55,9 @@ git clone --depth 1 https://github.com/kubernetes/kubernetes.git "$corpus\kubern
 git clone --depth 1 https://github.com/laravel/framework.git "$corpus\laravel-framework"
 git clone --depth 1 https://github.com/flutter/flutter.git "$corpus\flutter"
 git clone --depth 1 https://github.com/ansible/ansible.git "$corpus\ansible"
+git clone --depth 1 https://github.com/phoenixframework/phoenix.git "$corpus\phoenix"
+git clone --depth 1 https://github.com/apple/swift-nio.git "$corpus\swift-nio"
+git clone --depth 1 https://github.com/grpc/grpc.git "$corpus\grpc"
 
 dotnet $cli scan "$corpus\terraform" --depth deep --profile production --format json --output "$out\terraform.json" --force
 ```
@@ -72,6 +78,13 @@ For repeated network-intelligence benchmarks, also record:
 - `dependency.vulnerability.lookup.online.count`
 
 Use a fresh dedicated SQLite database to measure cold behavior, then repeat against the same database to measure warm behavior. Do not compare a cold scan with a warm scan without labeling the cache state.
+
+The June 2026 cache validation used real NuGet, npm, Maven, and PyPI
+repositories. Warm metadata passes produced zero registry requests and reduced
+metadata time from seconds to roughly 6-13 ms for the measured package sets.
+Also validate local OSV with online fallback disabled; a ready ecosystem index
+must still return advisory findings and increment
+`dependency.vulnerability.lookup.local.count`.
 
 Measure analyzer performance with a solo run before treating a concurrent-run timeout as an algorithmic regression. Parallel scans are still useful for cancellation and resource-contention validation, but registry latency, disk contention, and CPU pressure make their wall-clock durations unsuitable as a stable baseline.
 

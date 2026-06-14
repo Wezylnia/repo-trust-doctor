@@ -8,9 +8,16 @@
 
 Detects repositories with Dockerfiles but no root `.dockerignore`.
 
-Docker generator templates and fixture/test Dockerfiles such as `.tt`, `.tmpl`, `.template`, `.test`, `fixtures`, `templates`, `integration-test`, `smoke-test`, `dockerTest`, and `testFixtures` paths are ignored by Docker hygiene rules.
+Docker generator templates and non-production example, benchmark, fixture,
+test, generated, and documentation Dockerfiles are ignored by Docker hygiene
+rules.
 
-CI/toolchain build images under paths such as `src/ci/docker` and `.github/actions/.../Dockerfile` are still scanned for concrete content risks such as `latest` tags, secret-like `ENV` values, `ADD` misuse, separated `apt-get update`, `sudo`, and broad `EXPOSE` ranges. Runtime-only application-image expectations such as root `.dockerignore`, non-root `USER`, `HEALTHCHECK`, multi-stage build, and dependency-restore copy ordering are not reported for those CI/build-support Dockerfiles.
+CI/toolchain images, nested build-only images, and explicit test-runner images
+are still scanned for concrete content risks such as `latest` tags,
+secret-like `ENV` values, `ADD` misuse, separated `apt-get update`, `sudo`, and
+broad `EXPOSE` ranges. Runtime-only application-image expectations such as
+root `.dockerignore`, non-root `USER`, `HEALTHCHECK`, multi-stage build, and
+dependency-restore copy ordering are not reported for those support images.
 
 Why it matters: large or sensitive files may be copied into the Docker build context unintentionally.
 
@@ -46,7 +53,9 @@ Recommendation: create and switch to a non-root user for runtime stages.
 - Default severity: Low
 - Default confidence: High
 
-Detects Dockerfiles without `HEALTHCHECK`.
+Detects runtime Dockerfiles that expose a service port but do not declare
+`HEALTHCHECK`. CLI, batch, build, and test-runner images are not expected to
+define a service health probe.
 
 Why it matters: orchestration systems may have less reliable signal for detecting unhealthy containers.
 
@@ -70,7 +79,9 @@ Recommendation: avoid defining secrets in ENV variables. Use Docker build secret
 - Default severity: Low
 - Default confidence: Medium
 
-Detects Dockerfiles that have exactly one `FROM` instruction.
+Detects runtime Dockerfiles that perform a recognized application build in a
+single `FROM` stage. Images without build-stage evidence are not told to add a
+multi-stage build merely for stylistic consistency.
 
 Why it matters: single-stage builds often include build dependencies, compilers, and source code in the final image, increasing the image size and the attack surface.
 

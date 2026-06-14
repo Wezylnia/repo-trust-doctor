@@ -108,6 +108,11 @@ To avoid noise in automated testing, vendored code, generated files, and documen
 - `testdata/`
 - `testassets/`
 - `testcertificates/`
+- `test_creds/`
+- `test_credentials/`
+- `test-certs/`
+- `test_certs/`
+- path segments beginning with `tests_` or ending with `_tests`
 - `integration-test/`
 - `smoke-test/`
 - `dockerTest/`

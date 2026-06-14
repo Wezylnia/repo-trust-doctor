@@ -263,9 +263,9 @@ For npm projects, direct registry ranges from `package.json` are resolved to exa
 | TRUST-DEP037 | Dart project has no pubspec.lock | Medium | High |
 | TRUST-DEP038 | Dart dependency uses non-exact version | Medium | High |
 | TRUST-DEP040 | Elixir has no mix.lock | Medium | High |
-| TRUST-DEP041 | Elixir dependency uses non-exact version | Medium | High |
-| TRUST-DEP042 | Elixir dependency uses non-Hex source | Medium | High |
-| TRUST-DEP043 | Swift package has no Package.resolved | Medium | High |
+| TRUST-DEP041 | Elixir dependency is not lock-resolved to an exact version | Medium | High |
+| TRUST-DEP042 | Elixir dependency uses external Git/path source | Medium | High |
+| TRUST-DEP043 | Swift executable package has no Package.resolved | Medium | High |
 | TRUST-DEP044 | Swift uses branch-based dependency | Medium | High |
 | TRUST-DEP046 | C/C++ uses Conan package manager | Low | High |
 | TRUST-DEP047 | C/C++ uses vcpkg | Low | High |

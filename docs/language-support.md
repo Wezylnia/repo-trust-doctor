@@ -15,9 +15,9 @@ Repository Trust Doctor is strongest when a repository exposes dependency manife
 | PHP / Composer | `composer.json` (require/require-dev), `composer.lock` detection, version constraint analysis, OSV advisories for resolved versions |
 | Ruby / Bundler | `Gemfile`, `.gemspec`, `Gemfile.lock` detection, lockfile-aware version constraint analysis, Git/path source detection, OSV advisories for resolved versions |
 | Dart / Flutter | `pubspec.yaml` (dependencies/dev_dependencies with nested `sdk`, `path`, and `git` metadata handling), `pubspec.lock` detection, version constraint analysis, OSV advisories for resolved versions |
-| Elixir / Hex | `mix.exs`, `mix.lock` detection, version constraint analysis, non-Hex source detection, OSV advisories for resolved versions |
-| Swift / SPM | `Package.swift`, `Package.resolved` detection, branch-based dependency detection, OSV advisories for resolved versions |
-| C / C++ | `conanfile.txt`, `conanfile.py`, `vcpkg.json`, `CMakeLists.txt` (find_package/FetchContent) detection |
+| Elixir / Hex | `mix.exs`, `mix.lock` direct-version resolution, stale/missing lock entry analysis, external Git/path source detection, OSV advisories for lock-resolved versions |
+| Swift / SPM | multiline `Package.swift` dependency detection, executable-only `Package.resolved` hygiene, branch-based dependency detection, OSV advisories for exact manifest versions |
+| C / C++ | `conanfile.txt`, `conanfile.py`, `vcpkg.json`, streamed `CMakeLists.txt` up to 8 MiB (`find_package`/`FetchContent`) detection |
 
 ## Candidate Ecosystems For v2
 

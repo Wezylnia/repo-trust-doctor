@@ -32,6 +32,20 @@ The background refresh only revisits expired packages already present in the cac
 
 Package metadata includes `lookup.source` with `sqlite`, `network`, or `sqlite-stale`. Analyzer metrics expose cache-hit and network lookup counts.
 
+Real scan validation across NuGet, npm, Maven, and PyPI confirmed that a second
+scan against the same database performed zero registry requests. The measured
+metadata analyzer times were:
+
+| Ecosystem corpus | Cold | Warm | Warm cache hits |
+| --- | ---: | ---: | ---: |
+| NuGet (`nuget-license`) | 1,598 ms | 12 ms | 11 |
+| npm (`react`) | 2,786 ms | 10 ms | 9 |
+| Maven (`spring-framework`) | 1,675 ms | 6 ms | 7 |
+| PyPI (`home-assistant-core`) | 6,707 ms | 13 ms | 48 |
+
+The database also stores negative lookups, so the row count can be larger than
+the number of metadata objects returned to analyzers.
+
 ## Local OSV Index
 
 The updater downloads official ecosystem archives from:
@@ -50,6 +64,12 @@ Local matching supports exact affected-version lists and OSV `SEMVER` ranges. Ec
 - `dependency.vulnerability.lookup.online.count`
 
 Before an ecosystem has a ready local index, vulnerability checks use `api.osv.dev` when online fallback is enabled. If fallback is disabled, the analyzer records incomplete coverage rather than reporting an unverified clean result.
+
+Local lookup failures degrade to the online client when fallback is enabled,
+and a corrupt or temporarily unavailable SQLite cache does not discard
+successful registry metadata. Confirmed local advisories are preserved even
+when another candidate advisory for the same package has range semantics that
+require online evaluation.
 
 ## Background Refresh
 

@@ -552,11 +552,16 @@ Recommendation: run `mix deps.get` and commit `mix.lock`.
 - Default severity: Medium
 - Default confidence: High
 
-Detects Elixir dependencies with version constraints instead of exact versions.
+Detects Elixir dependencies that cannot be resolved to an exact version. When
+`mix.lock` is present, direct Hex constraints are resolved from the lockfile
+before this rule is evaluated. Test, fixture, example, and documentation
+manifests do not produce this hygiene finding.
 
-Why it matters: version constraints can resolve to different package versions over time.
+Why it matters: an absent or stale lock entry leaves the effective dependency
+version unclear and prevents reliable version-specific advisory checks.
 
-Recommendation: use exact version constraints with a committed `mix.lock` for reproducible builds.
+Recommendation: commit an up-to-date `mix.lock` that resolves the dependency
+to an exact version.
 
 ## TRUST-DEP042: Elixir Dependency Uses a Non-Hex Source
 
@@ -564,23 +569,30 @@ Recommendation: use exact version constraints with a committed `mix.lock` for re
 - Default severity: Medium
 - Default confidence: High
 
-Detects Elixir dependencies sourced from Git or local paths instead of Hex.
+Detects Elixir dependencies sourced from Git or from paths outside the scanned
+repository. Repository-local path dependencies and low-signal example/test
+manifests are retained in inventory without producing this finding.
 
-Why it matters: non-Hex sources can bypass registry provenance and may depend on moving refs or local repository layout.
+Why it matters: remote Git and repository-external path sources can bypass Hex
+provenance or depend on mutable and machine-local state.
 
 Recommendation: review non-Hex dependency sources and prefer Hex packages with pinned versions when possible.
 
-## TRUST-DEP043: Swift Package Does Not Have a Package.resolved File
+## TRUST-DEP043: Swift Executable Package Does Not Have a Package.resolved File
 
 - Category: Dependencies
 - Default severity: Medium
 - Default confidence: High
 
-Detects Swift packages with `Package.swift` but no sibling `Package.resolved`.
+Detects executable Swift package products without `Package.resolved` at the
+package root or under `.swiftpm`. Library packages and non-production
+benchmark, example, fixture, generated, and test manifests are not required to
+commit resolution state.
 
-Why it matters: without resolved package evidence, dependency versions may drift.
+Why it matters: executable applications are deployed artifacts; without
+resolved package evidence, their installed dependency versions may drift.
 
-Recommendation: commit `Package.resolved` for reproducible Swift package resolution.
+Recommendation: commit `Package.resolved` for reproducible executable builds.
 
 ## TRUST-DEP044: Swift Package Uses a Branch-Based Dependency
 
@@ -624,7 +636,9 @@ Recommendation: review vcpkg dependencies and version constraints.
 - Default severity: Low
 - Default confidence: High
 
-Detects `find_package` or `FetchContent_Declare` in `CMakeLists.txt`.
+Detects `find_package` or `FetchContent_Declare` in `CMakeLists.txt`. CMake
+manifests are streamed up to 8 MiB so large generated project definitions do
+not disappear behind the general 512 KiB text-file guard.
 
 Why it matters: CMake can pull in external dependencies through build configuration.
 
