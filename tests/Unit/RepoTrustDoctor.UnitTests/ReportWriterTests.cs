@@ -298,7 +298,7 @@ public sealed class ReportWriterTests
     }
 
     [Fact]
-    public void FindingFingerprint_ChangesWhenLineNumberChanges()
+    public void FindingFingerprint_DoesNotChangeWhenLineNumberChanges()
     {
         var first = CreateFinding(
             "TRUST-GHA007",
@@ -315,7 +315,52 @@ public sealed class ReportWriterTests
             filePath: ".github/workflows/ci.yml",
             lineNumber: 13);
 
+        Assert.Equal(FindingFingerprinter.Compute(first), FindingFingerprinter.Compute(second));
+    }
+
+    [Fact]
+    public void FindingFingerprint_SeparatesDifferentEntitiesWithoutLocations()
+    {
+        var first = CreateFinding(
+            "TRUST-VULN001",
+            Severity.High,
+            AnalysisCategory.Dependencies,
+            evidenceKind: "vulnerability-advisory",
+            message: "Package alpha matches advisory CVE-2026-0001.",
+            evidenceMessage: "alpha@1.0.0 matches CVE-2026-0001.");
+        var second = CreateFinding(
+            "TRUST-VULN001",
+            Severity.High,
+            AnalysisCategory.Dependencies,
+            evidenceKind: "vulnerability-advisory",
+            message: "Package beta matches advisory CVE-2026-0002.",
+            evidenceMessage: "beta@2.0.0 matches CVE-2026-0002.");
+
         Assert.NotEqual(FindingFingerprinter.Compute(first), FindingFingerprinter.Compute(second));
+    }
+
+    [Fact]
+    public void FindingFingerprint_DisambiguatesStructurallyIdenticalFindingsInOneReport()
+    {
+        var first = CreateFinding(
+            "TRUST-CODE015",
+            Severity.High,
+            AnalysisCategory.Codebase,
+            evidenceKind: "command-execution",
+            filePath: "src/process.cs",
+            lineNumber: 12);
+        var second = CreateFinding(
+            "TRUST-CODE015",
+            Severity.High,
+            AnalysisCategory.Codebase,
+            evidenceKind: "command-execution",
+            filePath: "src/process.cs",
+            lineNumber: 42);
+
+        var fingerprinted = FindingFingerprinter.AddFingerprints([first, second]);
+
+        Assert.Equal(2, fingerprinted.Select(finding => finding.Fingerprint).Distinct().Count());
+        Assert.All(fingerprinted, finding => Assert.Matches("^[a-f0-9]{64}$", finding.Fingerprint));
     }
 
     [Fact]

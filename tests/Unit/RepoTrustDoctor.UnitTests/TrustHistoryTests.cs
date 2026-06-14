@@ -61,6 +61,24 @@ public sealed class TrustHistoryTests
     }
 
     [Fact]
+    public void TrustDiffEngine_TreatsLineOnlyMovementAsUnchanged()
+    {
+        var beforeScan = CreateScan("repo", 80, FinalDecisionKind.UseWithCaution, [
+            CreateFinding("TRUST-CODE015", Severity.High, "src/App.cs", 12)
+        ]);
+        var afterScan = CreateScan("repo", 80, FinalDecisionKind.UseWithCaution, [
+            CreateFinding("TRUST-CODE015", Severity.High, "src/App.cs", 18)
+        ]);
+        var factory = new TrustSnapshotFactory();
+
+        var diff = new TrustDiffEngine().Compare(factory.Create(beforeScan), factory.Create(afterScan));
+
+        Assert.Empty(diff.NewFindings);
+        Assert.Empty(diff.ResolvedFindings);
+        Assert.Single(diff.UnchangedFindings);
+    }
+
+    [Fact]
     public void RepositoryComparisonEngine_SortsLowestTrustRepositoriesFirst()
     {
         var result = new RepositoryComparisonEngine().Compare([
@@ -106,7 +124,7 @@ public sealed class TrustHistoryTests
             new TrustScore(score, [new CategoryScore(AnalysisCategory.Security, score)], new FinalDecision(decision, [])),
             null);
 
-    private static Finding CreateFinding(string ruleId, Severity severity, string filePath) =>
+    private static Finding CreateFinding(string ruleId, Severity severity, string filePath, int? lineNumber = null) =>
         new(
             ruleId,
             "Test finding",
@@ -114,7 +132,7 @@ public sealed class TrustHistoryTests
             severity,
             Confidence.High,
             "Test finding.",
-            [new Evidence("test", "test", filePath)],
+            [new Evidence("test", "test", filePath, lineNumber)],
             new Recommendation("Fix it."));
 
     private static ScanSnapshot Snapshot(string target, int score, FinalDecisionKind decision, IReadOnlyList<FindingSnapshot> findings) =>

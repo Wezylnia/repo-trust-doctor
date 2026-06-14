@@ -248,6 +248,29 @@ public sealed class AnalyzerInfrastructureTests
             });
     }
 
+    [Fact]
+    public async Task ScanOrchestrator_AssignsFindingFingerprintsBeforeScoring()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var analyzer = new FindingAnalyzer();
+        var orchestrator = new ScanOrchestrator([analyzer], new AnalyzerExecutor(), new TrustScorer());
+
+        var scan = await orchestrator.RunAsync(
+            ".",
+            directory.Path,
+            AnalysisDepth.Fast,
+            TrustProfile.ProductionDependency,
+            CancellationToken.None);
+
+        var finding = Assert.Single(scan.Findings);
+        Assert.False(string.IsNullOrWhiteSpace(finding.Fingerprint));
+
+        var policy = RepoTrustDoctor.Policies.TrustPolicyPresets.ForProfile(TrustProfile.ProductionDependency);
+        var evaluation = new RepoTrustDoctor.Policies.TrustPolicyEvaluator().Evaluate(scan.Findings, policy);
+        var violation = Assert.Single(evaluation.Violations);
+        Assert.Equal(finding.Fingerprint, violation.FindingFingerprint);
+    }
+
     private sealed class FakeAnalyzerWithRule : IRepositoryAnalyzer
     {
         private readonly string id;
@@ -387,5 +410,41 @@ public sealed class AnalyzerInfrastructureTests
                 [],
                 metrics: new Dictionary<string, string> { ["analyzed.count"] = "10" },
                 warnings: ["scope was truncated"]));
+    }
+
+    private sealed class FindingAnalyzer : IRepositoryAnalyzer
+    {
+        public string Id => "finding-analyzer";
+        public string DisplayName => "Finding Analyzer";
+        public AnalysisCategory Category => AnalysisCategory.RepositoryHealth;
+        public AnalysisDepth MinimumDepth => AnalysisDepth.Fast;
+        public IReadOnlyCollection<string> DependsOn => [];
+        public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
+        public TimeSpan Timeout => TimeSpan.FromSeconds(10);
+        public IReadOnlyCollection<RuleMetadata> Rules =>
+        [
+            new(
+                "TRUST-REPO003",
+                "Security policy is missing",
+                AnalysisCategory.RepositoryHealth,
+                Severity.Low,
+                Confidence.High,
+                "Detects a missing security policy.",
+                "Add SECURITY.md.")
+        ];
+
+        public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken) =>
+            Task.FromResult(AnalyzerResult.Completed(
+            [
+                new Finding(
+                    "TRUST-REPO003",
+                    "Security policy is missing",
+                    AnalysisCategory.RepositoryHealth,
+                    Severity.Low,
+                    Confidence.High,
+                    "SECURITY.md is missing.",
+                    [new Evidence("file-missing", "SECURITY.md was not found.")],
+                    new Recommendation("Add SECURITY.md."))
+            ]));
     }
 }

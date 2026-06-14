@@ -176,7 +176,8 @@ public sealed class ScanOrchestrator
         }
 
         var completed = DateTimeOffset.UtcNow;
-        var score = scorer.ScoreScan(findings, trustProfile, modules);
+        var fingerprintedFindings = FindingIdentity.AddFingerprints(findings);
+        var score = scorer.ScoreScan(fingerprintedFindings, trustProfile, modules);
         var status = modules.Any(module => module.Status is
             ModuleStatus.CompletedWithWarnings or
             ModuleStatus.Failed or
@@ -196,7 +197,7 @@ public sealed class ScanOrchestrator
             started,
             completed,
             modules,
-            findings,
+            fingerprintedFindings,
             score,
             context.Artifacts);
     }

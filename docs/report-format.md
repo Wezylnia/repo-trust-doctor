@@ -108,7 +108,7 @@ Diff JSON includes:
 
 Markdown and console diff output summarize the same model for human review.
 
-Finding fingerprints are lowercase SHA-256 hex strings. They are computed from the rule ID, category, evidence kind, evidence file path, and evidence line number when present. Evidence messages, evidence values, and secret-like content are not fingerprint inputs.
+Finding fingerprints are assigned before scoring and policy evaluation, then reused by every report format and trust history. They are lowercase SHA-256 hex strings. The stable identity uses the rule ID, category, normalized title/message, and redacted evidence kind, file path, and message. Evidence line numbers are excluded from the base identity so inserting lines above a finding does not turn it into a resolved-plus-new pair. If two findings in the same report remain structurally identical, location and occurrence order are used only to disambiguate that collision. Raw evidence values and secret-like content are never fingerprint inputs.
 
 ## CLI Export
 

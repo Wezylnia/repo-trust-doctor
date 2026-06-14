@@ -14,6 +14,11 @@
 
 Finding fingerprints are computed with the same stable report fingerprinter used by JSON, Markdown, and SARIF reports.
 
+Line numbers are treated as location metadata rather than primary finding
+identity. A finding that moves within the same file remains matched when its
+rule and redacted structural evidence are unchanged. Structurally identical
+repeated findings in one report receive collision-safe unique fingerprints.
+
 ## Trust Diff
 
 The CLI can compare two JSON scan reports:
