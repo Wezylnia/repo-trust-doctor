@@ -102,6 +102,45 @@ public sealed class RepositoryFileSystemTests
         Assert.Equal(["external.txt"], files);
     }
 
+    [Fact]
+    public void EnumerateFilesSkipsDirectorySymlinks()
+    {
+        using var repository = TemporaryDirectory.Create();
+        using var outside = TemporaryDirectory.Create();
+        WriteFile(repository.Path, "README.md", "# sample");
+        WriteFile(outside.Path, "secret.txt", "outside");
+
+        var linkPath = Path.Combine(repository.Path, "linked");
+        if (!TryCreateDirectorySymlink(linkPath, outside.Path))
+        {
+            return;
+        }
+
+        var files = RepositoryFileSystem
+            .EnumerateFiles(repository.Path)
+            .Select(file => Relative(repository.Path, file))
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        Assert.Equal(["README.md"], files);
+    }
+
+    [Fact]
+    public void CanReadAsTextRejectsFileSymlinks()
+    {
+        using var repository = TemporaryDirectory.Create();
+        using var outside = TemporaryDirectory.Create();
+        WriteFile(outside.Path, "secret.txt", "outside");
+
+        var linkPath = Path.Combine(repository.Path, "secret-link.txt");
+        if (!TryCreateFileSymlink(linkPath, Path.Combine(outside.Path, "secret.txt")))
+        {
+            return;
+        }
+
+        Assert.False(RepositoryFileSystem.CanReadAsText(linkPath));
+    }
+
     private static void WriteFile(string root, string relativePath, string content)
     {
         var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -111,4 +150,30 @@ public sealed class RepositoryFileSystemTests
 
     private static string Relative(string root, string filePath) =>
         Path.GetRelativePath(root, filePath).Replace(Path.DirectorySeparatorChar, '/');
+
+    private static bool TryCreateDirectorySymlink(string linkPath, string targetPath)
+    {
+        try
+        {
+            Directory.CreateSymbolicLink(linkPath, targetPath);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryCreateFileSymlink(string linkPath, string targetPath)
+    {
+        try
+        {
+            File.CreateSymbolicLink(linkPath, targetPath);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }

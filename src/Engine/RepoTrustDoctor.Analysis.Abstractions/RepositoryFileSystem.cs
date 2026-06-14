@@ -60,7 +60,9 @@ public static class RepositoryFileSystem
         try
         {
             var info = new FileInfo(filePath);
-            if (!info.Exists || info.Length > maxBytes)
+            if (!info.Exists ||
+                info.Length > maxBytes ||
+                info.Attributes.HasFlag(FileAttributes.ReparsePoint))
             {
                 return false;
             }
@@ -154,6 +156,7 @@ public static class RepositoryFileSystem
 
     private static EnumerationOptions CreateTopDirectoryOnlyOptions() => new()
     {
+        AttributesToSkip = FileAttributes.ReparsePoint,
         IgnoreInaccessible = true,
         RecurseSubdirectories = false
     };

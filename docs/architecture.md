@@ -113,6 +113,8 @@ Repository code is untrusted input. Hosted scans should only allow static file r
 
 The scan orchestrator enforces analyzer `ExecutionSafety` before execution. The default hosted path allows static analyzers and safe registry/advisory lookups; analyzers that would execute trusted tools or repository code are skipped and recorded as incomplete modules. Downstream analyzers are skipped when a required producer analyzer failed, timed out, was cancelled, or was skipped, so reports do not turn missing prerequisite evidence into a clean result.
 
+Repository traversal uses a shared file-system helper that skips ignored heavy directories and reparse-point entries. This prevents symlinks or junctions inside an untrusted repository from expanding analysis into files outside the prepared workspace.
+
 ## Scan Progress Contracts
 
 `RepoTrustDoctor.Contracts` exposes polling-friendly scan progress DTOs for future API and worker surfaces. The lifecycle states are:
