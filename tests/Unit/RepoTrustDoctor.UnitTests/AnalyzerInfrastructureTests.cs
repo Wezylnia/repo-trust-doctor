@@ -89,6 +89,26 @@ public sealed class AnalyzerInfrastructureTests
     }
 
     [Fact]
+    public async Task ScanOrchestrator_TimedOutAnalyzer_CannotProduceSafeDecision()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var slowAnalyzer = new SlowAnalyzer(delayMs: 5000, timeoutMs: 50);
+        var orchestrator = new ScanOrchestrator([slowAnalyzer], new AnalyzerExecutor(), new TrustScorer());
+
+        var scan = await orchestrator.RunAsync(
+            ".",
+            directory.Path,
+            AnalysisDepth.Fast,
+            TrustProfile.ProductionDependency,
+            CancellationToken.None);
+
+        Assert.Equal(ModuleStatus.CompletedWithWarnings, scan.Status);
+        Assert.Equal(FinalDecisionKind.NeedsManualReview, scan.Score.Decision.Kind);
+        Assert.Equal(70, Assert.Single(scan.Score.Categories).Score);
+        Assert.Contains(scan.Score.Decision.Reasons, reason => reason.Contains("timed out", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task AnalyzerExecutor_WarningResult_ReturnsCompletedWithWarningsAndModuleMessage()
     {
         var analyzer = new WarningAnalyzer();

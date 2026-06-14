@@ -278,6 +278,69 @@ public sealed class TrustScorerTests
         Assert.Equal(withoutCategories.Overall, withCategories.Overall);
     }
 
+    [Fact]
+    public void Score_WithTimedOutModule_RequiresManualReviewAndCapsCategory()
+    {
+        var modules = new[]
+        {
+            CreateModule("secrets", AnalysisCategory.Security, ModuleStatus.TimedOut, "Analyzer timed out after 30s."),
+            CreateModule("repository", AnalysisCategory.RepositoryHealth, ModuleStatus.Completed)
+        };
+
+        var score = new TrustScorer().ScoreScan([], TrustProfile.ProductionDependency, modules);
+
+        Assert.Equal(FinalDecisionKind.NeedsManualReview, score.Decision.Kind);
+        Assert.Contains(score.Decision.Reasons, reason => reason.Contains("timed out", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(70, Assert.Single(score.Categories, item => item.Category == AnalysisCategory.Security).Score);
+        Assert.Equal(100, Assert.Single(score.Categories, item => item.Category == AnalysisCategory.RepositoryHealth).Score);
+    }
+
+    [Fact]
+    public void Score_WithPartialCoverageMetrics_RequiresManualReviewAndCapsCategory()
+    {
+        var modules = new[]
+        {
+            CreateModule(
+                "dependency-vulnerability",
+                AnalysisCategory.Dependencies,
+                ModuleStatus.Completed,
+                metrics: new Dictionary<string, string>
+                {
+                    ["dependency.vulnerability.lookup.incomplete.count"] = "0",
+                    ["dependency.vulnerability.unpinned.count"] = "4"
+                })
+        };
+
+        var score = new TrustScorer().ScoreScan([], TrustProfile.ProductionDependency, modules);
+
+        Assert.Equal(FinalDecisionKind.NeedsManualReview, score.Decision.Kind);
+        Assert.Equal(90, Assert.Single(score.Categories).Score);
+        Assert.Contains(score.Decision.Reasons, reason => reason.Contains("partial coverage", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Score_WithCompleteModuleMetrics_RemainsSafe()
+    {
+        var modules = new[]
+        {
+            CreateModule(
+                "dependency-vulnerability",
+                AnalysisCategory.Dependencies,
+                ModuleStatus.Completed,
+                metrics: new Dictionary<string, string>
+                {
+                    ["dependency.vulnerability.lookup.incomplete.count"] = "0",
+                    ["dependency.vulnerability.unpinned.count"] = "0",
+                    ["dependency.vulnerability.unsupported.count"] = "0"
+                })
+        };
+
+        var score = new TrustScorer().ScoreScan([], TrustProfile.ProductionDependency, modules);
+
+        Assert.Equal(100, score.Overall);
+        Assert.Equal(FinalDecisionKind.SafeToTry, score.Decision.Kind);
+    }
+
     private static Finding CreateFinding(string ruleId, AnalysisCategory category, Severity severity, string? evidenceMessage = null, Confidence confidence = Confidence.High)
     {
         return new Finding(
@@ -290,4 +353,21 @@ public sealed class TrustScorerTests
             [new Evidence("test", evidenceMessage ?? "test evidence")],
             new Recommendation("Fix it."));
     }
+
+    private static ScanModule CreateModule(
+        string id,
+        AnalysisCategory category,
+        ModuleStatus status,
+        string? error = null,
+        IReadOnlyDictionary<string, string>? metrics = null) =>
+        new(
+            id,
+            id,
+            category,
+            status,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            0,
+            error,
+            Metrics: metrics);
 }

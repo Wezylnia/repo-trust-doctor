@@ -31,14 +31,29 @@ public sealed class TrustScorer
         TrustProfile trustProfile,
         IReadOnlyCollection<AnalysisCategory> evaluatedCategories)
     {
-        return BuildScore(findings, trustProfile, evaluatedCategories);
+        return BuildScore(findings, trustProfile, evaluatedCategories, ScanCompletenessAssessment.Complete);
+    }
+
+    public TrustScore ScoreScan(
+        IReadOnlyList<Finding> findings,
+        TrustProfile trustProfile,
+        IReadOnlyCollection<ScanModule> modules)
+    {
+        var evaluatedCategories = modules
+            .Select(module => module.Category)
+            .Distinct()
+            .ToArray();
+        var completeness = ScanCompletenessEvaluator.Evaluate(modules);
+        return BuildScore(findings, trustProfile, evaluatedCategories, completeness);
     }
 
     private static TrustScore BuildScore(
         IReadOnlyList<Finding> findings,
         TrustProfile trustProfile,
-        IReadOnlyCollection<AnalysisCategory> evaluatedCategories)
+        IReadOnlyCollection<AnalysisCategory> evaluatedCategories,
+        ScanCompletenessAssessment? completeness = null)
     {
+        completeness ??= ScanCompletenessAssessment.Complete;
         var normalizedProfile = TrustProfileCatalog.Normalize(trustProfile);
         var policy = TrustPolicyPresets.ForProfile(normalizedProfile);
         var policyEvaluation = new TrustPolicyEvaluator().Evaluate(findings, policy);
@@ -57,7 +72,8 @@ public sealed class TrustScorer
                 .Select(cat =>
                 {
                     var catFindings = findingsByCategory.TryGetValue(cat, out var list) ? list : [];
-                    return new CategoryScore(cat, ScoreCategory(catFindings, normalizedProfile));
+                    var score = ScoreCategory(catFindings, normalizedProfile);
+                    return new CategoryScore(cat, ApplyCompletenessCap(score, cat, completeness));
                 })
                 .OrderBy(s => s.Category)
                 .ToList();
@@ -107,6 +123,8 @@ public sealed class TrustScorer
 
         FinalDecision decision = policyHardCap
             ? new FinalDecision(FinalDecisionKind.AvoidAsProductionDependency, BuildPolicyReasons(policyEvaluation, blockers.Concat(critical)))
+            : completeness.Level != ScanCompletenessLevel.Complete
+                ? new FinalDecision(FinalDecisionKind.NeedsManualReview, completeness.Reasons)
             : policySoftCap
                 ? new FinalDecision(FinalDecisionKind.NeedsManualReview, BuildPolicyReasons(policyEvaluation, high))
             : high.Length > 0 || overall < 80
@@ -114,6 +132,24 @@ public sealed class TrustScorer
                 : new FinalDecision(FinalDecisionKind.SafeToTry, ["No high or critical findings were detected in the completed modules."]);
 
         return new TrustScore(overall, categoryScores, decision);
+    }
+
+    private static int ApplyCompletenessCap(
+        int score,
+        AnalysisCategory category,
+        ScanCompletenessAssessment completeness)
+    {
+        if (!completeness.Categories.TryGetValue(category, out var level))
+        {
+            return score;
+        }
+
+        return level switch
+        {
+            ScanCompletenessLevel.Incomplete => Math.Min(score, 70),
+            ScanCompletenessLevel.Partial => Math.Min(score, 90),
+            _ => score
+        };
     }
 
     private static int ScoreCategory(IEnumerable<Finding> findings, TrustProfile trustProfile)
