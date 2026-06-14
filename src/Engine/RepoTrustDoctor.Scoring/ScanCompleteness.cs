@@ -94,8 +94,7 @@ internal static class ScanCompletenessEvaluator
 
             if ((key.EndsWith(".incomplete.count", StringComparison.OrdinalIgnoreCase) ||
                  key.EndsWith(".skipped.count", StringComparison.OrdinalIgnoreCase) ||
-                 key.EndsWith(".unsupported.count", StringComparison.OrdinalIgnoreCase) ||
-                 key.EndsWith(".unpinned.count", StringComparison.OrdinalIgnoreCase)) &&
+                 key.EndsWith(".unsupported.count", StringComparison.OrdinalIgnoreCase)) &&
                 long.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var count) &&
                 count > 0)
             {

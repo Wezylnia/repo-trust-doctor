@@ -40,6 +40,8 @@ public sealed class TrustScorer
         IReadOnlyCollection<ScanModule> modules)
     {
         var evaluatedCategories = modules
+            .Where(module =>
+                module.Status is ModuleStatus.Completed or ModuleStatus.CompletedWithWarnings)
             .Select(module => module.Category)
             .Distinct()
             .ToArray();
@@ -98,7 +100,6 @@ public sealed class TrustScorer
 
         // Hard-cap: only when blocking risks exist from policy, or critical/high findings under strict profiles
         var policyHardCap = policyEvaluation.HasBlockingRisks;
-        var policySoftCap = policyEvaluation.Violations.Count > 0 && !policyHardCap;
 
         // For strict profiles, also cap if critical/high findings exist
         if (!policyHardCap && normalizedProfile == TrustProfile.SecuritySensitiveDependency)
@@ -107,14 +108,16 @@ public sealed class TrustScorer
             if (hasSerious) policyHardCap = true;
         }
 
+        var policySoftCap = policyEvaluation.Violations.Count > 0 && !policyHardCap;
+
         // For soft-cap: clamp only if score is unexpectedly high given violations, but don't push below 70
-        if (policySoftCap && overall > 85)
-        {
-            overall = Math.Max(70, overall - 10);
-        }
-        else if (policyHardCap)
+        if (policyHardCap)
         {
             overall = Math.Min(overall, 60);
+        }
+        else if (policySoftCap && overall > 85)
+        {
+            overall = Math.Max(70, overall - 10);
         }
 
         var blockers = findings.Where(f => f.IsBlocking).ToArray();

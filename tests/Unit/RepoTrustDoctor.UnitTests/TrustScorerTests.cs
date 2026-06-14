@@ -279,7 +279,7 @@ public sealed class TrustScorerTests
     }
 
     [Fact]
-    public void Score_WithTimedOutModule_RequiresManualReviewAndCapsCategory()
+    public void Score_WithTimedOutModule_RequiresManualReviewAndExcludesUnevaluatedCategory()
     {
         var modules = new[]
         {
@@ -291,12 +291,12 @@ public sealed class TrustScorerTests
 
         Assert.Equal(FinalDecisionKind.NeedsManualReview, score.Decision.Kind);
         Assert.Contains(score.Decision.Reasons, reason => reason.Contains("timed out", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal(70, Assert.Single(score.Categories, item => item.Category == AnalysisCategory.Security).Score);
+        Assert.DoesNotContain(score.Categories, item => item.Category == AnalysisCategory.Security);
         Assert.Equal(100, Assert.Single(score.Categories, item => item.Category == AnalysisCategory.RepositoryHealth).Score);
     }
 
     [Fact]
-    public void Score_WithPartialCoverageMetrics_RequiresManualReviewAndCapsCategory()
+    public void Score_WithUnpinnedRiskMetric_RemainsComplete()
     {
         var modules = new[]
         {
@@ -313,9 +313,33 @@ public sealed class TrustScorerTests
 
         var score = new TrustScorer().ScoreScan([], TrustProfile.ProductionDependency, modules);
 
-        Assert.Equal(FinalDecisionKind.NeedsManualReview, score.Decision.Kind);
-        Assert.Equal(90, Assert.Single(score.Categories).Score);
-        Assert.Contains(score.Decision.Reasons, reason => reason.Contains("partial coverage", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(FinalDecisionKind.SafeToTry, score.Decision.Kind);
+        Assert.Equal(100, Assert.Single(score.Categories).Score);
+    }
+
+    [Fact]
+    public void Score_StrictProfileHardCapTakesPriorityOverSoftPolicyViolation()
+    {
+        var findings = new[]
+        {
+            CreateFinding(
+                "TRUST-REPO003",
+                AnalysisCategory.RepositoryHealth,
+                Severity.Low),
+            CreateFinding(
+                "TRUST-CODE004",
+                AnalysisCategory.Codebase,
+                Severity.High,
+                confidence: Confidence.Low)
+        };
+
+        var score = new TrustScorer().Score(
+            findings,
+            TrustProfile.SecuritySensitiveDependency,
+            [AnalysisCategory.RepositoryHealth, AnalysisCategory.Codebase]);
+
+        Assert.Equal(FinalDecisionKind.AvoidAsProductionDependency, score.Decision.Kind);
+        Assert.True(score.Overall <= 60, $"Expected hard cap at 60, got {score.Overall}.");
     }
 
     [Fact]
