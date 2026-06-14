@@ -27,7 +27,10 @@ public interface IOsvAdvisoryClient
                 await QueryAsync(package, cancellationToken)));
         }
 
-        return new OsvBatchQueryResult(results, true, []);
+        return new OsvBatchQueryResult(results, true, [])
+        {
+            OnlinePackageCount = packages.Count
+        };
     }
 }
 
@@ -38,7 +41,12 @@ public sealed record OsvPackageQueryResult(
 public sealed record OsvBatchQueryResult(
     IReadOnlyList<OsvPackageQueryResult> Packages,
     bool QuerySucceeded,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings)
+{
+    public int LocalPackageCount { get; init; }
+
+    public int OnlinePackageCount { get; init; }
+}
 
 public sealed class OsvAdvisoryClient(SafeHttpLookup lookup) : IOsvAdvisoryClient
 {
@@ -161,7 +169,10 @@ public sealed class OsvAdvisoryClient(SafeHttpLookup lookup) : IOsvAdvisoryClien
                         .ToArray()))
             .ToArray();
 
-        return new OsvBatchQueryResult(results, true, warnings);
+        return new OsvBatchQueryResult(results, true, warnings)
+        {
+            OnlinePackageCount = packages.Count
+        };
     }
 
     private async Task<SafeLookupResult> QueryBatchPageAsync(
@@ -206,7 +217,10 @@ public sealed class OsvAdvisoryClient(SafeHttpLookup lookup) : IOsvAdvisoryClien
                         .Select(OsvAdvisoryParser.CreateFallback)
                         .ToArray()))
             .ToArray();
-        return new OsvBatchQueryResult(results, false, [warning]);
+        return new OsvBatchQueryResult(results, false, [warning])
+        {
+            OnlinePackageCount = packages.Count
+        };
     }
 
     public static IReadOnlyList<VulnerabilityAdvisory> Parse(string json) =>

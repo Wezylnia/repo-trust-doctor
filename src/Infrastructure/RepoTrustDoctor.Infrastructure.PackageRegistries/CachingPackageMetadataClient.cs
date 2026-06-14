@@ -5,7 +5,7 @@ namespace RepoTrustDoctor.Infrastructure.PackageRegistries;
 
 public sealed class CachingPackageMetadataClient : IPackageMetadataClient
 {
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> KeyLocks =
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> keyLocks =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly IPackageMetadataClient inner;
     private readonly SqlitePackageMetadataCache cache;
@@ -38,7 +38,7 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
         }
 
         var key = $"{package.Ecosystem}:{package.Name}:{package.Version}";
-        var keyLock = KeyLocks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
+        var keyLock = keyLocks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
         await keyLock.WaitAsync(cancellationToken);
         try
         {

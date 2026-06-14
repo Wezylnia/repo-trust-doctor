@@ -54,9 +54,19 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
         LocalIntelligenceOptions? localOptions = null)
     {
         localOptions ??= LocalIntelligenceOptions.CreateDefault();
-        var packageLookup = new SafeHttpLookup(["api.nuget.org", "registry.npmjs.org", "pypi.org"]);
+        var packageLookup = new SafeHttpLookup(
+            ["api.nuget.org", "registry.npmjs.org", "pypi.org", "search.maven.org"]);
         var osvLookup = new SafeHttpLookup(["api.osv.dev"]);
-        var metadataClients = CreateMetadataClients(packageLookup, localOptions);
+        var localDatabase = localOptions.RegistryCacheEnabled || localOptions.LocalOsvEnabled
+            ? new LocalIntelligenceDatabase(localOptions)
+            : null;
+        var metadataClients = CreateMetadataClients(packageLookup, localOptions, localDatabase);
+        var onlineOsvClient = new OsvAdvisoryClient(osvLookup);
+        IOsvAdvisoryClient osvClient = localOptions.LocalOsvEnabled && localDatabase is not null
+            ? new LocalOsvAdvisoryClient(
+                new SqliteOsvAdvisoryStore(localDatabase),
+                localOptions.OsvOnlineFallbackEnabled ? onlineOsvClient : null)
+            : onlineOsvClient;
         return
         [
             new RepositoryHealthAnalyzer(),
@@ -82,7 +92,7 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
             new FrameworkRouteAnalyzer(),
             new PackageMetadataAnalyzer(metadataClients),
             new PackageFreshnessAnalyzer(),
-            new DependencyVulnerabilityAnalyzer(new OsvAdvisoryClient(osvLookup)),
+            new DependencyVulnerabilityAnalyzer(osvClient),
             new DependencyLicenseAnalyzer(),
             new PackageOriginAnalyzer()
         ];
@@ -90,7 +100,8 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
 
     private static IReadOnlyCollection<IPackageMetadataClient> CreateMetadataClients(
         SafeHttpLookup packageLookup,
-        LocalIntelligenceOptions options)
+        LocalIntelligenceOptions options,
+        LocalIntelligenceDatabase? localDatabase)
     {
         IPackageMetadataClient[] clients =
         [
@@ -99,13 +110,12 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
             new PyPiPackageMetadataClient(packageLookup),
             new MavenCentralPackageMetadataClient(packageLookup)
         ];
-        if (!options.RegistryCacheEnabled)
+        if (!options.RegistryCacheEnabled || localDatabase is null)
         {
             return clients;
         }
 
-        var database = new LocalIntelligenceDatabase(options);
-        var cache = new SqlitePackageMetadataCache(database);
+        var cache = new SqlitePackageMetadataCache(localDatabase);
         return clients
             .Select(client => (IPackageMetadataClient)new CachingPackageMetadataClient(
                 client,

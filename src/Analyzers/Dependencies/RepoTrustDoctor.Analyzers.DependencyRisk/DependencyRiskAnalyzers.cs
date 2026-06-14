@@ -317,6 +317,8 @@ public sealed class DependencyVulnerabilityAnalyzer : IRepositoryAnalyzer
             .Where(result => result.QuerySucceeded)
             .Sum(result => result.Packages.Count);
         var completedBatchCount = batchResults.Results.Count(result => result.QuerySucceeded);
+        var localPackageCount = batchResults.Results.Sum(result => result.LocalPackageCount);
+        var onlinePackageCount = batchResults.Results.Sum(result => result.OnlinePackageCount);
 
         if (batchResults.SoftBudgetExceeded)
         {
@@ -375,6 +377,8 @@ public sealed class DependencyVulnerabilityAnalyzer : IRepositoryAnalyzer
             ["dependency.vulnerability.unsupported.count"] = (pinnedCandidates.Length - packages.Length).ToString(),
             ["dependency.vulnerability.lookup.completed.count"] = completedPackageCount.ToString(),
             ["dependency.vulnerability.lookup.incomplete.count"] = (packages.Length - completedPackageCount).ToString(),
+            ["dependency.vulnerability.lookup.local.count"] = localPackageCount.ToString(),
+            ["dependency.vulnerability.lookup.online.count"] = onlinePackageCount.ToString(),
             ["dependency.vulnerability.batch.completed.count"] = completedBatchCount.ToString(),
             ["dependency.vulnerability.batch.incomplete.count"] = (batchResults.TotalCount - completedBatchCount).ToString()
         };

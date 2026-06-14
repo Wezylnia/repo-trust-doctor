@@ -10,6 +10,10 @@ public sealed record LocalIntelligenceOptions
 
     public TimeSpan RegistryCacheTtl { get; init; } = TimeSpan.FromHours(24);
 
+    public int RegistryRefreshBatchSize { get; init; } = 10_000;
+
+    public int RegistryRefreshConcurrency { get; init; } = 8;
+
     public bool LocalOsvEnabled { get; init; } = true;
 
     public bool OsvOnlineFallbackEnabled { get; init; } = true;

@@ -66,19 +66,22 @@ public sealed class SqlitePackageMetadataCache(LocalIntelligenceDatabase databas
                 requested_version,
                 metadata_json,
                 fetched_at_utc,
-                expires_at_utc)
+                expires_at_utc,
+                original_package_name)
             VALUES(
                 $ecosystem,
                 $package_name,
                 $requested_version,
                 $metadata_json,
                 $fetched_at_utc,
-                $expires_at_utc)
+                $expires_at_utc,
+                $original_package_name)
             ON CONFLICT(ecosystem, package_name, requested_version)
             DO UPDATE SET
                 metadata_json = excluded.metadata_json,
                 fetched_at_utc = excluded.fetched_at_utc,
-                expires_at_utc = excluded.expires_at_utc;
+                expires_at_utc = excluded.expires_at_utc,
+                original_package_name = excluded.original_package_name;
             """;
         AddKeyParameters(command, package);
         command.Parameters.AddWithValue(
@@ -86,6 +89,7 @@ public sealed class SqlitePackageMetadataCache(LocalIntelligenceDatabase databas
             JsonSerializer.Serialize(metadata, JsonOptions));
         command.Parameters.AddWithValue("$fetched_at_utc", fetchedAt.ToString("O"));
         command.Parameters.AddWithValue("$expires_at_utc", expiresAt.ToString("O"));
+        command.Parameters.AddWithValue("$original_package_name", package.Name.Trim());
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -97,7 +101,10 @@ public sealed class SqlitePackageMetadataCache(LocalIntelligenceDatabase databas
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT ecosystem, package_name, requested_version
+            SELECT
+                ecosystem,
+                COALESCE(NULLIF(original_package_name, ''), package_name),
+                requested_version
             FROM registry_metadata
             WHERE expires_at_utc <= $now
             ORDER BY expires_at_utc

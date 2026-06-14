@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Infrastructure.LocalData;
 using RepoTrustDoctor.Infrastructure.PackageRegistries;
@@ -77,20 +78,101 @@ public sealed class PackageMetadataCacheTests
         Assert.Equal(2, inner.RequestCount);
     }
 
+    [Fact]
+    public async Task GetExpiredKeysAsync_PreservesOriginalPackageName()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var options = CreateOptions(fixture.Path);
+        var cache = new SqlitePackageMetadataCache(new LocalIntelligenceDatabase(options));
+        var package = CreatePackage("Example.MixedCase", "1.0.0");
+        var now = DateTimeOffset.UtcNow;
+
+        await cache.SetAsync(package, null, now.AddDays(-2), now.AddDays(-1), CancellationToken.None);
+        var keys = await cache.GetExpiredKeysAsync(now, 10, CancellationToken.None);
+
+        Assert.Equal("Example.MixedCase", Assert.Single(keys).PackageName);
+    }
+
+    [Fact]
+    public async Task DatabaseInitialization_MigratesVersionOneRegistryTable()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var options = CreateOptions(fixture.Path);
+        await using (var connection = new SqliteConnection(
+                         $"Data Source={options.DatabasePath};Pooling=False"))
+        {
+            await connection.OpenAsync(TestContext.Current.CancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE registry_metadata (
+                    ecosystem INTEGER NOT NULL,
+                    package_name TEXT NOT NULL,
+                    requested_version TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL,
+                    fetched_at_utc TEXT NOT NULL,
+                    expires_at_utc TEXT NOT NULL,
+                    PRIMARY KEY (ecosystem, package_name, requested_version)
+                );
+                """;
+            await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        }
+
+        var database = new LocalIntelligenceDatabase(options);
+        await database.EnsureInitializedAsync(CancellationToken.None);
+        var cache = new SqlitePackageMetadataCache(database);
+
+        var keys = await cache.GetExpiredKeysAsync(DateTimeOffset.UtcNow, 10, CancellationToken.None);
+
+        Assert.Empty(keys);
+    }
+
+    [Fact]
+    public async Task RefreshExpiredAsync_UsesOriginalPackageName()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var options = CreateOptions(fixture.Path);
+        var cache = new SqlitePackageMetadataCache(new LocalIntelligenceDatabase(options));
+        var now = new DateTimeOffset(2026, 6, 14, 12, 0, 0, TimeSpan.Zero);
+        var package = CreatePackage("Example.MixedCase", "1.0.0");
+        await cache.SetAsync(
+            package,
+            null,
+            now.AddDays(-2),
+            now.AddDays(-1),
+            TestContext.Current.CancellationToken);
+        var client = new StubMetadataClient();
+        var refresher = new RegistryMetadataRefresher(
+            cache,
+            [client],
+            TimeSpan.FromHours(24),
+            100,
+            4,
+            new FixedTimeProvider(now));
+
+        var result = await refresher.RefreshExpiredAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.RefreshedCount);
+        Assert.Equal("Example.MixedCase", client.LastPackageName);
+    }
+
     private static CachingPackageMetadataClient CreateClient(
         string directory,
         IPackageMetadataClient inner,
         TimeProvider timeProvider)
     {
-        var options = new LocalIntelligenceOptions
+        var options = CreateOptions(directory);
+        var cache = new SqlitePackageMetadataCache(new LocalIntelligenceDatabase(options));
+        return new CachingPackageMetadataClient(inner, cache, options.RegistryCacheTtl, timeProvider);
+    }
+
+    private static LocalIntelligenceOptions CreateOptions(string directory) =>
+        new()
         {
             DatabasePath = Path.Combine(directory, "intelligence.db"),
             ConnectionPoolingEnabled = false,
             RegistryCacheTtl = TimeSpan.FromHours(24)
         };
-        var cache = new SqlitePackageMetadataCache(new LocalIntelligenceDatabase(options));
-        return new CachingPackageMetadataClient(inner, cache, options.RegistryCacheTtl, timeProvider);
-    }
 
     private static DependencyPackageInfo CreatePackage(string name, string version) =>
         new(
@@ -112,11 +194,14 @@ public sealed class PackageMetadataCacheTests
 
         public bool ReturnNull { get; set; }
 
+        public string? LastPackageName { get; private set; }
+
         public Task<PackageRegistryMetadata?> GetMetadataAsync(
             DependencyPackageInfo package,
             CancellationToken cancellationToken)
         {
             RequestCount++;
+            LastPackageName = package.Name;
             return Task.FromResult(ReturnNull
                 ? null
                 : new PackageRegistryMetadata(
@@ -140,5 +225,10 @@ public sealed class PackageMetadataCacheTests
         public override DateTimeOffset GetUtcNow() => now;
 
         public void Advance(TimeSpan duration) => now = now.Add(duration);
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 }
