@@ -106,7 +106,5 @@ public sealed partial class FrameworkRouteAnalyzer
     [GeneratedRegex(@"['""](?<path>[^'""]+)['""]")]
     private static partial Regex PathLiteralRegex();
 
-    [GeneratedRegex(@"\s+")]
-    private static partial Regex WhitespaceRegex();
 }
 

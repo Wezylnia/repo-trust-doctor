@@ -9,7 +9,6 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 {
     private const int UnauthFindingLimit = 15;
     private const int RouteFindingLimit = 20;
-    private const int MaxRouteStatementLength = 1200;
     private const int MaxAnalyzedSourceFiles = 6000;
 
     private static readonly IReadOnlyList<FrameworkDefinition> Frameworks =
@@ -130,13 +129,13 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 
                 foreach (Match routeMatch in routeMatches)
                 {
-                    if (IsLikelyNonCodeRouteMatch(text, routeMatch.Index))
+                    if (FrameworkRouteText.IsLikelyNonCodeRouteMatch(text, routeMatch.Index))
                     {
                         continue;
                     }
 
-                    var lineNumber = CountLineNumber(text, routeMatch.Index);
-                    var snippet = ExtractRouteSnippet(text, routeMatch);
+                    var lineNumber = FrameworkRouteText.CountLineNumber(text, routeMatch.Index);
+                    var snippet = FrameworkRouteText.ExtractRouteSnippet(text, routeMatch);
                     var hasAuth = HasAuthNearRoute(framework, lines, lineNumber, text, routeMatch);
 
                     detectedRoutes.Add(new FrameworkRouteInfo(
@@ -167,7 +166,7 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
                 AnalysisCategory.Codebase,
                 Severity.Medium,
                 Confidence.Low,
-                $"{route.FilePath}:{route.LineNumber.ToString(CultureInfo.InvariantCulture)} - {route.Framework} route \"{Truncate(route.Snippet, 80)}\" has no visible auth annotation near the route.",
+                $"{route.FilePath}:{route.LineNumber.ToString(CultureInfo.InvariantCulture)} - {route.Framework} route \"{FrameworkRouteText.Truncate(route.Snippet, 80)}\" has no visible auth annotation near the route.",
                 [new Evidence(
                     "route.no_auth",
                     $"No authentication or authorization annotation found near {route.Framework} route.",
@@ -186,7 +185,7 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
                 AnalysisCategory.Codebase,
                 Severity.Info,
                 Confidence.High,
-                $"{route.FilePath}:{route.LineNumber.ToString(CultureInfo.InvariantCulture)} - {route.Framework} route \"{Truncate(route.Snippet, 80)}\" detected.",
+                $"{route.FilePath}:{route.LineNumber.ToString(CultureInfo.InvariantCulture)} - {route.Framework} route \"{FrameworkRouteText.Truncate(route.Snippet, 80)}\" detected.",
                 [new Evidence(
                     "route.detected",
                     $"{route.Framework} HTTP route detected.",
@@ -252,31 +251,6 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
             .Where(fw => fw.Extensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
             .ToList();
 
-    private static int CountLineNumber(string text, int charIndex)
-    {
-        var line = 1;
-        for (var i = 0; i < charIndex && i < text.Length; i++)
-        {
-            if (text[i] == '\n')
-            {
-                line++;
-            }
-        }
-
-        return line;
-    }
-
-    private static string Truncate(string value, int maxLength) =>
-        value.Length <= maxLength ? value : string.Concat(value.AsSpan(0, maxLength - 3), "...");
-
-    private static string ExtractRouteSnippet(string text, Match routeMatch)
-    {
-        var value = routeMatch.Value.Trim();
-        return value.EndsWith('(')
-            ? NormalizeRouteSnippet(GetRouteStatement(text, routeMatch))
-            : value;
-    }
-
     private static bool HasAuthNearRoute(
         FrameworkDefinition framework,
         string[] lines,
@@ -302,7 +276,7 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 
         if (framework.Name is "Express.js" or "Go Gin/Echo" or "Rust Actix/Axum")
         {
-            return framework.AuthPattern.IsMatch(GetRouteStatement(text, routeMatch));
+            return framework.AuthPattern.IsMatch(FrameworkRouteText.GetRouteStatement(text, routeMatch));
         }
 
         var contextStart = Math.Max(0, routeIndex - 2);
@@ -335,7 +309,7 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 
     private static bool HasAspNetAuthInChainedCall(string text, Match routeMatch)
     {
-        var statement = GetRouteStatement(text, routeMatch);
+        var statement = FrameworkRouteText.GetRouteStatement(text, routeMatch);
         return statement.Contains("RequireAuthorization", StringComparison.OrdinalIgnoreCase) ||
                statement.Contains("AllowAnonymous", StringComparison.OrdinalIgnoreCase);
     }
@@ -364,68 +338,6 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
         relativePath.EndsWith("urls.py", StringComparison.OrdinalIgnoreCase) ||
         relativePath.Contains("/urls/", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsLikelyNonCodeRouteMatch(string text, int index)
-    {
-        var lineStart = text.LastIndexOf('\n', Math.Max(0, index - 1));
-        lineStart = lineStart < 0 ? 0 : lineStart + 1;
-        var linePrefix = text[lineStart..index];
-
-        if (linePrefix.Contains("//", StringComparison.Ordinal) ||
-            linePrefix.Contains('#', StringComparison.Ordinal) ||
-            IsInsideQuotedText(linePrefix))
-        {
-            return true;
-        }
-
-        var prefix = text[..index];
-        var lastBlockOpen = prefix.LastIndexOf("/*", StringComparison.Ordinal);
-        if (lastBlockOpen >= 0)
-        {
-            var lastBlockClose = prefix.LastIndexOf("*/", StringComparison.Ordinal);
-            return lastBlockClose < lastBlockOpen;
-        }
-
-        return false;
-    }
-
-    private static bool IsInsideQuotedText(string text)
-    {
-        var single = false;
-        var doubleQuote = false;
-        var backtick = false;
-        var escaped = false;
-
-        foreach (var current in text)
-        {
-            if (escaped)
-            {
-                escaped = false;
-                continue;
-            }
-
-            if (current == '\\')
-            {
-                escaped = true;
-                continue;
-            }
-
-            if (current == '\'' && !doubleQuote && !backtick)
-            {
-                single = !single;
-            }
-            else if (current == '"' && !single && !backtick)
-            {
-                doubleQuote = !doubleQuote;
-            }
-            else if (current == '`' && !single && !doubleQuote)
-            {
-                backtick = !backtick;
-            }
-        }
-
-        return single || doubleQuote || backtick;
-    }
-
     private static bool IsTestSource(string root, string filePath)
     {
         var relativePath = Path.GetRelativePath(root, filePath).Replace('\\', '/');
@@ -439,92 +351,6 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
             RepositoryPathClassification.Template |
             RepositoryPathClassification.Benchmark |
             RepositoryPathClassification.AnalyzerImplementation);
-    }
-
-    private static string GetRouteStatement(string text, Match routeMatch)
-    {
-        var maxEnd = Math.Min(text.Length, routeMatch.Index + MaxRouteStatementLength);
-        var end = FindStatementEnd(text, routeMatch.Index, maxEnd);
-        if (end < 0)
-        {
-            var newline = text.IndexOf('\n', routeMatch.Index, maxEnd - routeMatch.Index);
-            end = newline >= 0 ? newline : maxEnd - 1;
-        }
-
-        var length = Math.Min(end - routeMatch.Index + 1, text.Length - routeMatch.Index);
-        return length <= 0 ? string.Empty : text.Substring(routeMatch.Index, length);
-    }
-
-    private static string NormalizeRouteSnippet(string value) =>
-        WhitespaceRegex().Replace(value.Trim(), " ");
-
-    private static int FindStatementEnd(string text, int start, int maxEnd)
-    {
-        var parenDepth = 0;
-        var braceDepth = 0;
-        var bracketDepth = 0;
-        var inString = false;
-        var stringDelimiter = '\0';
-        var escaped = false;
-
-        for (var index = start; index < maxEnd; index++)
-        {
-            var current = text[index];
-            if (inString)
-            {
-                if (escaped)
-                {
-                    escaped = false;
-                    continue;
-                }
-
-                if (current == '\\')
-                {
-                    escaped = true;
-                    continue;
-                }
-
-                if (current == stringDelimiter)
-                {
-                    inString = false;
-                }
-
-                continue;
-            }
-
-            if (current is '"' or '\'' or '`')
-            {
-                inString = true;
-                stringDelimiter = current;
-                continue;
-            }
-
-            switch (current)
-            {
-                case '(':
-                    parenDepth++;
-                    break;
-                case ')':
-                    parenDepth = Math.Max(0, parenDepth - 1);
-                    break;
-                case '{':
-                    braceDepth++;
-                    break;
-                case '}':
-                    braceDepth = Math.Max(0, braceDepth - 1);
-                    break;
-                case '[':
-                    bracketDepth++;
-                    break;
-                case ']':
-                    bracketDepth = Math.Max(0, bracketDepth - 1);
-                    break;
-                case ';' when parenDepth == 0 && braceDepth == 0 && bracketDepth == 0:
-                    return index;
-            }
-        }
-
-        return -1;
     }
 
 }

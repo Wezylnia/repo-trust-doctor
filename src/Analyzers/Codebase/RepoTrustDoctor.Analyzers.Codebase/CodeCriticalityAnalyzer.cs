@@ -1,34 +1,17 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
 
 namespace RepoTrustDoctor.Analyzers.Codebase;
 
-public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
+public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 {
     private const int LargeFileLineThreshold = 400;
     private const int FindingLimit = 12;
     private const int JavaSerializationHookFindingLimit = 6;
-    private const int BroadExceptionLookaheadLines = 24;
     private const int MaxAnalyzedSourceFiles = 6000;
 
     private static readonly string[] SourceExtensions = [".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".java", ".kt", ".rs"];
-
-    private static readonly IReadOnlyList<KeywordGroup> KeywordGroups =
-    [
-        new(CodeCriticalityReason.Authentication, ["authenticate", "authentication", "login", "signin", "session", "jwt"]),
-        new(CodeCriticalityReason.Authorization, ["authorize", "authorization", "permission", "requireauthorization", "allowanonymous"]),
-        new(CodeCriticalityReason.Payments, ["payment", "billing", "invoice", "stripe", "refund", "cardnumber", "card_number"]),
-        new(CodeCriticalityReason.Database, ["database", "dbcontext", "sqlconnection", "npgsql", "mysql", "postgres", "migrationbuilder", "transaction"]),
-        new(CodeCriticalityReason.FileSystem, ["file.", "filesystem", "readall", "writeall", "upload", "download"]),
-        new(CodeCriticalityReason.Network, ["httpclient", "httpcontext", "httpget", "httppost", "fetch(", "axios", "socket", "webhook"]),
-        new(CodeCriticalityReason.Cryptography, ["encrypt", "decrypt", "sha256", "sha512", "hmac", "rsa", "aes", "crypto"]),
-        new(CodeCriticalityReason.Secrets, ["secret", "password", "access_token", "refresh_token", "bearer", "apikey", "api_key", "credential"]),
-        new(CodeCriticalityReason.Deserialization, ["binaryformatter", "typenamehandling", "new objectinputstream", "pickle.load", "yaml.unsafe_load"]),
-        new(CodeCriticalityReason.CommandExecution, ["process.start(", "runtime.exec(", "runtime.getruntime().exec(", "new processbuilder(", "subprocess.run(", "subprocess.popen(", "subprocess.call(", "subprocess.check_call(", "subprocess.check_output(", "os.system(", "os.popen(", "child_process.exec", "child_process.spawn", "execsync(", "spawnsync(", "command::new(", "popen("]),
-        new(CodeCriticalityReason.JavaSerializationHook, ["readobject("])
-    ];
 
     public string Id => "codebase-02-criticality";
 
@@ -123,7 +106,7 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             }
 
             var text = await File.ReadAllTextAsync(file, cancellationToken);
-            var analyzed = AnalyzeFile(context.RepositoryPath, file, text);
+            var analyzed = CodeCriticalityInspector.Analyze(context.RepositoryPath, file, text);
             if (analyzed.Score >= 30 ||
                 analyzed.Reasons.Contains(CodeCriticalityReason.CommandExecution) ||
                 analyzed.Reasons.Contains(CodeCriticalityReason.DynamicCodeEvaluation) ||
@@ -256,140 +239,6 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             : 0;
     }
 
-    private static CodeCriticalityFile AnalyzeFile(string repositoryPath, string filePath, string text)
-    {
-        var reasons = new HashSet<CodeCriticalityReason>();
-        var firstRelevantLine = default(int?);
-        var relevantLines = new Dictionary<CodeCriticalityReason, int>();
-        var searchableText = RemoveAnalyzerVocabulary(RemoveComments(RemoveQuotedText(text)));
-        var lower = searchableText.ToLowerInvariant();
-        var lines = searchableText.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-
-        foreach (var group in KeywordGroups)
-        {
-            if (group.Reason == CodeCriticalityReason.CommandExecution &&
-                HasBoundedProcessInvocation(lower))
-            {
-                continue;
-            }
-
-            if (group.Keywords.Any(keyword => lower.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
-            {
-                var line = FindFirstLine(lines, group.Keywords);
-                reasons.Add(group.Reason);
-                if (line is not null)
-                {
-                    relevantLines[group.Reason] = line.Value;
-                }
-
-                firstRelevantLine ??= line;
-            }
-        }
-
-        var dynamicEvaluationLine = FindFirstDynamicEvaluationLine(filePath, lines);
-        if (dynamicEvaluationLine is not null)
-        {
-            reasons.Add(CodeCriticalityReason.DynamicCodeEvaluation);
-            relevantLines[CodeCriticalityReason.DynamicCodeEvaluation] = dynamicEvaluationLine.Value;
-            firstRelevantLine ??= dynamicEvaluationLine;
-        }
-
-        if (lines.Length > LargeFileLineThreshold)
-        {
-            reasons.Add(CodeCriticalityReason.LargeFile);
-        }
-
-        var firstBroadExceptionLine = FindFirstBroadExceptionLine(lines);
-        if (firstBroadExceptionLine is not null)
-        {
-            reasons.Add(CodeCriticalityReason.BroadExceptionHandling);
-            relevantLines[CodeCriticalityReason.BroadExceptionHandling] = firstBroadExceptionLine.Value;
-            firstRelevantLine ??= firstBroadExceptionLine;
-        }
-
-        SuppressStaticAnalyzerVocabulary(repositoryPath, filePath, text, reasons);
-
-        var score = Math.Min(100, reasons.Sum(ScoreReason));
-        return new CodeCriticalityFile(
-            Path.GetRelativePath(repositoryPath, filePath).Replace('\\', '/'),
-            score,
-            lines.Length,
-            reasons.OrderBy(reason => reason.ToString(), StringComparer.OrdinalIgnoreCase).ToArray(),
-            firstRelevantLine,
-            relevantLines);
-    }
-
-    private static int ScoreReason(CodeCriticalityReason reason) => reason switch
-    {
-        CodeCriticalityReason.Deserialization => 30,
-        CodeCriticalityReason.CommandExecution => 30,
-        CodeCriticalityReason.DynamicCodeEvaluation => 22,
-        CodeCriticalityReason.JavaSerializationHook => 18,
-        CodeCriticalityReason.Authentication or
-        CodeCriticalityReason.Authorization or
-        CodeCriticalityReason.Payments or
-        CodeCriticalityReason.Cryptography or
-        CodeCriticalityReason.Secrets => 25,
-        CodeCriticalityReason.Database or
-        CodeCriticalityReason.Network or
-        CodeCriticalityReason.FileSystem => 18,
-        CodeCriticalityReason.BroadExceptionHandling => 16,
-        CodeCriticalityReason.LargeFile => 12,
-        _ => 10
-    };
-
-    private static int? FindFirstLine(string[] lines, IReadOnlyList<string> keywords)
-    {
-        for (var index = 0; index < lines.Length; index++)
-        {
-            if (keywords.Any(keyword => lines[index].Contains(keyword, StringComparison.OrdinalIgnoreCase)))
-            {
-                return index + 1;
-            }
-        }
-
-        return null;
-    }
-
-    private static int? FindFirstBroadExceptionLine(string[] lines)
-    {
-        for (var index = 0; index < lines.Length; index++)
-        {
-            if (IsBroadExceptionLine(lines[index]) &&
-                !IsBoundedBroadExceptionHandler(lines, index))
-            {
-                return index + 1;
-            }
-        }
-
-        return null;
-    }
-
-    private static int? FindFirstDynamicEvaluationLine(string filePath, string[] lines)
-    {
-        var pattern = Path.GetExtension(filePath).ToLowerInvariant() switch
-        {
-            ".js" or ".jsx" or ".ts" or ".tsx" => JavaScriptDynamicEvaluationPattern(),
-            ".py" or ".rb" => PythonRubyDynamicEvaluationPattern(),
-            _ => null
-        };
-
-        if (pattern is null)
-        {
-            return null;
-        }
-
-        for (var index = 0; index < lines.Length; index++)
-        {
-            if (pattern.IsMatch(lines[index]))
-            {
-                return index + 1;
-            }
-        }
-
-        return null;
-    }
-
     private static bool IsTestSource(string root, string filePath)
     {
         var relativePath = Path.GetRelativePath(root, filePath).Replace('\\', '/');
@@ -400,84 +249,6 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         RepositoryPathClassifier.Classify(relativePath).HasAny(
             RepositoryPathClassification.Tooling |
             RepositoryPathClassification.AnalyzerImplementation);
-
-    private static void SuppressStaticAnalyzerVocabulary(
-        string root,
-        string filePath,
-        string originalText,
-        HashSet<CodeCriticalityReason> reasons)
-    {
-        if (!IsStaticAnalyzerImplementation(root, filePath, originalText))
-        {
-            return;
-        }
-
-        reasons.Remove(CodeCriticalityReason.Authentication);
-        reasons.Remove(CodeCriticalityReason.Authorization);
-        reasons.Remove(CodeCriticalityReason.Payments);
-        reasons.Remove(CodeCriticalityReason.Database);
-        reasons.Remove(CodeCriticalityReason.FileSystem);
-        reasons.Remove(CodeCriticalityReason.Network);
-        reasons.Remove(CodeCriticalityReason.Cryptography);
-        reasons.Remove(CodeCriticalityReason.Secrets);
-    }
-
-    private static bool IsStaticAnalyzerImplementation(string root, string filePath, string originalText)
-    {
-        var relativePath = Path.GetRelativePath(root, filePath).Replace('\\', '/');
-        return relativePath.Contains("/Analyzers/", StringComparison.OrdinalIgnoreCase) ||
-               originalText.Contains("IRepositoryAnalyzer", StringComparison.Ordinal) ||
-               originalText.Contains("IDependencyInventoryCollector", StringComparison.Ordinal);
-    }
-
-    private static string RemoveQuotedText(string text) =>
-        QuotedTextRegex().Replace(text, match =>
-        {
-            var newlineCount = match.Value.Count(character => character == '\n');
-            return newlineCount == 0 ? string.Empty : new string('\n', newlineCount);
-        });
-
-    private static string RemoveAnalyzerVocabulary(string text) =>
-        CodeCriticalityEnumDeclarationRegex().Replace(
-            CodeCriticalityReasonReferenceRegex().Replace(text, string.Empty),
-            match =>
-            {
-                var newlineCount = match.Value.Count(character => character == '\n');
-                return newlineCount == 0 ? string.Empty : new string('\n', newlineCount);
-            });
-
-    private static string RemoveComments(string text) =>
-        LineCommentRegex().Replace(
-            BlockCommentRegex().Replace(text, match =>
-            {
-                var newlineCount = match.Value.Count(character => character == '\n');
-                return newlineCount == 0 ? string.Empty : new string('\n', newlineCount);
-            }),
-            string.Empty);
-
-    private static bool HasBoundedProcessInvocation(string searchableText) =>
-        searchableText.Contains("processstartinfo", StringComparison.OrdinalIgnoreCase) &&
-        searchableText.Contains("useshellexecute = false", StringComparison.OrdinalIgnoreCase) &&
-        searchableText.Contains("argumentlist.add", StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsBroadExceptionLine(string line) =>
-        BroadExceptionRegex().IsMatch(line) &&
-        !line.Contains(" when (", StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsBoundedBroadExceptionHandler(string[] lines, int catchLineIndex)
-    {
-        var block = string.Join(
-            '\n',
-            lines
-                .Skip(catchLineIndex)
-                .Take(BroadExceptionLookaheadLines));
-
-        return ThrowsOrReraisesExceptionPattern().IsMatch(block) ||
-               DiagnosticExceptionLoggingPattern().IsMatch(block) ||
-               block.Contains("scanlifecyclestate.failed", StringComparison.OrdinalIgnoreCase) ||
-               block.Contains("fail_json(", StringComparison.OrdinalIgnoreCase) ||
-               block.Contains("response_for_exception", StringComparison.OrdinalIgnoreCase);
-    }
 
     private static Finding CreateCriticalityFinding(
         string ruleId,
@@ -609,35 +380,4 @@ public sealed partial class CodeCriticalityAnalyzer : IRepositoryAnalyzer
     private static string FormatReasons(IReadOnlyList<CodeCriticalityReason> reasons) =>
         string.Join(", ", reasons.Select(reason => reason.ToString()));
 
-    [GeneratedRegex(@"catch\s*\(\s*(Exception|System\.Exception|Throwable|Error)\b|except\s+(Exception|BaseException)\b|catch\s*\(\s*err\s*\)", RegexOptions.IgnoreCase)]
-    private static partial Regex BroadExceptionRegex();
-
-    [GeneratedRegex(@"^\s*(?:throw\s*(?:;|new\b|[A-Za-z_][\w.]*\s*;)|raise(?:\s|$))", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
-    private static partial Regex ThrowsOrReraisesExceptionPattern();
-
-    [GeneratedRegex(@"\b(?:logger|logging|log)\.exception\s*\(|\blogger\.logerror\s*\(|\blogerror\s*\(", RegexOptions.IgnoreCase)]
-    private static partial Regex DiagnosticExceptionLoggingPattern();
-
-    [GeneratedRegex("\"\"\"[\\s\\S]*?\"\"\"|@\"(?:[^\"]|\"\")*\"|\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|`(?:\\\\.|[^`\\\\])*`", RegexOptions.Multiline)]
-    private static partial Regex QuotedTextRegex();
-
-    [GeneratedRegex(@"/\*[\s\S]*?\*/", RegexOptions.Multiline)]
-    private static partial Regex BlockCommentRegex();
-
-    [GeneratedRegex(@"//.*$", RegexOptions.Multiline)]
-    private static partial Regex LineCommentRegex();
-
-    [GeneratedRegex(@"(?<![\w$])eval\s*\(|new\s+function\s*\(", RegexOptions.IgnoreCase)]
-    private static partial Regex JavaScriptDynamicEvaluationPattern();
-
-    [GeneratedRegex(@"(?<![\w.])eval\s*\(", RegexOptions.IgnoreCase)]
-    private static partial Regex PythonRubyDynamicEvaluationPattern();
-
-    [GeneratedRegex(@"CodeCriticalityReason\.\w+", RegexOptions.IgnoreCase)]
-    private static partial Regex CodeCriticalityReasonReferenceRegex();
-
-    [GeneratedRegex(@"\b(?:public\s+)?enum\s+CodeCriticalityReason\s*\{[\s\S]*?\}", RegexOptions.IgnoreCase)]
-    private static partial Regex CodeCriticalityEnumDeclarationRegex();
-
-    private sealed record KeywordGroup(CodeCriticalityReason Reason, IReadOnlyList<string> Keywords);
 }
