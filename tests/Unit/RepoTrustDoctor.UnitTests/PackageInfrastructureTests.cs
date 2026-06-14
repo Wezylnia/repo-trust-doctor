@@ -115,6 +115,12 @@ public sealed class PackageInfrastructureTests
 
         Assert.Equal(PackageLicenseFamily.Copyleft, agpl.Family);
         Assert.True(agpl.IsPolicySensitive);
+        var mixed = PackageLicenseNormalizer.Normalize("MIT AND GPL-3.0-only");
+        Assert.Equal(PackageLicenseFamily.Copyleft, mixed.Family);
+        Assert.True(mixed.IsPolicySensitive);
+        var alternative = PackageLicenseNormalizer.Normalize("MIT OR GPL-3.0-only");
+        Assert.Equal(PackageLicenseFamily.Permissive, alternative.Family);
+        Assert.False(alternative.IsPolicySensitive);
         Assert.False(PackageLicenseNormalizer.Normalize("custom license text").IsKnown);
         Assert.False(PackageLicenseNormalizer.Normalize(new string('x', 200)).IsKnown);
     }

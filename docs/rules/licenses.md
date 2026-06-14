@@ -18,7 +18,7 @@ Recommendation: manually review the package license before production use.
 - Default severity: Medium
 - Default confidence: Medium
 
-Detects common copyleft license families such as GPL, LGPL, and AGPL in package metadata.
+Detects common copyleft license families such as GPL, LGPL, and AGPL in package metadata. Expressions where a copyleft license is required, such as `MIT AND GPL-3.0-only`, are treated as policy-sensitive. Expressions with a clear permissive alternative, such as `MIT OR GPL-3.0-only`, are not reported by this rule.
 
 Why it matters: copyleft licenses may carry obligations that depend on usage context. RepoTrustDoctor reports this as a review signal, not a legal conclusion.
 

@@ -437,6 +437,24 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
+    public async Task DependencyLicenseAnalyzer_ReportsCopyleftWhenExpressionRequiresIt()
+    {
+        var context = CreateContextWithMetadata([
+            new PackageRegistryMetadata(DependencyEcosystem.Npm, "mixed", "1.0.0", "1.0.0", null, false, false, null, null, "MIT AND GPL-3.0-only", null, "registry.npmjs.org"),
+            new PackageRegistryMetadata(DependencyEcosystem.Npm, "alternative", "1.0.0", "1.0.0", null, false, false, null, null, "MIT OR GPL-3.0-only", null, "registry.npmjs.org")
+        ]);
+
+        var result = await new DependencyLicenseAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding =>
+            finding.RuleId == "TRUST-LIC002" &&
+            finding.Message.Contains("mixed", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Findings, finding =>
+            finding.RuleId == "TRUST-LIC002" &&
+            finding.Message.Contains("alternative", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task PackageOriginAnalyzer_ReportsMissingRepositoryAndMixedNuGetSources()
     {
         using var fixture = TemporaryRepository.Create();
