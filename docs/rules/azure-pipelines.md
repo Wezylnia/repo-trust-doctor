@@ -6,7 +6,7 @@
 - Default severity: High
 - Default confidence: Medium
 
-Detects PR-controlled Azure variables (`$(System.PullRequest.SourceBranch)`, `$(Build.SourceBranch)`) interpolated in script steps.
+Detects PR-controlled Azure variables (`$(System.PullRequest.SourceBranch)`, `$(Build.SourceBranch)`) interpolated in inline scripts or YAML block-scalar script bodies. Values passed through an `env:` mapping are not treated as shell interpolation.
 
 Why it matters: these variables can be controlled by PR authors in `pull_request` triggers, potentially enabling injection.
 
@@ -55,6 +55,9 @@ Recommendation: isolate agents, rotate tokens, and limit workspace reuse.
 - Default confidence: Medium
 
 Detects publish artifact tasks with overly broad paths (`.`, `./`, `$(System.DefaultWorkingDirectory)`).
+
+Template and runtime expressions are not reported as broad paths when the
+current file does not establish their resolved value.
 
 Why it matters: publishing the entire workspace may leak secrets, sources, or intermediate artifacts.
 

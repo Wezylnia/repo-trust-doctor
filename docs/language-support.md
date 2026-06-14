@@ -11,12 +11,12 @@ Repository Trust Doctor is strongest when a repository exposes dependency manife
 | Python | `requirements.txt`, `pyproject.toml`, `Pipfile`, common Python lockfiles, pinned requirement checks, documentation/test manifest suppression, PyPI metadata, OSV advisories |
 | Java / Spring Boot | Maven `pom.xml`, Gradle `build.gradle` and `build.gradle.kts`, Gradle version catalogs (`libs.versions.toml`), Maven Central metadata, OSV advisories, BOM/dependency-management version signals, Gradle wrapper checks, dynamic/SNAPSHOT version checks, Spring Boot Actuator exposure checks |
 | Go | `go.mod`, `go.sum` detection, replace directives, pseudo-version detection, prerelease/build metadata handling, version pinning, OSV advisories for resolved versions |
-| Rust / Cargo | `Cargo.toml` (direct sections, target-specific sections, dependency subtables), same-directory and workspace-root `Cargo.lock` detection, Git source detection, repository-external path source detection, version pinning, prerelease checks, OSV advisories for resolved versions |
-| PHP / Composer | `composer.json` (require/require-dev), `composer.lock` detection, version constraint analysis, OSV advisories for resolved versions |
-| Ruby / Bundler | `Gemfile`, `.gemspec`, `Gemfile.lock` detection, lockfile-aware version constraint analysis, Git/path source detection, OSV advisories for resolved versions |
-| Dart / Flutter | `pubspec.yaml` (dependencies/dev_dependencies with nested `sdk`, `path`, and `git` metadata handling), `pubspec.lock` detection, version constraint analysis, OSV advisories for resolved versions |
+| Rust / Cargo | `Cargo.toml` (direct sections, target-specific sections, dependency subtables), same-directory and workspace-root `Cargo.lock` resolution, renamed crate handling, conservative ambiguous-version handling, Git source detection, repository-external path source detection, prerelease checks, OSV advisories for lock-resolved versions |
+| PHP / Composer | `composer.json` (require/require-dev), exact direct-version resolution from `composer.lock`, version constraint analysis, OSV advisories for lock-resolved versions |
+| Ruby / Bundler | `Gemfile`, `.gemspec`, registry-gem resolution from `Gemfile.lock`, lockfile-aware version constraint analysis, Git/path source detection, OSV advisories for lock-resolved RubyGems packages |
+| Dart / Flutter | `pubspec.yaml` (dependencies/dev_dependencies with nested `sdk`, `path`, and `git` metadata handling), hosted package resolution from `pubspec.lock`, version constraint analysis, OSV advisories for lock-resolved versions |
 | Elixir / Hex | `mix.exs`, `mix.lock` direct-version resolution, stale/missing lock entry analysis, external Git/path source detection, OSV advisories for lock-resolved versions |
-| Swift / SPM | multiline `Package.swift` dependency detection, executable-only `Package.resolved` hygiene, branch-based dependency detection, OSV advisories for exact manifest versions |
+| Swift / SPM | multiline `Package.swift` dependency detection, executable-only `Package.resolved` hygiene, current and legacy resolved-file version lookup, branch-based dependency detection, OSV advisories for lock-resolved remote packages |
 | C / C++ | `conanfile.txt`, `conanfile.py`, `vcpkg.json`, streamed `CMakeLists.txt` up to 8 MiB (`find_package`/`FetchContent`) detection |
 
 ## Candidate Ecosystems For v2

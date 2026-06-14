@@ -48,14 +48,17 @@ Why it matters: plaintext secrets in CI config may be exposed to anyone with rep
 
 Recommendation: use CircleCI contexts or external secret management. Evidence is redacted.
 
-## TRUST-CIRCLE005: CircleCI Remote Docker Enabled Without Explicit Version
+## TRUST-CIRCLE005: CircleCI Remote Docker Uses Preview Version
 
 - Category: CiCd
 - Default severity: Low
-- Default confidence: Medium
+- Default confidence: High
 
-Detects `setup_remote_docker` without a `version:` declaration nearby.
+Detects `setup_remote_docker` configured with the floating `edge` version.
+Omitting `version:` uses CircleCI's stable default and is not reported.
 
-Why it matters: using remote Docker without an explicit version may silently change behavior when CircleCI updates defaults.
+Why it matters: the preview channel can change before production validation and
+reduce CI reproducibility.
 
-Recommendation: specify an explicit Docker version with `setup_remote_docker`.
+Recommendation: use CircleCI's stable default or a supported production
+version.

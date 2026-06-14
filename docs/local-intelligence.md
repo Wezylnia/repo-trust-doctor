@@ -62,6 +62,8 @@ Local matching supports exact affected-version lists and OSV `SEMVER` ranges. Ec
 
 - `dependency.vulnerability.lookup.local.count`
 - `dependency.vulnerability.lookup.online.count`
+- `dependency.vulnerability.lookup.completed.count`
+- `dependency.vulnerability.lookup.incomplete.count`
 
 Before an ecosystem has a ready local index, vulnerability checks use `api.osv.dev` when online fallback is enabled. If fallback is disabled, the analyzer records incomplete coverage rather than reporting an unverified clean result.
 
@@ -70,6 +72,11 @@ and a corrupt or temporarily unavailable SQLite cache does not discard
 successful registry metadata. Confirmed local advisories are preserved even
 when another candidate advisory for the same package has range semantics that
 require online evaluation.
+
+Completion is counted per package rather than per batch. A mixed batch can
+therefore report locally completed packages and preserved findings while also
+reporting incomplete packages whose ecosystem data is not ready or whose range
+semantics require online fallback.
 
 ## Background Refresh
 

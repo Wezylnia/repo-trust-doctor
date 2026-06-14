@@ -12,17 +12,25 @@ Why it matters: remote includes may change without repository changes, introduci
 
 Recommendation: review the content and provenance of all remote includes. Pin to trusted revisions or mirror them in-repo.
 
-## TRUST-GLCI002: GitLab CI Interpolates CI Variables in Shell
+## TRUST-GLCI002: GitLab CI Dynamically Executes CI Variables
 
 - Category: CiCd
 - Default severity: High
 - Default confidence: Medium
 
-Detects script blocks that interpolate CI/CD variables inline (e.g., `$CI_ENVIRONMENT_URL`).
+Detects script lines that pass CI/CD variables to dynamic execution sinks such
+as `eval`, `sh -c`, `bash -c`, or PowerShell command strings. Ordinary variable
+use such as `echo "$CI_ENVIRONMENT_URL"` is not reported.
 
-Why it matters: inline interpolation in shell scripts can lead to injection vulnerabilities if variable content is not sanitized.
+Why it matters: dynamic shell execution interprets variable content as code,
+which can create injection vulnerabilities when the value is attacker
+controlled.
 
-Recommendation: pass CI variables as environment variables instead of interpolating them directly in shell strings.
+Recommendation: avoid dynamic shell execution and pass validated values as
+ordinary command arguments.
+
+The analyzer follows explicit, non-glob `include: local:` paths within the
+repository so security checks also cover split pipeline definitions.
 
 ## TRUST-GLCI003: GitLab CI Uses Latest Image Tag
 

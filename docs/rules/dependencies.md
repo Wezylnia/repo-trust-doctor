@@ -422,6 +422,12 @@ Recommendation: review path-sourced dependencies that leave the repository and p
 
 Detects Cargo dependencies that do not use an exact requirement (e.g. `"1"`, `"1.2"`, or `"1.2.3"` instead of `"=1.2.3"`) when no covering `Cargo.lock` is present. The collector still records non-exact requirements in the dependency inventory when a same-directory or workspace-root lockfile exists, but it does not emit this finding because the lockfile provides the reproducibility signal for normal Cargo projects. The collector reads normal dependency sections, target-specific dependency sections, and dependency subtables such as `[dependencies.serde]` without treating metadata keys like `features` as packages.
 
+When a covering lockfile contains exactly one registry version for a direct
+crate, that version is used for advisory lookup. Renamed dependencies use the
+underlying `package` name. If the same crate name has multiple locked versions,
+the collector keeps the manifest requirement unresolved instead of choosing an
+arbitrary version.
+
 Why it matters: non-exact Cargo dependency versions can resolve to different minor or patch versions over time when a lockfile is not committed.
 
 Recommendation: commit `Cargo.lock` for reproducible Cargo builds, or use exact `=x.y.z` requirements when strict direct dependency pinning is required.
@@ -457,6 +463,11 @@ Recommendation: run `composer install` and commit `composer.lock` for applicatio
 - Default confidence: High
 
 Detects Composer application manifests that use version constraints (`^`, `~`, `>`, `<`, `*`, `||`) while no sibling `composer.lock` is present. Findings are aggregated per manifest with sample packages instead of reporting every dependency individually.
+
+When `composer.lock` is present, direct `require` and `require-dev` entries are
+resolved from the matching `packages` and `packages-dev` records. The requested
+constraint remains in package metadata while the exact locked version is used
+for registry and advisory lookup.
 
 Why it matters: version constraints are normal for reusable Composer libraries, but application installs without `composer.lock` can resolve to different package versions over time.
 
@@ -494,6 +505,10 @@ Recommendation: run `bundle install` and commit `Gemfile.lock` for reproducible 
 
 Detects Ruby gems with missing or non-exact version constraints. `Gemfile` constraints are not reported when a sibling `Gemfile.lock` exists, because Bundler's lockfile provides the reproducible resolution. Gemspec constraints still emit this rule because they describe package compatibility rather than an application install lock.
 
+Registry gems in the `GEM` section of `Gemfile.lock` are resolved to exact
+versions for advisory lookup. Entries from `GIT` and `PATH` sections are not
+treated as RubyGems registry packages.
+
 Why it matters: missing or ranged gem constraints can resolve to different versions over time.
 
 Recommendation: use exact gem versions with a committed `Gemfile.lock` for reproducible builds.
@@ -529,6 +544,10 @@ Recommendation: run `dart pub get` or `flutter pub get` and commit `pubspec.lock
 - Default confidence: High
 
 Detects Dart application dependencies with version ranges or constraints instead of exact versions when no sibling `pubspec.lock` exists. Nested Pub metadata such as `sdk: flutter`, `path: ../package`, and `git:` is associated with the parent dependency instead of being recorded as a package.
+
+Hosted packages in `pubspec.lock` resolve direct manifest constraints to exact
+versions. SDK, path, and Git dependencies remain source-qualified and are not
+misrepresented as hosted Pub packages.
 
 Why it matters: version constraints can resolve to different package versions over time.
 
@@ -601,6 +620,10 @@ Recommendation: commit `Package.resolved` for reproducible executable builds.
 - Default confidence: High
 
 Detects Swift package dependencies that reference a branch instead of a version.
+
+Version-based remote dependencies are resolved from current and legacy
+`Package.resolved` formats when an exact pin is available. Local path and
+branch dependencies remain unresolved by design.
 
 Why it matters: branch-based dependencies can change without a manifest change.
 
