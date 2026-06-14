@@ -218,6 +218,8 @@ Analyzers implement `IRepositoryAnalyzer` and produce `Finding` records with rul
 
 Collects structured dependency manifests across 12 ecosystems: npm, NuGet, Python (pip/Pipenv/Poetry), Maven/Gradle, Go, Cargo, Composer, Ruby/Bundler, Dart/Pub, Elixir/Hex, SwiftPM, C/C++ (Conan/vcpkg/CMake).
 
+For npm, direct dependency ranges are resolved to the exact installed version from npm `package-lock.json` v1, v2, or v3 before vulnerability analysis. Workspace-specific package entries take precedence over hoisted entries. For NuGet, each project is matched only with an adjacent `packages.lock.json`; consistent direct versions across target frameworks are resolved before vulnerability analysis, while target-specific version conflicts remain explicitly unpinned. Both JSON lockfile readers stream from disk with a 64 MiB safety limit instead of using the smaller general-purpose text-file limit.
+
 For npm projects, direct registry ranges from `package.json` are resolved to exact versions from covering `package-lock.json` v1/v2/v3 files when possible. The requested range remains in package metadata while downstream metadata and OSV analyzers receive the resolved version. Package locks are parsed directly from a bounded stream up to 64 MiB, independently of the general 512 KiB source-text guard.
 
 | Rule ID | Title | Severity | Confidence |

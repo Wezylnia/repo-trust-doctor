@@ -110,7 +110,13 @@ public sealed class DependencyInventoryAnalyzerTests
     public async Task AnalyzeAsync_NuGetProjectWithoutLockfile_ReportsDep002()
     {
         using var fixture = TemporaryRepository.Create();
-        File.WriteAllText(Path.Combine(fixture.Path, "MyProject.csproj"), "");
+        File.WriteAllText(Path.Combine(fixture.Path, "MyProject.csproj"), """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <ItemGroup>
+            <PackageReference Include="Example.Package" Version="1.0.0" />
+          </ItemGroup>
+        </Project>
+        """);
 
         var analyzer = new DependencyInventoryAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);

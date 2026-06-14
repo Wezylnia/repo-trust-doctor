@@ -16,10 +16,15 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
     public void Collect(AnalysisContext context, DependencyInventoryState state, CancellationToken cancellationToken)
     {
         var projects = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.csproj").ToArray();
+        var packageProjects = projects.Where(ContainsPackageReference).ToArray();
+        var lockfiles = RepositoryFileSystem
+            .EnumerateFiles(context.RepositoryPath, "packages.lock.json")
+            .ToArray();
+        var lockResolvers = new Dictionary<string, NuGetPackageLockResolver?>(StringComparer.OrdinalIgnoreCase);
         var msBuildProperties = ReadMsBuildProperties(context, state.Warnings);
         var centralVersions = ReadCentralPackageVersions(context, state.Warnings, msBuildProperties);
 
-        foreach (var lockfile in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "packages.lock.json"))
+        foreach (var lockfile in lockfiles)
         {
             state.Lockfiles.Add(new DependencyLockfileInfo(
                 DependencyEcosystem.NuGet,
@@ -32,22 +37,28 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
             ReadNuGetSources(context, config, state);
         }
 
-        AddMissingLockfileFinding(context, projects, state);
         foreach (var project in projects)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             var relativePath = DependencyInventorySupport.Relative(context, project);
             state.Manifests.Add(new DependencyManifestInfo(
                 DependencyEcosystem.NuGet,
                 relativePath,
                 ".csproj"));
+        }
 
-            if (!ContainsPackageReference(project))
-            {
-                continue;
-            }
-
-            AnalyzeProject(context, project, centralVersions, msBuildProperties, state);
+        AddMissingLockfileFinding(context, packageProjects, lockfiles, state);
+        foreach (var project in packageProjects)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var lockfile = FindProjectLockfile(project, lockfiles);
+            AnalyzeProject(
+                context,
+                project,
+                centralVersions,
+                msBuildProperties,
+                lockfile,
+                GetLockResolver(context, lockfile, lockResolvers, state),
+                state);
         }
 
         if (centralVersions.Count > 0)
@@ -61,30 +72,13 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
         }
     }
 
-    private static void AddMissingLockfileFinding(AnalysisContext context, string[] projects, DependencyInventoryState state)
-    {
-        if (projects.Length == 0 || state.Lockfiles.Any(lockfile => lockfile.Ecosystem == DependencyEcosystem.NuGet))
-        {
-            return;
-        }
-
-        var relativePath = DependencyInventorySupport.Relative(context, projects[0]);
-        state.Findings.Add(new Finding(
-            "TRUST-DEP002",
-            "NuGet project does not use lockfile",
-            AnalysisCategory.Dependencies,
-            Severity.Low,
-            Confidence.Medium,
-            "NuGet project does not use lockfile",
-            [new Evidence("package-manifest", "A NuGet project exists but no packages.lock.json was found.", relativePath)],
-            new Recommendation("Enable NuGet lock files and restore locked mode, then commit packages.lock.json to the repository.")));
-    }
-
     private static void AnalyzeProject(
         AnalysisContext context,
         string project,
         IReadOnlyDictionary<string, string> centralVersions,
         IReadOnlyDictionary<string, string> msBuildProperties,
+        string? lockfile,
+        NuGetPackageLockResolver? lockResolver,
         DependencyInventoryState state)
     {
         var relativePath = DependencyInventorySupport.Relative(context, project);
@@ -115,7 +109,14 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
                 version = centralVersion;
             }
 
-            AddPackage(relativePath, name.Trim(), version, projectScope, state);
+            AddPackage(
+                relativePath,
+                name.Trim(),
+                version,
+                projectScope,
+                lockfile is null ? null : DependencyInventorySupport.Relative(context, lockfile),
+                lockResolver,
+                state);
         }
     }
 
@@ -151,24 +152,45 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
         return false;
     }
 
-    private static void AddPackage(string relativePath, string name, string? version, DependencyScope scope, DependencyInventoryState state)
+    private static void AddPackage(
+        string relativePath,
+        string name,
+        string? version,
+        DependencyScope scope,
+        string? lockfilePath,
+        NuGetPackageLockResolver? lockResolver,
+        DependencyInventoryState state)
     {
-        var normalizedVersion = DependencyInventorySupport.NormalizeVersion(version);
-        var pinned = IsPinnedVersion(normalizedVersion);
-        var prerelease = DependencyInventorySupport.IsPrereleaseVersion(normalizedVersion);
+        var requestedVersion = DependencyInventorySupport.NormalizeVersion(version);
+        var resolvedVersion = string.Empty;
+        var lockResolved = lockResolver is not null &&
+                           lockResolver.TryResolve(name, out resolvedVersion);
+        var effectiveVersion = lockResolved ? resolvedVersion : requestedVersion;
+        var pinned = IsPinnedVersion(effectiveVersion);
+        var prerelease = DependencyInventorySupport.IsPrereleaseVersion(effectiveVersion);
+        Dictionary<string, string>? metadata = null;
+        if (lockResolved)
+        {
+            metadata = new Dictionary<string, string>
+            {
+                ["requestedVersion"] = requestedVersion ?? string.Empty,
+                ["versionSource"] = "packages.lock.json"
+            };
+        }
 
         state.Packages.Add(new DependencyPackageInfo(
             DependencyEcosystem.NuGet,
             name,
-            normalizedVersion,
+            effectiveVersion,
             scope,
             relativePath,
-            null,
+            lockfilePath,
             true,
             pinned,
-            prerelease));
+            prerelease,
+            metadata));
 
-        if (!pinned && !ContainsMsBuildExpression(normalizedVersion))
+        if (!pinned && !ContainsMsBuildExpression(requestedVersion))
         {
             state.Findings.Add(DependencyInventorySupport.CreateDependencyFinding(
                 "TRUST-DEP004",
@@ -177,7 +199,7 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
                 Confidence.High,
                 $"NuGet dependency `{name}` is missing an exact pinned version.",
                 "nuget-package",
-                $"Package `{name}` version is `{DependencyInventorySupport.DisplayVersion(normalizedVersion)}`.",
+                $"Package `{name}` version is `{DependencyInventorySupport.DisplayVersion(requestedVersion)}`.",
                 relativePath,
                 "Pin direct NuGet dependency versions or resolve them through Central Package Management."));
         }
@@ -189,9 +211,9 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
                 "NuGet dependency uses a prerelease version",
                 Severity.Low,
                 Confidence.High,
-                $"NuGet dependency `{name}` uses prerelease version `{normalizedVersion}`.",
+                $"NuGet dependency `{name}` uses prerelease version `{effectiveVersion}`.",
                 "nuget-package",
-                $"Package `{name}` version is `{normalizedVersion}`.",
+                $"Package `{name}` version is `{effectiveVersion}`.",
                 relativePath,
                 "Review whether the prerelease dependency is intentional before production use."));
         }
