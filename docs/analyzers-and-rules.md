@@ -221,6 +221,8 @@ For npm, direct dependency ranges are resolved to the exact installed version fr
 
 For npm projects, direct registry ranges from `package.json` are resolved to exact versions from covering `package-lock.json` v1/v2/v3 files when possible. The requested range remains in package metadata while downstream metadata and OSV analyzers receive the resolved version. Package locks are parsed directly from a bounded stream up to 64 MiB, independently of the general 512 KiB source-text guard.
 
+For Cargo workspaces, member dependencies declared with `workspace = true` inherit version, package alias, Git, or path source information from the nearest ancestor `[workspace.dependencies]` catalog. Definitions that no member consumes are not reported as installed packages. When `Cargo.lock` contains several versions of one crate, the requested Cargo requirement is used only when it identifies a single compatible candidate; otherwise the package remains unresolved and all lock candidates are retained in metadata. Exact `=x.y.z` requirements are normalized to `x.y.z` for advisory lookup while the original requirement remains available as metadata.
+
 | Rule ID | Title | Severity | Confidence |
 |---------|-------|----------|------------|
 | TRUST-DEP001 | npm manifest exists without lockfile | Medium | High |

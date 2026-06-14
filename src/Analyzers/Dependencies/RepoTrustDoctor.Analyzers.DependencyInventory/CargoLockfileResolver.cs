@@ -2,9 +2,11 @@ namespace RepoTrustDoctor.Analyzers.DependencyInventory;
 
 internal sealed class CargoLockfileResolver
 {
-    private readonly IReadOnlyDictionary<string, string> versions;
+    private readonly IReadOnlyDictionary<string, IReadOnlyCollection<string>> versions;
 
-    private CargoLockfileResolver(string relativePath, IReadOnlyDictionary<string, string> versions)
+    private CargoLockfileResolver(
+        string relativePath,
+        IReadOnlyDictionary<string, IReadOnlyCollection<string>> versions)
     {
         RelativePath = relativePath;
         this.versions = versions;
@@ -57,17 +59,29 @@ internal sealed class CargoLockfileResolver
         }
 
         AddRegistryPackage(candidates, name, version, source);
-        var versions = candidates
-            .Where(entry => entry.Value.Count == 1)
-            .ToDictionary(
-                entry => entry.Key,
-                entry => entry.Value.Single(),
-                StringComparer.OrdinalIgnoreCase);
+        var versions = candidates.ToDictionary(
+            entry => entry.Key,
+            entry => (IReadOnlyCollection<string>)entry.Value,
+            StringComparer.OrdinalIgnoreCase);
         return new CargoLockfileResolver(relativePath, versions);
     }
 
-    public bool TryResolve(string packageName, out string version) =>
-        versions.TryGetValue(packageName, out version!);
+    public CargoLockResolution Resolve(string packageName, string? requirement)
+    {
+        if (!versions.TryGetValue(packageName, out var candidates))
+        {
+            return CargoLockResolution.Empty;
+        }
+
+        if (candidates.Count == 1)
+        {
+            return new CargoLockResolution(candidates.Single(), candidates);
+        }
+
+        return CargoVersionRequirement.TrySelectSingle(requirement, candidates, out var version)
+            ? new CargoLockResolution(version, candidates)
+            : new CargoLockResolution(null, candidates);
+    }
 
     private static void AddRegistryPackage(
         IDictionary<string, HashSet<string>> candidates,
@@ -102,5 +116,32 @@ internal sealed class CargoLockfileResolver
 
         value = line[prefix.Length..].Trim().Trim('"');
         return value.Length > 0;
+    }
+}
+
+internal sealed record CargoLockResolution(
+    string? Version,
+    IReadOnlyCollection<string> Candidates)
+{
+    public static CargoLockResolution Empty { get; } = new(null, []);
+
+    public bool IsResolved => Version is not null;
+
+    public void AddMetadata(IDictionary<string, string> metadata, string? requestedVersion)
+    {
+        if (IsResolved)
+        {
+            metadata["requestedVersion"] = requestedVersion ?? string.Empty;
+            metadata["versionSource"] = "Cargo.lock";
+            return;
+        }
+
+        if (Candidates.Count > 1)
+        {
+            metadata["lockResolution"] = "ambiguous";
+            metadata["lockedVersionCandidates"] = string.Join(
+                ",",
+                Candidates.OrderBy(version => version, StringComparer.OrdinalIgnoreCase));
+        }
     }
 }

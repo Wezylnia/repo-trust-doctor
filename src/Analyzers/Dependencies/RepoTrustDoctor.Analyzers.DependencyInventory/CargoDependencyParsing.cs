@@ -109,6 +109,11 @@ internal static partial class CargoDependencyParsing
         {
             tableDependency.Package = value;
         }
+        else if (key.Equals("workspace", StringComparison.OrdinalIgnoreCase) &&
+                 bool.TryParse(value, out var workspace))
+        {
+            tableDependency.Workspace = workspace;
+        }
     }
 
     internal static string? ExtractInlineValue(string inlineTable, string key)
@@ -117,6 +122,12 @@ internal static partial class CargoDependencyParsing
         var match = Regex.Match(inlineTable, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         return match.Success ? match.Groups[1].Value : null;
     }
+
+    internal static bool UsesWorkspaceDependency(string inlineTable) =>
+        Regex.IsMatch(
+            inlineTable,
+            @"\bworkspace\s*=\s*true\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     internal static bool IsDependencyMetadataKey(string crateName) =>
         crateName.Equals("version", StringComparison.OrdinalIgnoreCase) ||
@@ -135,6 +146,9 @@ internal static partial class CargoDependencyParsing
         !string.IsNullOrWhiteSpace(version) &&
         version.StartsWith('=') &&
         ExactCargoVersionPattern().IsMatch(version[1..].Trim());
+
+    internal static string? NormalizeVersion(string? requirement) =>
+        IsExactRequirement(requirement) ? requirement![1..].Trim() : requirement;
 
     internal static bool IsWorkspaceRoot(string directory)
     {
@@ -235,6 +249,8 @@ internal sealed class CargoTableDependency(string crateName, DependencyScope sco
     public string? Path { get; set; }
 
     public string? Package { get; set; }
+
+    public bool Workspace { get; set; }
 }
 
 internal enum CargoSection

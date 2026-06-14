@@ -63,7 +63,7 @@ Current ecosystem collectors:
 - Python: `requirements.txt`, recursive repository-local `-r` includes, exact `-c` constraints, `pyproject.toml`, `Pipfile`, sibling `poetry.lock`, `uv.lock`, and `Pipfile.lock` association, exact version resolution from constraints and lockfiles, pinned requirement checks, extras normalization, and documentation/test manifest suppression. Requirement graphs reject paths outside the repository and bound recursion with cycle detection.
 - Maven and Gradle: `pom.xml`, `build.gradle`, `build.gradle.kts`, Java lock evidence, BOM and dependency-management version signals, dynamic versions, snapshots/prereleases, Gradle wrapper evidence.
 - Spring Boot: static configuration checks for broad Actuator endpoint exposure.
-- Cargo: `Cargo.toml`, same-directory and workspace-root `Cargo.lock` coverage, direct dependencies, target-specific dependencies, dependency subtables, Git sources, repository-external path sources, prerelease checks.
+- Cargo: `Cargo.toml`, same-directory and workspace-root `Cargo.lock` coverage, direct dependencies, target-specific dependencies, dependency subtables, inherited `[workspace.dependencies]`, Git sources, repository-external path sources, prerelease checks, and Cargo-compatible selection when a lockfile contains multiple versions of the same crate. Unused workspace dependency definitions are not treated as installed packages; unresolved multi-version lock candidates remain explicit inventory metadata instead of being guessed.
 
 The inventory analyzer is split into per-ecosystem collectors so future language support can be added without growing one large analyzer class.
 

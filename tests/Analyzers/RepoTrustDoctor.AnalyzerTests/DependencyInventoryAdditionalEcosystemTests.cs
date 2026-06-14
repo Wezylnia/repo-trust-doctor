@@ -510,6 +510,8 @@ public sealed class DependencyInventoryAdditionalEcosystemTests
         Assert.Equal("1", serde.Version);
         Assert.False(serde.IsVersionPinned);
         Assert.Null(serde.LockfilePath);
+        Assert.Equal("ambiguous", serde.Metadata?["lockResolution"]);
+        Assert.Equal("1.0.210,1.0.219", serde.Metadata?["lockedVersionCandidates"]);
     }
 
     [Fact]
