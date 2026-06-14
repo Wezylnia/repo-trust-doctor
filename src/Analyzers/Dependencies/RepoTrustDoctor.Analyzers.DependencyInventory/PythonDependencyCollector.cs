@@ -54,14 +54,38 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
         state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Python, relativePath, "requirements.txt"));
         AddMissingLockfileFinding(relativePath, hasLockfile, state, "No sibling Pipfile.lock, poetry.lock, or uv.lock was found.");
 
-        if (!DependencyInventorySupport.TryReadText(filePath, out var content, state.Warnings, relativePath))
+        var graph = PythonRequirementGraphReader.Read(context, filePath, state.Warnings);
+        foreach (var includedFile in graph.IncludedFiles.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            return;
+            if (!state.Manifests.Any(manifest =>
+                    manifest.Ecosystem == DependencyEcosystem.Python &&
+                    manifest.FilePath.Equals(includedFile, StringComparison.OrdinalIgnoreCase)))
+            {
+                state.Manifests.Add(new DependencyManifestInfo(
+                    DependencyEcosystem.Python,
+                    includedFile,
+                    "requirements-include"));
+            }
         }
 
-        foreach (var line in DependencyInventorySupport.SplitLines(content))
+        foreach (var resolved in PythonRequirementResolver.Resolve(graph))
         {
-            AddRequirement(relativePath, line, DependencyScope.Production, lockfile, state);
+            var metadata = resolved.ConstraintPath is null
+                ? null
+                : new Dictionary<string, string>
+                {
+                    ["constraintPath"] = resolved.ConstraintPath,
+                    ["requestedRequirement"] = resolved.RequestedRequirement!
+                };
+            AddPythonPackage(
+                resolved.RelativePath,
+                resolved.Requirement.Name,
+                resolved.Requirement.Version,
+                DependencyScope.Production,
+                resolved.Requirement.Operator,
+                lockfile,
+                state,
+                metadata);
         }
     }
 
@@ -231,21 +255,19 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
         PythonLockfileResolver? lockfile,
         DependencyInventoryState state)
     {
-        var trimmed = line.Trim();
-        if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith('#') || trimmed.StartsWith('-'))
+        if (!PythonRequirementParser.TryParse(line, out var requirement))
         {
             return;
         }
 
-        var match = RequirementPattern().Match(trimmed);
-        if (!match.Success)
-        {
-            return;
-        }
-
-        var op = match.Groups["op"].Success ? match.Groups["op"].Value : null;
-        var version = match.Groups["version"].Success ? match.Groups["version"].Value : null;
-        AddPythonPackage(relativePath, match.Groups["name"].Value, version, scope, op, lockfile, state);
+        AddPythonPackage(
+            relativePath,
+            requirement.Name,
+            requirement.Version,
+            scope,
+            requirement.Operator,
+            lockfile,
+            state);
     }
 
     private static void AddPythonPackage(
@@ -255,13 +277,16 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
         DependencyScope scope,
         string? operatorText,
         PythonLockfileResolver? lockfile,
-        DependencyInventoryState state)
+        DependencyInventoryState state,
+        IReadOnlyDictionary<string, string>? extraMetadata = null)
     {
         var requestedVersion = DependencyInventorySupport.NormalizeVersion(version);
         string? resolvedVersion = null;
         var resolved = lockfile is not null && lockfile.TryResolve(name, out resolvedVersion);
         var effectiveVersion = resolved ? resolvedVersion : requestedVersion;
-        var pinned = resolved || operatorText == "==" || (operatorText is null && IsPinnedVersion(effectiveVersion));
+        var pinned = resolved ||
+                     operatorText is "==" or "===" ||
+                     (operatorText is null && IsPinnedVersion(effectiveVersion));
         var prerelease = IsPythonPrerelease(effectiveVersion);
         var metadata = new Dictionary<string, string>();
         if (operatorText is not null)
@@ -273,6 +298,14 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
         {
             metadata["requestedVersion"] = requestedVersion ?? string.Empty;
             metadata["versionSource"] = lockfile!.RelativePath;
+        }
+
+        if (extraMetadata is not null)
+        {
+            foreach (var item in extraMetadata)
+            {
+                metadata[item.Key] = item.Value;
+            }
         }
 
         state.Packages.Add(new DependencyPackageInfo(
@@ -426,9 +459,6 @@ internal sealed partial class PythonDependencyCollector : IDependencyInventoryCo
     private static bool IsPythonPrerelease(string? version) =>
         !string.IsNullOrWhiteSpace(version) &&
         Regex.IsMatch(version, @"\d+\.\d+(\.\d+)?(?:a|b|rc|dev|alpha|beta|pre|preview)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-    [GeneratedRegex(@"^(?<name>[A-Za-z0-9_.-]+)(?:\[[^\]]+\])?\s*(?<op>===|==|~=|!=|<=|>=|<|>)?\s*(?<version>[^\s;]+)?", RegexOptions.CultureInvariant)]
-    private static partial Regex RequirementPattern();
 
     [GeneratedRegex(@"['""](?<requirement>[^'""]+)['""]", RegexOptions.CultureInvariant)]
     private static partial Regex QuotedRequirementPattern();
