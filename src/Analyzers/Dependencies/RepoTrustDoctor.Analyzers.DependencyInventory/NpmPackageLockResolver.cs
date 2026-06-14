@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace RepoTrustDoctor.Analyzers.DependencyInventory;
 
-internal sealed partial class NpmPackageLockResolver
+internal sealed partial class NpmPackageLockResolver : INpmLockfileResolver
 {
     private const long MaximumLockfileBytes = 64L * 1024 * 1024;
     private readonly string lockfileDirectory;
@@ -19,6 +19,15 @@ internal sealed partial class NpmPackageLockResolver
         this.packagesByPath = packagesByPath;
         this.rootDependencies = rootDependencies;
     }
+
+    public string VersionSource => "package-lock";
+
+    public bool TryResolve(
+        string manifestDirectory,
+        string packageName,
+        string? requestedVersion,
+        out string version) =>
+        TryResolve(manifestDirectory, packageName, out version);
 
     internal static bool TryLoad(
         string lockfilePath,

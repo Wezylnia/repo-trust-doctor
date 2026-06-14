@@ -68,7 +68,7 @@ Recommendation: review whether the prerelease dependency is intentional before p
 - Default severity: Medium
 - Default confidence: High
 
-Detects npm dependencies in `package.json` that use ranges, tags, or other non-exact registry versions when no covering lockfile is present.
+Detects npm dependencies in `package.json` that use ranges, tags, or other non-exact registry versions when no covering lockfile is present. Exact direct versions are resolved from npm `package-lock.json`, pnpm importer data, and matching Yarn selectors for downstream metadata and vulnerability analysis.
 
 Why it matters: non-exact dependency specifications can produce different installs over time when there is no committed lockfile covering the manifest.
 

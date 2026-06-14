@@ -11,7 +11,7 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
 
     public void Collect(AnalysisContext context, DependencyInventoryState state, CancellationToken cancellationToken)
     {
-        var lockResolvers = new Dictionary<string, NpmPackageLockResolver?>(StringComparer.OrdinalIgnoreCase);
+        var lockResolvers = new Dictionary<string, INpmLockfileResolver?>(StringComparer.OrdinalIgnoreCase);
         foreach (var manifest in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "package.json"))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -23,7 +23,7 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
         AnalysisContext context,
         DependencyInventoryState state,
         string manifest,
-        Dictionary<string, NpmPackageLockResolver?> lockResolvers)
+        Dictionary<string, INpmLockfileResolver?> lockResolvers)
     {
         var relativePath = DependencyInventorySupport.Relative(context, manifest);
         var directory = Path.GetDirectoryName(manifest);
@@ -95,7 +95,7 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
         string manifestPath,
         string manifestDirectory,
         string[] coveringLockfiles,
-        Dictionary<string, NpmPackageLockResolver?> lockResolvers,
+        Dictionary<string, INpmLockfileResolver?> lockResolvers,
         AnalysisContext context,
         DependencyInventoryState state,
         List<NpmLocalSourceDependency> localSources)
@@ -120,7 +120,8 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
                 context,
                 state,
                 out var resolvedVersion,
-                out var resolvingLockfile);
+                out var resolvingLockfile,
+                out var versionSource);
             var effectiveVersion = resolved ? resolvedVersion : requestedVersion;
             var pinned = IsPinnedVersion(effectiveVersion);
             var prerelease = DependencyInventorySupport.IsPrereleaseVersion(effectiveVersion);
@@ -132,7 +133,7 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
             if (resolved)
             {
                 metadata["requestedVersion"] = requestedVersion ?? string.Empty;
-                metadata["versionSource"] = "package-lock";
+                metadata["versionSource"] = versionSource!;
             }
 
             state.Packages.Add(new DependencyPackageInfo(
@@ -424,33 +425,35 @@ internal sealed class NpmDependencyCollector : IDependencyInventoryCollector
         NpmSourceKind sourceKind,
         string manifestDirectory,
         IReadOnlyList<string> coveringLockfiles,
-        Dictionary<string, NpmPackageLockResolver?> lockResolvers,
+        Dictionary<string, INpmLockfileResolver?> lockResolvers,
         AnalysisContext context,
         DependencyInventoryState state,
         out string? resolvedVersion,
-        out string? resolvingLockfile)
+        out string? resolvingLockfile,
+        out string? versionSource)
     {
         resolvedVersion = null;
         resolvingLockfile = null;
+        versionSource = null;
         if (sourceKind.Kind != "registry" || IsPinnedVersion(requestedVersion))
         {
             return false;
         }
 
-        foreach (var lockfile in coveringLockfiles.Where(path =>
-                     Path.GetFileName(path).Equals("package-lock.json", StringComparison.OrdinalIgnoreCase)))
+        foreach (var lockfile in coveringLockfiles)
         {
             if (!lockResolvers.TryGetValue(lockfile, out var resolver))
             {
                 var relativePath = DependencyInventorySupport.Relative(context, lockfile);
-                NpmPackageLockResolver.TryLoad(lockfile, relativePath, state.Warnings, out resolver);
+                NpmLockfileResolverFactory.TryLoad(lockfile, relativePath, state.Warnings, out resolver);
                 lockResolvers[lockfile] = resolver;
             }
 
-            if (resolver?.TryResolve(manifestDirectory, packageName, out var version) == true)
+            if (resolver?.TryResolve(manifestDirectory, packageName, requestedVersion, out var version) == true)
             {
                 resolvedVersion = version;
                 resolvingLockfile = DependencyInventorySupport.Relative(context, lockfile);
+                versionSource = resolver.VersionSource;
                 return true;
             }
         }
