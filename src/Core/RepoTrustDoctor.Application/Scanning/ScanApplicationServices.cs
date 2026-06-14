@@ -229,6 +229,8 @@ public sealed class ScanCoordinator(IScanStore store, IScanJobQueue queue, ScanR
 
 public sealed class ScanJobProcessor(IScanStore store, IRepositoryScanRunner runner)
 {
+    internal const string UnexpectedFailureMessage = "Scan failed unexpectedly.";
+
     public async Task ProcessAsync(ScanJob job, CancellationToken workerCancellationToken)
     {
         if (!store.TryGet(job.ScanId, out var state) || state is null)
@@ -266,13 +268,13 @@ public sealed class ScanJobProcessor(IScanStore store, IRepositoryScanRunner run
                 StatusMessage = "Scan cancelled."
             });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             store.TryUpdate(job.ScanId, current => current with
             {
                 State = ScanLifecycleState.Failed,
                 CompletedAt = DateTimeOffset.UtcNow,
-                StatusMessage = $"Scan failed: {ex.Message}"
+                StatusMessage = UnexpectedFailureMessage
             });
         }
     }

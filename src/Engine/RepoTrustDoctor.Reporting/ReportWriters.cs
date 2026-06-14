@@ -39,12 +39,12 @@ public sealed class MarkdownReportWriter
         var builder = new StringBuilder();
         builder.AppendLine($"# Repository Trust Report");
         builder.AppendLine();
-        builder.AppendLine($"- Target: `{scan.Target}`");
-        builder.AppendLine($"- Tool version: `{scan.ToolVersion}`");
-        builder.AppendLine($"- Scan mode: `{scan.Depth}`");
-        builder.AppendLine($"- Trust profile: `{scan.TrustProfile}`");
-        builder.AppendLine($"- Overall score: `{scan.Score.Overall}/100`");
-        builder.AppendLine($"- Decision: `{scan.Score.Decision.Kind}`");
+        builder.AppendLine($"- Target: {MarkdownText.Code(scan.Target)}");
+        builder.AppendLine($"- Tool version: {MarkdownText.Code(scan.ToolVersion)}");
+        builder.AppendLine($"- Scan mode: {MarkdownText.Code(scan.Depth.ToString())}");
+        builder.AppendLine($"- Trust profile: {MarkdownText.Code(scan.TrustProfile.ToString())}");
+        builder.AppendLine($"- Overall score: {MarkdownText.Code($"{scan.Score.Overall}/100")}");
+        builder.AppendLine($"- Decision: {MarkdownText.Code(scan.Score.Decision.Kind.ToString())}");
         builder.AppendLine();
 
         var summary = scan.Summary;
@@ -64,14 +64,14 @@ public sealed class MarkdownReportWriter
         builder.AppendLine("## Decision Reasons");
         foreach (var reason in scan.Score.Decision.Reasons)
         {
-            builder.AppendLine($"- {reason}");
+            builder.AppendLine($"- {MarkdownText.Inline(reason)}");
         }
 
         builder.AppendLine();
         builder.AppendLine("## Modules");
         foreach (var module in scan.Modules)
         {
-            builder.AppendLine($"- `{module.ModuleId}`: {module.Status} ({module.FindingsCount} findings)");
+            builder.AppendLine($"- {MarkdownText.Code(module.ModuleId)}: {module.Status} ({module.FindingsCount} findings)");
         }
 
         builder.AppendLine();
@@ -89,18 +89,18 @@ public sealed class MarkdownReportWriter
         {
             foreach (var finding in findings)
             {
-                builder.AppendLine($"### {finding.RuleId} - {finding.Title}");
+                builder.AppendLine($"### {MarkdownText.Heading(finding.RuleId)} - {MarkdownText.Heading(finding.Title)}");
                 builder.AppendLine();
-                builder.AppendLine($"- Severity: `{finding.Severity}`");
-                builder.AppendLine($"- Confidence: `{finding.Confidence}`");
-                builder.AppendLine($"- Category: `{finding.Category}`");
-                builder.AppendLine($"- Fingerprint: `{finding.Fingerprint}`");
-                builder.AppendLine($"- Message: {finding.Message}");
-                builder.AppendLine($"- Recommendation: {finding.Recommendation.Message}");
+                builder.AppendLine($"- Severity: {MarkdownText.Code(finding.Severity.ToString())}");
+                builder.AppendLine($"- Confidence: {MarkdownText.Code(finding.Confidence.ToString())}");
+                builder.AppendLine($"- Category: {MarkdownText.Code(finding.Category.ToString())}");
+                builder.AppendLine($"- Fingerprint: {MarkdownText.Code(finding.Fingerprint)}");
+                builder.AppendLine($"- Message: {MarkdownText.Inline(finding.Message)}");
+                builder.AppendLine($"- Recommendation: {MarkdownText.Inline(finding.Recommendation.Message)}");
                 foreach (var evidence in finding.Evidence)
                 {
-                    var location = evidence.FilePath is null ? string.Empty : $" `{evidence.FilePath}`";
-                    builder.AppendLine($"- Evidence: {evidence.Message}{location}");
+                    var location = evidence.FilePath is null ? string.Empty : $" {MarkdownText.Code(evidence.FilePath)}";
+                    builder.AppendLine($"- Evidence: {MarkdownText.Inline(evidence.Message)}{location}");
                 }
 
                 builder.AppendLine();
@@ -146,7 +146,7 @@ public sealed class MarkdownReportWriter
                 continue;
             }
 
-            builder.AppendLine($"| {ecosystem} | {manifestCount} | {lockfileCount} | {packageCount} |");
+            builder.AppendLine($"| {MarkdownText.TableCell(ecosystem.ToString())} | {manifestCount} | {lockfileCount} | {packageCount} |");
         }
     }
 
@@ -174,7 +174,7 @@ public sealed class MarkdownReportWriter
         builder.AppendLine("## Top Recommended Actions");
         foreach (var action in actions)
         {
-            builder.AppendLine($"- {action}");
+            builder.AppendLine($"- {MarkdownText.Inline(action)}");
         }
     }
 }

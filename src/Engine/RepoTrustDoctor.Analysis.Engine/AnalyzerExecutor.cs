@@ -11,6 +11,8 @@ public sealed record AnalyzerExecutionResult(
 
 public sealed class AnalyzerExecutor
 {
+    internal const string UnexpectedFailureMessage = "Analyzer failed unexpectedly.";
+
     public async Task<AnalyzerExecutionResult> ExecuteAsync(
         IRepositoryAnalyzer analyzer,
         AnalysisContext context,
@@ -79,14 +81,14 @@ public sealed class AnalyzerExecutor
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             stopwatch.Stop();
-            var result = new AnalyzerResult(ModuleStatus.Failed, [], ErrorMessage: ex.Message);
+            var result = new AnalyzerResult(ModuleStatus.Failed, [], ErrorMessage: UnexpectedFailureMessage);
             return new AnalyzerExecutionResult(
                 analyzer,
                 result,
-                new ScanModule(analyzer.Id, analyzer.DisplayName, analyzer.Category, ModuleStatus.Failed, started, started.Add(stopwatch.Elapsed), 0, ex.Message));
+                new ScanModule(analyzer.Id, analyzer.DisplayName, analyzer.Category, ModuleStatus.Failed, started, started.Add(stopwatch.Elapsed), 0, UnexpectedFailureMessage));
         }
     }
 }

@@ -212,6 +212,33 @@ public sealed class ReportWriterTests
     }
 
     [Fact]
+    public void MarkdownReport_EscapesFindingContentThatCouldAlterDocumentStructure()
+    {
+        var finding = CreateFinding(
+            "TRUST-MD001",
+            Severity.High,
+            AnalysisCategory.Security,
+            title: "Injected\n## Forged heading",
+            message: "Message | cell\n- forged list\n<script>alert(1)</script>",
+            evidenceMessage: "Evidence | value\n### forged evidence",
+            filePath: "src/`danger`.cs",
+            recommendation: "Fix | now\n# forged recommendation <b>");
+        var scan = CreateMinimalScan() with { Findings = [finding] };
+
+        var markdown = new MarkdownReportWriter().Write(scan);
+
+        Assert.DoesNotContain("\n## Forged heading", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("\n### forged evidence", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("<script>", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<b>", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Injected \\#\\# Forged heading", markdown);
+        Assert.Contains("Message \\| cell - forged list &lt;script&gt;alert\\(1\\)&lt;/script&gt;", markdown);
+        Assert.Contains("Evidence \\| value \\#\\#\\# forged evidence", markdown);
+        Assert.Contains("Fix \\| now \\# forged recommendation &lt;b&gt;", markdown);
+        Assert.Contains("``src/`danger`.cs``", markdown);
+    }
+
+    [Fact]
     public void SarifReport_MapsFindingToSarifResult()
     {
         var finding = CreateFinding(
@@ -347,17 +374,21 @@ public sealed class ReportWriterTests
         string evidenceKind = "test",
         string? filePath = null,
         int? lineNumber = null,
-        string? evidenceValue = null)
+        string? evidenceValue = null,
+        string? title = null,
+        string? message = null,
+        string? evidenceMessage = null,
+        string? recommendation = null)
     {
         return new Finding(
             ruleId,
-            $"Title for {ruleId}",
+            title ?? $"Title for {ruleId}",
             category,
             severity,
             Confidence.High,
-            $"Message for {ruleId}",
-            [new Evidence(evidenceKind, "test evidence", filePath, lineNumber, evidenceValue)],
-            new Recommendation("Fix it."),
+            message ?? $"Message for {ruleId}",
+            [new Evidence(evidenceKind, evidenceMessage ?? "test evidence", filePath, lineNumber, evidenceValue)],
+            new Recommendation(recommendation ?? "Fix it."),
             isBlocking);
     }
 }
