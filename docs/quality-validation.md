@@ -62,6 +62,10 @@ For very large repositories, codebase analyzers should prefer `CompletedWithWarn
 
 Deep code analyzers use deterministic partition-balanced selection when a repository exceeds the 6,000-file budget. Monorepo roots such as `packages`, `apps`, `services`, `modules`, and `crates` are sampled round-robin instead of taking one alphabetical prefix. Review each analyzer's `partition.count` and `selected_partition.count` metrics together with analyzed/source file counts.
 
+For dependency validation, inspect `dependency.package.lock-resolved.count` and sample the resolved package records. npm ranges can resolve through `package-lock.json` v1-v3, including workspace-specific package entries. NuGet projects resolve only through an adjacent `packages.lock.json`; conflicting versions across target frameworks remain unresolved instead of being collapsed to an arbitrary version. Both readers accept lockfiles up to 64 MiB through bounded JSON parsing.
+
+Measure analyzer performance with a solo run before treating a concurrent-run timeout as an algorithmic regression. Parallel scans are still useful for cancellation and resource-contention validation, but registry latency, disk contention, and CPU pressure make their wall-clock durations unsuitable as a stable baseline.
+
 ## Rule Distribution Diffs
 
 Summarize a current report directory:
