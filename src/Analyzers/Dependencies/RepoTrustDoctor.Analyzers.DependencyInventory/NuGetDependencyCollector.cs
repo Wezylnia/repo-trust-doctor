@@ -15,17 +15,33 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
 
     public void Collect(AnalysisContext context, DependencyInventoryState state, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var projects = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.csproj").ToArray();
-        var packageProjects = projects.Where(ContainsPackageReference).ToArray();
+        var packageProjects = new List<string>();
+        foreach (var project in projects)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (ContainsPackageReference(project))
+            {
+                packageProjects.Add(project);
+            }
+        }
+
         var lockfiles = RepositoryFileSystem
             .EnumerateFiles(context.RepositoryPath, "packages.lock.json")
             .ToArray();
+        var lockfilesByDirectory = IndexLockfilesByDirectory(lockfiles);
         var lockResolvers = new Dictionary<string, NuGetPackageLockResolver?>(StringComparer.OrdinalIgnoreCase);
-        var msBuildProperties = ReadMsBuildProperties(context, state.Warnings);
-        var centralVersions = ReadCentralPackageVersions(context, state.Warnings, msBuildProperties);
+        var msBuildProperties = ReadMsBuildProperties(context, state.Warnings, cancellationToken);
+        var centralVersions = ReadCentralPackageVersions(
+            context,
+            state.Warnings,
+            msBuildProperties,
+            cancellationToken);
 
         foreach (var lockfile in lockfiles)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             state.Lockfiles.Add(new DependencyLockfileInfo(
                 DependencyEcosystem.NuGet,
                 DependencyInventorySupport.Relative(context, lockfile),
@@ -34,11 +50,13 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
 
         foreach (var config in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "NuGet.config"))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             ReadNuGetSources(context, config, state);
         }
 
         foreach (var project in projects)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var relativePath = DependencyInventorySupport.Relative(context, project);
             state.Manifests.Add(new DependencyManifestInfo(
                 DependencyEcosystem.NuGet,
@@ -46,11 +64,11 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
                 ".csproj"));
         }
 
-        AddMissingLockfileFinding(context, packageProjects, lockfiles, state);
+        AddMissingLockfileFinding(context, packageProjects, lockfilesByDirectory, state);
         foreach (var project in packageProjects)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var lockfile = FindProjectLockfile(project, lockfiles);
+            var lockfile = FindProjectLockfile(project, lockfilesByDirectory);
             AnalyzeProject(
                 context,
                 project,
@@ -263,12 +281,16 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
             name.StartsWith("MSTest.", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static Dictionary<string, string> ReadMsBuildProperties(AnalysisContext context, List<string> warnings)
+    private static Dictionary<string, string> ReadMsBuildProperties(
+        AnalysisContext context,
+        List<string> warnings,
+        CancellationToken cancellationToken)
     {
         var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var props in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.props")
                      .Concat(RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.targets")))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var relativePath = DependencyInventorySupport.Relative(context, props);
             if (DependencyInventorySupport.TryLoadXml(props, warnings, relativePath, out var document))
             {
@@ -282,11 +304,13 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
     private static Dictionary<string, string> ReadCentralPackageVersions(
         AnalysisContext context,
         List<string> warnings,
-        IReadOnlyDictionary<string, string> msBuildProperties)
+        IReadOnlyDictionary<string, string> msBuildProperties,
+        CancellationToken cancellationToken)
     {
         var versions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var props in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "Directory.Packages.props"))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var relativePath = DependencyInventorySupport.Relative(context, props);
             if (!DependencyInventorySupport.TryLoadXml(props, warnings, relativePath, out var document))
             {
@@ -295,6 +319,7 @@ internal sealed partial class NuGetDependencyCollector : IDependencyInventoryCol
 
             foreach (var packageVersion in document.Descendants().Where(element => element.Name.LocalName == "PackageVersion"))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var name = DependencyInventorySupport.ReadXmlAttribute(packageVersion, "Include") ??
                            DependencyInventorySupport.ReadXmlAttribute(packageVersion, "Update");
                 var version = DependencyInventorySupport.ReadXmlAttribute(packageVersion, "Version");

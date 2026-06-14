@@ -12,6 +12,19 @@ namespace RepoTrustDoctor.AnalyzerTests;
 public sealed class DependencyInventoryAnalyzerTests
 {
     [Fact]
+    public async Task AnalyzeAsync_PreCancelledTokenStopsBeforeRepositoryTraversal()
+    {
+        using var fixture = TemporaryRepository.Create();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            new DependencyInventoryAnalyzer().AnalyzeAsync(
+                new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+                cancellation.Token));
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ReturnsCompletedWithNoFindings_ForEmptyRepository()
     {
         using var fixture = TemporaryRepository.Create();

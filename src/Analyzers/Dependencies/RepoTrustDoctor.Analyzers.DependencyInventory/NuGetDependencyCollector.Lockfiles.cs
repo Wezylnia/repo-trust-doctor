@@ -5,17 +5,29 @@ namespace RepoTrustDoctor.Analyzers.DependencyInventory;
 
 internal sealed partial class NuGetDependencyCollector
 {
+    private static IReadOnlyDictionary<string, string> IndexLockfilesByDirectory(
+        IEnumerable<string> lockfiles)
+    {
+        var byDirectory = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var lockfile in lockfiles)
+        {
+            var directory = Path.GetDirectoryName(lockfile);
+            if (directory is not null)
+            {
+                byDirectory[directory] = lockfile;
+            }
+        }
+
+        return byDirectory;
+    }
+
     private static string? FindProjectLockfile(
         string projectPath,
-        IReadOnlyList<string> lockfiles)
-    {
-        var projectDirectory = Path.GetDirectoryName(projectPath);
-        return lockfiles.FirstOrDefault(lockfile =>
-            string.Equals(
-                Path.GetDirectoryName(lockfile),
-                projectDirectory,
-                StringComparison.OrdinalIgnoreCase));
-    }
+        IReadOnlyDictionary<string, string> lockfilesByDirectory) =>
+        Path.GetDirectoryName(projectPath) is { } directory &&
+        lockfilesByDirectory.TryGetValue(directory, out var lockfile)
+            ? lockfile
+            : null;
 
     private static NuGetPackageLockResolver? GetLockResolver(
         AnalysisContext context,
@@ -45,11 +57,11 @@ internal sealed partial class NuGetDependencyCollector
     private static void AddMissingLockfileFinding(
         AnalysisContext context,
         IReadOnlyList<string> packageProjects,
-        IReadOnlyList<string> lockfiles,
+        IReadOnlyDictionary<string, string> lockfilesByDirectory,
         DependencyInventoryState state)
     {
         var missingProjects = packageProjects
-            .Where(project => FindProjectLockfile(project, lockfiles) is null)
+            .Where(project => FindProjectLockfile(project, lockfilesByDirectory) is null)
             .Select(project => DependencyInventorySupport.Relative(context, project))
             .ToArray();
         if (missingProjects.Length == 0)
