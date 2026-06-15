@@ -395,6 +395,84 @@ public sealed class LocalOsvAdvisoryTests
     }
 
     [Fact]
+    public async Task RefreshEcosystemAsync_StoresIndexWatermarkInsteadOfCurrentTime()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var store = CreateStore(fixture.Path);
+        var now = new DateTimeOffset(2026, 6, 14, 12, 0, 0, TimeSpan.Zero);
+        var indexWatermark = now.AddMinutes(-20);
+        await ImportAsync(
+            store,
+            "npm",
+            AdvisoryWithExplicitVersion("GHSA-old", "old-package", "1.0.0"),
+            now.AddHours(-1));
+        var source = new StubOsvFeedSource
+        {
+            ModifiedIndex = $"{indexWatermark:O},GHSA-new",
+            AdvisoryJson = AdvisoryWithExplicitVersion("GHSA-new", "new-package", "2.0.0")
+        };
+        var updater = new OsvFeedUpdater(
+            new LocalIntelligenceOptions
+            {
+                OsvEcosystems = ["npm"],
+                FullOsvRefreshInterval = TimeSpan.FromDays(7)
+            },
+            store,
+            new OsvDumpImporter(store),
+            source,
+            new FixedTimeProvider(now));
+
+        await updater.RefreshEcosystemAsync(
+            "npm",
+            TestContext.Current.CancellationToken);
+
+        var cursor = await store.GetStateAsync(
+            "osv:npm:last-incremental",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(indexWatermark, DateTimeOffset.Parse(cursor!));
+    }
+
+    [Fact]
+    public async Task RefreshEcosystemAsync_ReplaysOverlapWindow()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var store = CreateStore(fixture.Path);
+        var now = new DateTimeOffset(2026, 6, 14, 12, 0, 0, TimeSpan.Zero);
+        await ImportAsync(
+            store,
+            "npm",
+            AdvisoryWithExplicitVersion("GHSA-old", "old-package", "1.0.0"),
+            now.AddHours(-1));
+        await store.SetStateAsync(
+            "osv:npm:last-incremental",
+            now.AddMinutes(-10).ToString("O"),
+            now.AddMinutes(-10),
+            TestContext.Current.CancellationToken);
+        var source = new StubOsvFeedSource
+        {
+            ModifiedIndex = $"{now.AddMinutes(-12):O},GHSA-overlap",
+            AdvisoryJson = AdvisoryWithExplicitVersion("GHSA-overlap", "overlap-package", "3.0.0")
+        };
+        var updater = new OsvFeedUpdater(
+            new LocalIntelligenceOptions
+            {
+                OsvEcosystems = ["npm"],
+                FullOsvRefreshInterval = TimeSpan.FromDays(7)
+            },
+            store,
+            new OsvDumpImporter(store),
+            source,
+            new FixedTimeProvider(now));
+
+        var result = await updater.RefreshEcosystemAsync(
+            "npm",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.AdvisoryCount);
+        Assert.Equal(1, source.AdvisoryRequestCount);
+    }
+
+    [Fact]
     public async Task RefreshAsync_ContinuesAfterOneEcosystemFails()
     {
         using var fixture = TemporaryDirectory.Create();

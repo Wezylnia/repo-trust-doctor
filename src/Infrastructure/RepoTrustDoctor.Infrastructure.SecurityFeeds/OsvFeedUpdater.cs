@@ -21,6 +21,7 @@ public sealed class OsvFeedUpdater(
     TimeProvider? timeProvider = null)
 {
     private const int MaximumIncrementalAdvisories = 10_000;
+    private static readonly TimeSpan IncrementalOverlap = TimeSpan.FromMinutes(5);
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
 
     public async Task<IReadOnlyList<OsvEcosystemRefreshResult>> RefreshAsync(
@@ -63,9 +64,11 @@ public sealed class OsvFeedUpdater(
                                   SqliteOsvAdvisoryStore.LastIncrementalKey(ecosystem),
                                   cancellationToken)) ??
                               lastFull.Value;
-        var modified = ParseModifiedIndex(
-                await source.GetModifiedIndexAsync(ecosystem, cancellationToken))
-            .Where(item => item.ModifiedAt > lastIncremental)
+        var modifiedIndex = ParseModifiedIndex(
+            await source.GetModifiedIndexAsync(ecosystem, cancellationToken));
+        var overlapStart = lastIncremental - IncrementalOverlap;
+        var modified = modifiedIndex
+            .Where(item => item.ModifiedAt > overlapStart)
             .OrderBy(item => item.ModifiedAt)
             .ToArray();
         if (modified.Length > MaximumIncrementalAdvisories)
@@ -87,9 +90,12 @@ public sealed class OsvFeedUpdater(
             }
         }
 
+        var watermark = modifiedIndex.Count == 0
+            ? lastIncremental
+            : Max(lastIncremental, modifiedIndex.Max(item => item.ModifiedAt));
         await store.SetStateAsync(
             SqliteOsvAdvisoryStore.LastIncrementalKey(ecosystem),
-            now.ToString("O"),
+            watermark.ToString("O"),
             now,
             cancellationToken);
         return new OsvEcosystemRefreshResult(ecosystem, "incremental", imported);
@@ -153,6 +159,9 @@ public sealed class OsvFeedUpdater(
             CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal,
             out parsed);
+
+    private static DateTimeOffset Max(DateTimeOffset left, DateTimeOffset right) =>
+        left >= right ? left : right;
 }
 
 public sealed record OsvModifiedAdvisory(
