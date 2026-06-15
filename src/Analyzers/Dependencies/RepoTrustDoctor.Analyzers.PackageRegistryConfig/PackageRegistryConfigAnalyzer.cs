@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using RepoTrustDoctor.Analysis.Abstractions;
@@ -41,24 +42,25 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
     {
         var findings = new List<Finding>();
 
-        foreach (var pattern in ConfigFiles)
+        var configFiles = ConfigFiles
+            .SelectMany(pattern =>
+                RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, pattern))
+            .Distinct(PathComparer);
+        foreach (var file in configFiles)
         {
-            foreach (var file in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, pattern))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!RepositoryFileSystem.CanReadAsText(file)) continue;
-                var relativePath = Path.GetRelativePath(context.RepositoryPath, file).Replace('\\', '/');
-                var content = await File.ReadAllTextAsync(file, cancellationToken);
-                var scanContent = file.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
-                    ? content
-                    : StripLineComments(content, relativePath);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!RepositoryFileSystem.CanReadAsText(file)) continue;
+            var relativePath = Path.GetRelativePath(context.RepositoryPath, file).Replace('\\', '/');
+            var content = await File.ReadAllTextAsync(file, cancellationToken);
+            var scanContent = file.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
+                ? content
+                : StripLineComments(content, relativePath);
 
-                CheckHttpRegistry(scanContent, relativePath, findings);
-                CheckAlwaysAuth(scanContent, relativePath, findings);
-                CheckInlineToken(scanContent, relativePath, findings);
-                CheckMavenMirrorAll(file, relativePath, findings);
-                CheckInsecureProtocol(scanContent, relativePath, findings);
-            }
+            CheckHttpRegistry(scanContent, relativePath, findings);
+            CheckAlwaysAuth(scanContent, relativePath, findings);
+            CheckInlineToken(scanContent, relativePath, findings);
+            CheckMavenMirrorAll(file, relativePath, findings);
+            CheckInsecureProtocol(scanContent, relativePath, findings);
         }
 
         return AnalyzerResult.Completed(findings);
@@ -69,7 +71,7 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
         foreach (Match m in HttpRegistryPattern().Matches(content))
         {
             var url = m.Value.Trim();
-            if (url.Contains("localhost") || url.Contains("127.0.0.1") || url.Contains("[::1]")) continue;
+            if (IsLoopbackUrl(url)) continue;
             findings.Add(F("TRUST-REG001", "HTTP registry URL", Severity.High, relativePath, $"Registry URL uses http://: {RedactUrlForEvidence(url)}"));
         }
     }
@@ -101,7 +103,7 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
             {
                 var mirrorOf = mirror.Elements().FirstOrDefault(e => e.Name.LocalName == "mirrorOf")?.Value;
                 var url = mirror.Elements().FirstOrDefault(e => e.Name.LocalName == "url")?.Value ?? "";
-                if (mirrorOf == "*" && !url.Contains("localhost") && !url.Contains(".corp") && !url.Contains(".internal"))
+                if (mirrorOf == "*" && !IsTrustedInternalMirror(url))
                     findings.Add(F("TRUST-REG004", "Maven mirror-all", Severity.Medium, relativePath, $"mirrorOf=* redirects to {RedactUrlForEvidence(url)}.", Confidence.Medium));
             }
         }
@@ -156,6 +158,37 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
         };
         return builder.Uri.AbsoluteUri;
     }
+
+    private static bool IsLoopbackUrl(string rawUrl)
+    {
+        if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+               IPAddress.TryParse(uri.Host, out var address) &&
+               IPAddress.IsLoopback(address);
+    }
+
+    private static bool IsTrustedInternalMirror(string rawUrl)
+    {
+        if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return IsLoopbackUrl(rawUrl) ||
+               uri.Host.Equals("corp", StringComparison.OrdinalIgnoreCase) ||
+               uri.Host.EndsWith(".corp", StringComparison.OrdinalIgnoreCase) ||
+               uri.Host.Equals("internal", StringComparison.OrdinalIgnoreCase) ||
+               uri.Host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static StringComparer PathComparer =>
+        OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
 
     [GeneratedRegex(@"http://[^\s""'>]+")]
     private static partial Regex HttpRegistryPattern();

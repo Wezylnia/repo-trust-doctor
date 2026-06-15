@@ -336,7 +336,7 @@ Recommendation: verify whether the package should come from a private registry.
 - Default severity: High
 - Default confidence: High
 
-Detects package registry URLs that use plaintext `http://` in registry configuration files such as `.npmrc`, NuGet config, Gradle settings, and Maven settings. Localhost development registries are ignored.
+Detects package registry URLs that use plaintext `http://` in registry configuration files such as `.npmrc`, NuGet config, Gradle settings, and Maven settings. Only URLs whose parsed host is `localhost` or a loopback IP address are ignored; remote hosts that merely contain loopback-looking text are still reported.
 
 Why it matters: plaintext package registry traffic can expose package metadata and credentials and weakens package integrity assumptions.
 
