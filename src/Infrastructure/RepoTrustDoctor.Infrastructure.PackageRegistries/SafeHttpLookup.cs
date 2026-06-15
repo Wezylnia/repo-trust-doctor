@@ -137,6 +137,14 @@ public sealed class SafeHttpLookup
             {
                 return SafeLookupResult.Fail(SafeLookupErrorKind.TransportError, ex.Message);
             }
+            catch (InvalidDataException ex)
+            {
+                return SafeLookupResult.Fail(SafeLookupErrorKind.MalformedResponse, ex.Message);
+            }
+            catch (IOException ex)
+            {
+                return SafeLookupResult.Fail(SafeLookupErrorKind.TransportError, ex.Message);
+            }
         }
 
         return SafeLookupResult.Fail(SafeLookupErrorKind.BlockedUrl, "Redirect limit was exceeded.");

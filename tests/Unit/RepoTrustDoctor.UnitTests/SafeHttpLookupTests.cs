@@ -44,6 +44,32 @@ public sealed class SafeHttpLookupTests
         Assert.Equal("{}", result.Body);
     }
 
+    [Fact]
+    public async Task GetStringAsync_ClassifiesMalformedCompressedResponse()
+    {
+        var lookup = new SafeHttpLookup(
+            ["registry.example.test"],
+            new StubHttpHandler(_ =>
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent([0x01, 0x02, 0x03])
+                };
+                response.Content.Headers.ContentEncoding.Add("gzip");
+                return response;
+            }));
+
+        var result = await lookup.GetStringAsync(
+            new Uri("https://registry.example.test/package"),
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal(SafeLookupErrorKind.MalformedResponse, result.ErrorKind);
+        Assert.Equal(
+            PackageMetadataLookupStatus.InvalidResponse,
+            PackageMetadataLookupResult.FromSafeLookupFailure(result).Status);
+    }
+
     [Theory]
     [InlineData("http://registry.example.test/package")]
     [InlineData("https://user:pass@registry.example.test/package")]
