@@ -239,6 +239,55 @@ public sealed class ReportWriterTests
     }
 
     [Fact]
+    public void MarkdownReport_IncludesModuleWarningsFailuresAndSkippedReasons()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var scan = CreateMinimalScan() with
+        {
+            Status = ModuleStatus.CompletedWithWarnings,
+            Modules =
+            [
+                new ScanModule(
+                    "inventory",
+                    "Inventory",
+                    AnalysisCategory.Dependencies,
+                    ModuleStatus.CompletedWithWarnings,
+                    now,
+                    now,
+                    0,
+                    Warnings: ["Cargo.lock was skipped.\n## forged heading"]),
+                new ScanModule(
+                    "failed",
+                    "Failed analyzer",
+                    AnalysisCategory.Security,
+                    ModuleStatus.Failed,
+                    now,
+                    now,
+                    0,
+                    ErrorMessage: "Analyzer failed."),
+                new ScanModule(
+                    "skipped",
+                    "Skipped analyzer",
+                    AnalysisCategory.Codebase,
+                    ModuleStatus.Skipped,
+                    now,
+                    now,
+                    0,
+                    SkippedReason: "Requires deep mode.")
+            ]
+        };
+
+        var markdown = new MarkdownReportWriter().Write(scan);
+
+        Assert.Contains("- Scan status: `CompletedWithWarnings`", markdown);
+        Assert.Contains("- Completion: `1/3` modules completed", markdown);
+        Assert.Contains("  - Warning: Cargo.lock was skipped. \\#\\# forged heading", markdown);
+        Assert.Contains("  - Failure: Analyzer failed.", markdown);
+        Assert.Contains("  - Skipped: Requires deep mode.", markdown);
+        Assert.DoesNotContain("\n## forged heading", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SarifReport_MapsFindingToSarifResult()
     {
         var finding = CreateFinding(
@@ -278,6 +327,111 @@ public sealed class ReportWriterTests
         var rules = document.RootElement.GetProperty("runs")[0].GetProperty("tool").GetProperty("driver").GetProperty("rules");
 
         Assert.Equal(1, rules.GetArrayLength());
+    }
+
+    [Fact]
+    public void SarifReport_EmitsAllDistinctEvidenceLocations()
+    {
+        var finding = CreateFinding(
+            "TRUST-GHA005",
+            Severity.High,
+            AnalysisCategory.CiCd,
+            filePath: ".github/workflows/a.yml",
+            lineNumber: 8);
+        finding = finding with
+        {
+            Evidence =
+            [
+                .. finding.Evidence,
+                new Evidence("workflow", "second occurrence", ".github/workflows/b.yml", 14),
+                new Evidence("workflow", "duplicate occurrence", ".github/workflows/b.yml", 14),
+                new Evidence("workflow", "no file location")
+            ]
+        };
+        var scan = CreateMinimalScan() with { Findings = [finding] };
+
+        using var document = JsonDocument.Parse(new SarifReportWriter().Write(scan));
+        var locations = document.RootElement
+            .GetProperty("runs")[0]
+            .GetProperty("results")[0]
+            .GetProperty("locations");
+
+        Assert.Equal(2, locations.GetArrayLength());
+        Assert.Equal(
+            ".github/workflows/a.yml",
+            locations[0].GetProperty("physicalLocation").GetProperty("artifactLocation").GetProperty("uri").GetString());
+        Assert.Equal(
+            ".github/workflows/b.yml",
+            locations[1].GetProperty("physicalLocation").GetProperty("artifactLocation").GetProperty("uri").GetString());
+    }
+
+    [Fact]
+    public void SarifReport_RuleDefaultSeverityUsesHighestOccurrenceRegardlessOfOrder()
+    {
+        var scan = CreateMinimalScan() with
+        {
+            Findings =
+            [
+                CreateFinding("TRUST-GHA005", Severity.Low, AnalysisCategory.CiCd),
+                CreateFinding("TRUST-GHA005", Severity.High, AnalysisCategory.CiCd)
+            ]
+        };
+
+        using var document = JsonDocument.Parse(new SarifReportWriter().Write(scan));
+        var rule = document.RootElement
+            .GetProperty("runs")[0]
+            .GetProperty("tool")
+            .GetProperty("driver")
+            .GetProperty("rules")[0];
+
+        Assert.Equal("High", rule.GetProperty("properties").GetProperty("defaultSeverity").GetString());
+        Assert.Equal("error", rule.GetProperty("defaultConfiguration").GetProperty("level").GetString());
+    }
+
+    [Fact]
+    public void SarifReport_HelpUriTargetsExistingRuleDocumentWithoutGuessedAnchor()
+    {
+        var scan = CreateMinimalScan() with
+        {
+            Findings = [CreateFinding("TRUST-GHA005", Severity.Medium, AnalysisCategory.CiCd)]
+        };
+
+        using var document = JsonDocument.Parse(new SarifReportWriter().Write(scan));
+        var helpUri = document.RootElement
+            .GetProperty("runs")[0]
+            .GetProperty("tool")
+            .GetProperty("driver")
+            .GetProperty("rules")[0]
+            .GetProperty("helpUri")
+            .GetString();
+
+        Assert.Equal(
+            "https://github.com/Wezylnia/repo-trust-doctor/blob/main/docs/rules/github-actions.md",
+            helpUri);
+    }
+
+    [Theory]
+    [InlineData("TRUST-REPO002")]
+    [InlineData("TRUST-WS001")]
+    public void SarifReport_RepositoryRulesTargetRepositoryHealthDocumentation(string ruleId)
+    {
+        var scan = CreateMinimalScan() with
+        {
+            Findings = [CreateFinding(ruleId, Severity.Low, AnalysisCategory.RepositoryHealth)]
+        };
+
+        using var document = JsonDocument.Parse(new SarifReportWriter().Write(scan));
+        var helpUri = document.RootElement
+            .GetProperty("runs")[0]
+            .GetProperty("tool")
+            .GetProperty("driver")
+            .GetProperty("rules")[0]
+            .GetProperty("helpUri")
+            .GetString();
+
+        Assert.Equal(
+            "https://github.com/Wezylnia/repo-trust-doctor/blob/main/docs/rules/repository-health.md",
+            helpUri);
     }
 
     [Fact]

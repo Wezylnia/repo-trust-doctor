@@ -77,6 +77,16 @@ Artifact keys:
 
 Coverage reports are imported from files already present in the repository workspace. The scanner does not run tests or generate coverage.
 
+Markdown reports include the final scan status, module completion count, analyzer
+warnings, failure messages, and skipped-module reasons so a shared report does
+not hide incomplete analysis.
+
+SARIF results include every distinct file-backed evidence location for a
+finding. Rule defaults use the highest observed severity for that rule in the
+scan, independently of finding order, while each result keeps its own severity.
+Rule help links target the maintained rule document without guessing a
+potentially nonexistent heading anchor.
+
 ## Scan Completeness And Scoring
 
 The final trust score distinguishes clean evidence from missing evidence:

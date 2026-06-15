@@ -43,6 +43,7 @@ public sealed class MarkdownReportWriter
         builder.AppendLine($"- Tool version: {MarkdownText.Code(scan.ToolVersion)}");
         builder.AppendLine($"- Scan mode: {MarkdownText.Code(scan.Depth.ToString())}");
         builder.AppendLine($"- Trust profile: {MarkdownText.Code(scan.TrustProfile.ToString())}");
+        builder.AppendLine($"- Scan status: {MarkdownText.Code(scan.Status.ToString())}");
         builder.AppendLine($"- Overall score: {MarkdownText.Code($"{scan.Score.Overall}/100")}");
         builder.AppendLine($"- Decision: {MarkdownText.Code(scan.Score.Decision.Kind.ToString())}");
         builder.AppendLine();
@@ -69,10 +70,7 @@ public sealed class MarkdownReportWriter
 
         builder.AppendLine();
         builder.AppendLine("## Modules");
-        foreach (var module in scan.Modules)
-        {
-            builder.AppendLine($"- {MarkdownText.Code(module.ModuleId)}: {module.Status} ({module.FindingsCount} findings)");
-        }
+        AppendModules(builder, scan.Modules);
 
         builder.AppendLine();
         AppendDependencySummary(builder, scan);
@@ -108,6 +106,36 @@ public sealed class MarkdownReportWriter
         }
 
         return builder.ToString();
+    }
+
+    private static void AppendModules(StringBuilder builder, IReadOnlyList<ScanModule> modules)
+    {
+        var completedCount = modules.Count(module =>
+            module.Status is ModuleStatus.Completed or ModuleStatus.CompletedWithWarnings);
+        builder.AppendLine($"- Completion: {MarkdownText.Code($"{completedCount}/{modules.Count}")} modules completed");
+
+        foreach (var module in modules)
+        {
+            builder.AppendLine($"- {MarkdownText.Code(module.ModuleId)}: {module.Status} ({module.FindingsCount} findings)");
+
+            if (!string.IsNullOrWhiteSpace(module.ErrorMessage))
+            {
+                builder.AppendLine($"  - Failure: {MarkdownText.Inline(module.ErrorMessage)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(module.SkippedReason))
+            {
+                builder.AppendLine($"  - Skipped: {MarkdownText.Inline(module.SkippedReason)}");
+            }
+
+            foreach (var warning in module.Warnings ?? [])
+            {
+                if (!string.IsNullOrWhiteSpace(warning))
+                {
+                    builder.AppendLine($"  - Warning: {MarkdownText.Inline(warning)}");
+                }
+            }
+        }
     }
 
     private static void AppendDependencySummary(StringBuilder builder, RepositoryScan scan)
@@ -195,11 +223,16 @@ public sealed class SarifReportWriter
             .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
-                var finding = group.First();
+                var finding = group
+                    .OrderByDescending(item => item.Severity)
+                    .ThenBy(item => item.Title, StringComparer.Ordinal)
+                    .ThenBy(item => item.Recommendation.Message, StringComparer.Ordinal)
+                    .First();
                 return new SarifRule(
                     finding.RuleId,
                     new SarifText(finding.Title),
                     new SarifText(finding.Recommendation.Message),
+                    new SarifConfiguration(MapLevel(finding.Severity)),
                     new Dictionary<string, object?>
                     {
                         ["category"] = finding.Category.ToString(),
@@ -211,15 +244,7 @@ public sealed class SarifReportWriter
 
         var results = findings.Select(finding =>
         {
-            var evidence = finding.Evidence.FirstOrDefault(evidence => !string.IsNullOrWhiteSpace(evidence.FilePath));
-            var locations = evidence is null
-                ? null
-                : new[]
-                {
-                    new SarifLocation(new SarifPhysicalLocation(
-                        new SarifArtifactLocation(evidence.FilePath!.Replace('\\', '/')),
-                        evidence.LineNumber is null ? null : new SarifRegion(evidence.LineNumber.Value)))
-                };
+            var locations = BuildLocations(finding.Evidence);
 
             return new SarifResult(
                 finding.RuleId,
@@ -256,8 +281,27 @@ public sealed class SarifReportWriter
     {
         var categoryFile = GetCategoryDocFile(ruleId);
         if (categoryFile is null) return null;
-        var anchor = $"#{ruleId.ToLowerInvariant().Replace("trust-", "trust-")}";
-        return new Uri($"https://github.com/Wezylnia/repo-trust-doctor/blob/main/docs/rules/{categoryFile}.md{anchor}");
+        return new Uri($"https://github.com/Wezylnia/repo-trust-doctor/blob/main/docs/rules/{categoryFile}.md");
+    }
+
+    private static IReadOnlyList<SarifLocation>? BuildLocations(IReadOnlyList<Evidence> evidence)
+    {
+        var locations = evidence
+            .Where(item => !string.IsNullOrWhiteSpace(item.FilePath))
+            .Select(item => new
+            {
+                Path = item.FilePath!.Replace('\\', '/'),
+                Line = item.LineNumber is > 0 ? item.LineNumber : null
+            })
+            .DistinctBy(
+                item => $"{item.Path}\0{item.Line?.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                StringComparer.OrdinalIgnoreCase)
+            .Select(item => new SarifLocation(new SarifPhysicalLocation(
+                new SarifArtifactLocation(item.Path),
+                item.Line is null ? null : new SarifRegion(item.Line.Value))))
+            .ToArray();
+
+        return locations.Length == 0 ? null : locations;
     }
 
     private static string? GetCategoryDocFile(string ruleId)
@@ -266,13 +310,13 @@ public sealed class SarifReportWriter
         if (ruleId.StartsWith("TRUST-GHA", StringComparison.OrdinalIgnoreCase)) return "github-actions";
         if (ruleId.StartsWith("TRUST-DOCKER", StringComparison.OrdinalIgnoreCase)) return "docker";
         if (ruleId.StartsWith("TRUST-DEP", StringComparison.OrdinalIgnoreCase)) return "dependencies";
-        if (ruleId.StartsWith("TRUST-REPO", StringComparison.OrdinalIgnoreCase)) return "repository";
+        if (ruleId.StartsWith("TRUST-REPO", StringComparison.OrdinalIgnoreCase)) return "repository-health";
         if (ruleId.StartsWith("TRUST-CODE", StringComparison.OrdinalIgnoreCase)) return "codebase";
         if (ruleId.StartsWith("TRUST-REL", StringComparison.OrdinalIgnoreCase)) return "releases";
         if (ruleId.StartsWith("TRUST-VULN", StringComparison.OrdinalIgnoreCase)) return "vulnerabilities";
         if (ruleId.StartsWith("TRUST-LIC", StringComparison.OrdinalIgnoreCase)) return "licenses";
         if (ruleId.StartsWith("TRUST-ORIGIN", StringComparison.OrdinalIgnoreCase)) return "dependencies";
-        if (ruleId.StartsWith("TRUST-WS", StringComparison.OrdinalIgnoreCase)) return "repository";
+        if (ruleId.StartsWith("TRUST-WS", StringComparison.OrdinalIgnoreCase)) return "repository-health";
         if (ruleId.StartsWith("TRUST-GLCI", StringComparison.OrdinalIgnoreCase)) return "gitlab-ci";
         if (ruleId.StartsWith("TRUST-COMP", StringComparison.OrdinalIgnoreCase)) return "docker";
         if (ruleId.StartsWith("TRUST-K8S", StringComparison.OrdinalIgnoreCase)) return "kubernetes";
@@ -299,7 +343,13 @@ public sealed class SarifReportWriter
     private sealed record SarifRun(SarifTool Tool, IReadOnlyList<SarifResult> Results);
     private sealed record SarifTool(SarifDriver Driver);
     private sealed record SarifDriver(string Name, string SemanticVersion, IReadOnlyList<SarifRule> Rules);
-    private sealed record SarifRule(string Id, SarifText ShortDescription, SarifText Help, IReadOnlyDictionary<string, object?> Properties, Uri? HelpUri = null);
+    private sealed record SarifRule(
+        string Id,
+        SarifText ShortDescription,
+        SarifText Help,
+        SarifConfiguration DefaultConfiguration,
+        IReadOnlyDictionary<string, object?> Properties,
+        Uri? HelpUri = null);
     private sealed record SarifResult(
         string RuleId,
         string Level,
@@ -308,6 +358,7 @@ public sealed class SarifReportWriter
         IReadOnlyDictionary<string, string> PartialFingerprints,
         IReadOnlyDictionary<string, object?> Properties);
     private sealed record SarifText(string Text);
+    private sealed record SarifConfiguration(string Level);
     private sealed record SarifLocation(SarifPhysicalLocation PhysicalLocation);
     private sealed record SarifPhysicalLocation(SarifArtifactLocation ArtifactLocation, SarifRegion? Region);
     private sealed record SarifArtifactLocation(string Uri);
