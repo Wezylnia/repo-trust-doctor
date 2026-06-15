@@ -28,6 +28,24 @@ internal sealed class DependencyInventoryState
     public List<DependencyPackageSourceInfo> PackageSources { get; } = [];
 
     public bool TryMarkFinding(string key) => findingKeys.Add(key);
+
+    public void MergeFrom(DependencyInventoryState other)
+    {
+        foreach (var finding in other.Findings)
+        {
+            var key = $"{finding.RuleId}:{finding.Evidence.FirstOrDefault()?.FilePath}:{finding.Message}";
+            if (TryMarkFinding(key))
+            {
+                Findings.Add(finding);
+            }
+        }
+
+        Warnings.AddRange(other.Warnings);
+        Manifests.AddRange(other.Manifests);
+        Lockfiles.AddRange(other.Lockfiles);
+        Packages.AddRange(other.Packages);
+        PackageSources.AddRange(other.PackageSources);
+    }
 }
 
 internal static partial class DependencyInventorySupport
@@ -133,10 +151,17 @@ internal static partial class DependencyInventorySupport
 
 internal static class DependencyInventoryMetrics
 {
-    public static IReadOnlyDictionary<string, string> Build(DependencyInventoryState state)
+    public static IReadOnlyDictionary<string, string> Build(
+        DependencyInventoryState state,
+        int collectorsAttempted,
+        int collectorsCompleted,
+        int collectorsFailed)
     {
         var metrics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
+            ["dependency.collector.attempted.count"] = collectorsAttempted.ToString(),
+            ["dependency.collector.completed.count"] = collectorsCompleted.ToString(),
+            ["dependency.collector.failed.count"] = collectorsFailed.ToString(),
             ["dependency.manifest.count"] = state.Manifests.Count.ToString(),
             ["dependency.lockfile.count"] = state.Lockfiles.Count.ToString(),
             ["dependency.package.count"] = state.Packages.Count.ToString(),

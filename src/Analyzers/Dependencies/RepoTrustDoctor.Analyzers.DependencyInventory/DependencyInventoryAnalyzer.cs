@@ -5,7 +5,7 @@ namespace RepoTrustDoctor.Analyzers.DependencyInventory;
 
 public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
 {
-    private static readonly IReadOnlyList<IDependencyInventoryCollector> Collectors =
+    private static readonly IReadOnlyList<IDependencyInventoryCollector> DefaultCollectors =
     [
         new NpmDependencyCollector(),
         new NuGetDependencyCollector(),
@@ -20,6 +20,18 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
         new SwiftPmCollector(),
         new CppDependencyCollector()
     ];
+    private readonly IReadOnlyList<IDependencyInventoryCollector> collectors;
+
+    public DependencyInventoryAnalyzer()
+        : this(DefaultCollectors)
+    {
+    }
+
+    internal DependencyInventoryAnalyzer(
+        IReadOnlyList<IDependencyInventoryCollector> collectors)
+    {
+        this.collectors = collectors;
+    }
 
     public string Id => "dependency-inventory";
 
@@ -33,7 +45,7 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
 
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 
-    public TimeSpan Timeout => TimeSpan.FromSeconds(10);
+    public TimeSpan Timeout => TimeSpan.FromSeconds(30);
 
     public IReadOnlyCollection<RuleMetadata> Rules =>
     [
@@ -89,12 +101,33 @@ public sealed class DependencyInventoryAnalyzer : IRepositoryAnalyzer
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var state = new DependencyInventoryState();
-        foreach (var collector in Collectors)
+        var completedCollectors = 0;
+        var failedCollectors = 0;
+        foreach (var collector in collectors)
         {
-            collector.Collect(context, state, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            var collectorState = new DependencyInventoryState();
+            try
+            {
+                collector.Collect(context, collectorState, cancellationToken);
+                state.MergeFrom(collectorState);
+                completedCollectors++;
+            }
+            catch (Exception ex) when (
+                ex is not OperationCanceledException and
+                not OutOfMemoryException)
+            {
+                failedCollectors++;
+                state.Warnings.Add(
+                    $"Dependency inventory collector '{collector.GetType().Name}' failed and was skipped ({ex.GetType().Name}).");
+            }
         }
 
-        var metrics = DependencyInventoryMetrics.Build(state);
+        var metrics = DependencyInventoryMetrics.Build(
+            state,
+            collectors.Count,
+            completedCollectors,
+            failedCollectors);
         var artifact = new DependencyInventoryArtifact(
             state.Manifests,
             state.Lockfiles,
