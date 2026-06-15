@@ -22,8 +22,9 @@ public sealed class PackageMetadataCacheTests
         Assert.NotNull(first);
         Assert.NotNull(second);
         Assert.Equal(1, inner.RequestCount);
-        Assert.Equal("network", first!.Metadata?["lookup.source"]);
-        Assert.Equal("sqlite", second!.Metadata?["lookup.source"]);
+        Assert.Equal(PackageMetadataLookupStatus.Found, first.Status);
+        Assert.Equal("network", first.Metadata!.Metadata?["lookup.source"]);
+        Assert.Equal("sqlite", second.Metadata!.Metadata?["lookup.source"]);
     }
 
     [Fact]
@@ -40,7 +41,7 @@ public sealed class PackageMetadataCacheTests
         var refreshed = await client.GetMetadataAsync(package, CancellationToken.None);
 
         Assert.Equal(2, inner.RequestCount);
-        Assert.Equal("network", refreshed?.Metadata?["lookup.source"]);
+        Assert.Equal("network", refreshed.Metadata!.Metadata?["lookup.source"]);
     }
 
     [Fact]
@@ -54,12 +55,13 @@ public sealed class PackageMetadataCacheTests
 
         await client.GetMetadataAsync(package, CancellationToken.None);
         time.Advance(TimeSpan.FromHours(25));
-        inner.ReturnNull = true;
+        inner.ReturnTransientFailure = true;
         var stale = await client.GetMetadataAsync(package, CancellationToken.None);
 
-        Assert.NotNull(stale);
+        Assert.Equal(PackageMetadataLookupStatus.Found, stale.Status);
         Assert.Equal(2, inner.RequestCount);
-        Assert.Equal("sqlite-stale", stale!.Metadata?["lookup.source"]);
+        Assert.True(stale.IsStale);
+        Assert.Equal("sqlite-stale", stale.Metadata!.Metadata?["lookup.source"]);
     }
 
     [Fact]
@@ -87,7 +89,12 @@ public sealed class PackageMetadataCacheTests
         var package = CreatePackage("Example.MixedCase", "1.0.0");
         var now = DateTimeOffset.UtcNow;
 
-        await cache.SetAsync(package, null, now.AddDays(-2), now.AddDays(-1), CancellationToken.None);
+        await cache.SetAsync(
+            package,
+            PackageMetadataLookupResult.NotFound(),
+            now.AddDays(-2),
+            now.AddDays(-1),
+            CancellationToken.None);
         var keys = await cache.GetExpiredKeysAsync(now, 10, CancellationToken.None);
 
         Assert.Equal("Example.MixedCase", Assert.Single(keys).PackageName);
@@ -127,6 +134,64 @@ public sealed class PackageMetadataCacheTests
     }
 
     [Fact]
+    public async Task DatabaseInitialization_DoesNotTrustLegacyNullAsNotFound()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var options = CreateOptions(fixture.Path);
+        await using (var connection = new SqliteConnection(
+                         $"Data Source={options.DatabasePath};Pooling=False"))
+        {
+            await connection.OpenAsync(TestContext.Current.CancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE registry_metadata (
+                    ecosystem INTEGER NOT NULL,
+                    package_name TEXT NOT NULL,
+                    requested_version TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL,
+                    fetched_at_utc TEXT NOT NULL,
+                    expires_at_utc TEXT NOT NULL,
+                    original_package_name TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (ecosystem, package_name, requested_version)
+                );
+
+                INSERT INTO registry_metadata(
+                    ecosystem,
+                    package_name,
+                    requested_version,
+                    metadata_json,
+                    fetched_at_utc,
+                    expires_at_utc,
+                    original_package_name)
+                VALUES(
+                    $ecosystem,
+                    'missing-package',
+                    '1.0.0',
+                    'null',
+                    '2026-06-14T10:00:00.0000000+00:00',
+                    '2026-06-16T10:00:00.0000000+00:00',
+                    'missing-package');
+                """;
+            command.Parameters.AddWithValue("$ecosystem", (int)DependencyEcosystem.Npm);
+            await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        }
+
+        var inner = new StubMetadataClient();
+        var client = new CachingPackageMetadataClient(
+            inner,
+            new SqlitePackageMetadataCache(new LocalIntelligenceDatabase(options)),
+            options.RegistryCacheTtl);
+
+        var result = await client.GetMetadataAsync(
+            CreatePackage("missing-package", "1.0.0"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(PackageMetadataLookupStatus.Found, result.Status);
+        Assert.Equal(1, inner.RequestCount);
+        Assert.Equal("network", result.Source);
+    }
+
+    [Fact]
     public async Task RefreshExpiredAsync_UsesOriginalPackageName()
     {
         using var fixture = TemporaryDirectory.Create();
@@ -136,7 +201,7 @@ public sealed class PackageMetadataCacheTests
         var package = CreatePackage("Example.MixedCase", "1.0.0");
         await cache.SetAsync(
             package,
-            null,
+            PackageMetadataLookupResult.NotFound(),
             now.AddDays(-2),
             now.AddDays(-1),
             TestContext.Current.CancellationToken);
@@ -171,7 +236,7 @@ public sealed class PackageMetadataCacheTests
         var cache = new SqlitePackageMetadataCache(databases[0]);
         await cache.SetAsync(
             CreatePackage("left-pad", "1.0.0"),
-            null,
+            PackageMetadataLookupResult.NotFound(),
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow.AddHours(1),
             TestContext.Current.CancellationToken);
@@ -197,9 +262,9 @@ public sealed class PackageMetadataCacheTests
             CreatePackage("left-pad", "1.0.0"),
             TestContext.Current.CancellationToken);
 
-        Assert.NotNull(result);
+        Assert.Equal(PackageMetadataLookupStatus.Found, result.Status);
         Assert.Equal(1, inner.RequestCount);
-        Assert.Equal("network", result!.Metadata?["lookup.source"]);
+        Assert.Equal("network", result.Metadata!.Metadata?["lookup.source"]);
     }
 
     [Theory]
@@ -226,8 +291,17 @@ public sealed class PackageMetadataCacheTests
                     metadata_json,
                     fetched_at_utc,
                     expires_at_utc,
-                    original_package_name)
-                VALUES($ecosystem, 'left-pad', '1.0.0', $json, $fetched, $expires, 'left-pad');
+                    original_package_name,
+                    lookup_status)
+                VALUES(
+                    $ecosystem,
+                    'left-pad',
+                    '1.0.0',
+                    $json,
+                    $fetched,
+                    $expires,
+                    'left-pad',
+                    'Found');
                 """;
             command.Parameters.AddWithValue("$ecosystem", (int)DependencyEcosystem.Npm);
             command.Parameters.AddWithValue("$json", metadataJson);
@@ -246,9 +320,9 @@ public sealed class PackageMetadataCacheTests
             CreatePackage("left-pad", "1.0.0"),
             TestContext.Current.CancellationToken);
 
-        Assert.NotNull(result);
+        Assert.Equal(PackageMetadataLookupStatus.Found, result.Status);
         Assert.Equal(1, inner.RequestCount);
-        Assert.Equal("network", result!.Metadata?["lookup.source"]);
+        Assert.Equal("network", result.Metadata!.Metadata?["lookup.source"]);
     }
 
     [Fact]
@@ -268,8 +342,71 @@ public sealed class PackageMetadataCacheTests
             package,
             TestContext.Current.CancellationToken);
 
-        Assert.NotNull(result);
-        Assert.Equal("sqlite-stale", result!.Metadata?["lookup.source"]);
+        Assert.Equal(PackageMetadataLookupStatus.Found, result.Status);
+        Assert.True(result.IsStale);
+        Assert.Equal("sqlite-stale", result.Metadata!.Metadata?["lookup.source"]);
+    }
+
+    [Fact]
+    public async Task GetMetadataAsync_DoesNotNegativeCacheTransientFailure()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var inner = new StubMetadataClient { ReturnTransientFailure = true };
+        var client = CreateClient(
+            fixture.Path,
+            inner,
+            new MutableTimeProvider(DateTimeOffset.UtcNow));
+        var package = CreatePackage("left-pad", "1.0.0");
+
+        var failed = await client.GetMetadataAsync(package, CancellationToken.None);
+        inner.ReturnTransientFailure = false;
+        var recovered = await client.GetMetadataAsync(package, CancellationToken.None);
+
+        Assert.Equal(PackageMetadataLookupStatus.TransientFailure, failed.Status);
+        Assert.Equal(PackageMetadataLookupStatus.Found, recovered.Status);
+        Assert.Equal(2, inner.RequestCount);
+    }
+
+    [Fact]
+    public async Task GetMetadataAsync_CachesConfirmedNotFoundResult()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var inner = new StubMetadataClient { ReturnNotFound = true };
+        var client = CreateClient(
+            fixture.Path,
+            inner,
+            new MutableTimeProvider(DateTimeOffset.UtcNow));
+        var package = CreatePackage("missing-package", "1.0.0");
+
+        var first = await client.GetMetadataAsync(package, CancellationToken.None);
+        var second = await client.GetMetadataAsync(package, CancellationToken.None);
+
+        Assert.Equal(PackageMetadataLookupStatus.NotFound, first.Status);
+        Assert.Equal(PackageMetadataLookupStatus.NotFound, second.Status);
+        Assert.Equal("sqlite", second.Source);
+        Assert.Equal(1, inner.RequestCount);
+    }
+
+    [Fact]
+    public async Task GetMetadataAsync_DoesNotHideOutageBehindStaleNegativeEntry()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var time = new MutableTimeProvider(
+            new DateTimeOffset(2026, 6, 14, 10, 0, 0, TimeSpan.Zero));
+        var inner = new StubMetadataClient { ReturnNotFound = true };
+        var client = CreateClient(fixture.Path, inner, time);
+        var package = CreatePackage("missing-package", "1.0.0");
+        await client.GetMetadataAsync(package, CancellationToken.None);
+        time.Advance(TimeSpan.FromHours(25));
+        inner.ReturnNotFound = false;
+        inner.ReturnTransientFailure = true;
+
+        var result = await client.GetMetadataAsync(package, CancellationToken.None);
+
+        Assert.Equal(PackageMetadataLookupStatus.TransientFailure, result.Status);
+        Assert.False(result.IsStale);
+        Assert.Equal("network", result.Source);
+        Assert.Equal(2, inner.RequestCount);
     }
 
     private static CachingPackageMetadataClient CreateClient(
@@ -308,13 +445,15 @@ public sealed class PackageMetadataCacheTests
 
         public int RequestCount { get; private set; }
 
-        public bool ReturnNull { get; set; }
+        public bool ReturnNotFound { get; set; }
+
+        public bool ReturnTransientFailure { get; set; }
 
         public bool ThrowOnRequest { get; set; }
 
         public string? LastPackageName { get; private set; }
 
-        public Task<PackageRegistryMetadata?> GetMetadataAsync(
+        public Task<PackageMetadataLookupResult> GetMetadataAsync(
             DependencyPackageInfo package,
             CancellationToken cancellationToken)
         {
@@ -325,9 +464,21 @@ public sealed class PackageMetadataCacheTests
                 throw new HttpRequestException("simulated registry failure");
             }
 
-            return Task.FromResult(ReturnNull
-                ? null
-                : new PackageRegistryMetadata(
+            if (ReturnTransientFailure)
+            {
+                return Task.FromResult(PackageMetadataLookupResult.Failure(
+                    PackageMetadataLookupStatus.TransientFailure,
+                    SafeLookupErrorKind.Timeout,
+                    "simulated timeout"));
+            }
+
+            if (ReturnNotFound)
+            {
+                return Task.FromResult(PackageMetadataLookupResult.NotFound());
+            }
+
+            return Task.FromResult(PackageMetadataLookupResult.Found(
+                new PackageRegistryMetadata(
                     package.Ecosystem,
                     package.Name,
                     package.Version,
@@ -339,7 +490,7 @@ public sealed class PackageMetadataCacheTests
                     null,
                     "MIT",
                     null,
-                    "registry.test"));
+                    "registry.test")));
         }
     }
 

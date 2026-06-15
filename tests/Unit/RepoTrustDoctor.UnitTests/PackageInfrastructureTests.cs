@@ -276,10 +276,12 @@ public sealed class PackageInfrastructureTests
             }));
         var client = new PyPiPackageMetadataClient(lookup);
 
-        var metadata = await client.GetMetadataAsync(
+        var result = await client.GetMetadataAsync(
             CreatePackage(DependencyEcosystem.Python, "example", "1.0.0"),
             CancellationToken.None);
+        var metadata = result.Metadata;
 
+        Assert.Equal(PackageMetadataLookupStatus.Found, result.Status);
         Assert.NotNull(metadata);
         Assert.Equal("GPL-3.0-only", metadata!.LicenseExpression);
         Assert.Equal(["/pypi/example/json", "/pypi/example/1.0.0/json"], requestedPaths);

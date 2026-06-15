@@ -41,14 +41,21 @@ public sealed class RegistryMetadataRefresher(
             try
             {
                 var package = CreatePackage(key);
-                var metadata = await client.GetMetadataAsync(package, cancellationToken);
-                await cache.SetAsync(
-                    package,
-                    metadata,
-                    now,
-                    now.Add(cacheTtl),
-                    cancellationToken);
-                Interlocked.Increment(ref refreshed);
+                var result = await client.GetMetadataAsync(package, cancellationToken);
+                if (result.Status is PackageMetadataLookupStatus.Found or PackageMetadataLookupStatus.NotFound)
+                {
+                    await cache.SetAsync(
+                        package,
+                        result,
+                        now,
+                        now.Add(cacheTtl),
+                        cancellationToken);
+                    Interlocked.Increment(ref refreshed);
+                }
+                else
+                {
+                    Interlocked.Increment(ref failed);
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

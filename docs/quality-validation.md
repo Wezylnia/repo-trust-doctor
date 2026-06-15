@@ -74,10 +74,22 @@ For repeated network-intelligence benchmarks, also record:
 
 - `dependency.metadata.cache.hit.count`
 - `dependency.metadata.network.count`
+- `dependency.metadata.lookup.not_found.count`
+- `dependency.metadata.lookup.failed.count`
+- `dependency.metadata.lookup.invalid_response.count`
+- `dependency.metadata.lookup.blocked.count`
+- `dependency.metadata.lookup.stale_used.count`
 - `dependency.vulnerability.lookup.local.count`
 - `dependency.vulnerability.lookup.online.count`
 
 Use a fresh dedicated SQLite database to measure cold behavior, then repeat against the same database to measure warm behavior. Do not compare a cold scan with a warm scan without labeling the cache state.
+
+Registry metadata outcomes are intentionally distinct. Only a confirmed
+package-not-found response is negative-cached. Timeouts, transport failures,
+blocked requests, oversized or malformed responses remain incomplete lookups
+and must not be interpreted as evidence that a package does not exist. A stale
+positive cache fallback remains usable, but increments both the stale-use and
+lookup-failure metrics so the report does not hide the failed refresh.
 
 The June 2026 cache validation used real NuGet, npm, Maven, and PyPI
 repositories. Warm metadata passes produced zero registry requests and reduced

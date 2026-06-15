@@ -5,7 +5,7 @@ namespace RepoTrustDoctor.Infrastructure.LocalData;
 
 public sealed class LocalIntelligenceDatabase
 {
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 3;
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> InitializationLocks =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly string connectionString;
@@ -60,6 +60,10 @@ public sealed class LocalIntelligenceDatabase
             command.CommandText = SchemaSql;
             await command.ExecuteNonQueryAsync(cancellationToken);
             await EnsureRegistryOriginalPackageNameColumnAsync(
+                connection,
+                transaction,
+                cancellationToken);
+            await EnsureRegistryLookupStatusColumnAsync(
                 connection,
                 transaction,
                 cancellationToken);
@@ -135,6 +139,40 @@ public sealed class LocalIntelligenceDatabase
         await migrationCommand.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private static async Task EnsureRegistryLookupStatusColumnAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await using var columnsCommand = connection.CreateCommand();
+        columnsCommand.Transaction = transaction;
+        columnsCommand.CommandText = "PRAGMA table_info(registry_metadata);";
+        await using var reader = await columnsCommand.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (string.Equals(
+                    reader.GetString(1),
+                    "lookup_status",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        await reader.DisposeAsync();
+        await using var migrationCommand = connection.CreateCommand();
+        migrationCommand.Transaction = transaction;
+        migrationCommand.CommandText = """
+            ALTER TABLE registry_metadata
+            ADD COLUMN lookup_status TEXT NOT NULL DEFAULT 'LegacyUnknown';
+
+            UPDATE registry_metadata
+            SET lookup_status = 'Found'
+            WHERE metadata_json <> 'null';
+            """;
+        await migrationCommand.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private const string SchemaSql = """
         CREATE TABLE IF NOT EXISTS local_schema (
             key TEXT PRIMARY KEY,
@@ -149,6 +187,7 @@ public sealed class LocalIntelligenceDatabase
             fetched_at_utc TEXT NOT NULL,
             expires_at_utc TEXT NOT NULL,
             original_package_name TEXT NOT NULL DEFAULT '',
+            lookup_status TEXT NOT NULL,
             PRIMARY KEY (ecosystem, package_name, requested_version)
         );
 

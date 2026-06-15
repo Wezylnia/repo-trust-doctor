@@ -78,24 +78,25 @@ public sealed class DependencyRiskSourceKindTests
 
         public int QueryCount { get; private set; }
 
-        public Task<PackageRegistryMetadata?> GetMetadataAsync(
+        public Task<PackageMetadataLookupResult> GetMetadataAsync(
             DependencyPackageInfo package,
             CancellationToken cancellationToken)
         {
             QueryCount++;
-            return Task.FromResult<PackageRegistryMetadata?>(new PackageRegistryMetadata(
-                package.Ecosystem,
-                package.Name,
-                package.Version,
-                package.Version,
-                null,
-                false,
-                false,
-                null,
-                null,
-                "MIT",
-                null,
-                "registry.npmjs.org"));
+            return Task.FromResult(PackageMetadataLookupResult.Found(
+                new PackageRegistryMetadata(
+                    package.Ecosystem,
+                    package.Name,
+                    package.Version,
+                    package.Version,
+                    null,
+                    false,
+                    false,
+                    null,
+                    null,
+                    "MIT",
+                    null,
+                    "registry.npmjs.org")));
         }
     }
 

@@ -6,6 +6,7 @@ using RepoTrustDoctor.Infrastructure.LocalData;
 namespace RepoTrustDoctor.Infrastructure.PackageRegistries;
 
 public sealed record PackageMetadataCacheEntry(
+    PackageMetadataLookupStatus Status,
     PackageRegistryMetadata? Metadata,
     DateTimeOffset FetchedAt,
     DateTimeOffset ExpiresAt)
@@ -29,7 +30,7 @@ public sealed class SqlitePackageMetadataCache(LocalIntelligenceDatabase databas
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT metadata_json, fetched_at_utc, expires_at_utc
+            SELECT metadata_json, lookup_status, fetched_at_utc, expires_at_utc
             FROM registry_metadata
             WHERE ecosystem = $ecosystem
               AND package_name = $package_name
@@ -44,15 +45,31 @@ public sealed class SqlitePackageMetadataCache(LocalIntelligenceDatabase databas
         }
 
         var json = reader.GetString(0);
+        if (!Enum.TryParse<PackageMetadataLookupStatus>(
+                reader.GetString(1),
+                ignoreCase: true,
+                out var status) ||
+            status is not (PackageMetadataLookupStatus.Found or PackageMetadataLookupStatus.NotFound))
+        {
+            return null;
+        }
+
+        var metadata = JsonSerializer.Deserialize<PackageRegistryMetadata?>(json, JsonOptions);
+        if (status == PackageMetadataLookupStatus.Found && metadata is null)
+        {
+            return null;
+        }
+
         return new PackageMetadataCacheEntry(
-            JsonSerializer.Deserialize<PackageRegistryMetadata?>(json, JsonOptions),
-            DateTimeOffset.Parse(reader.GetString(1)),
-            DateTimeOffset.Parse(reader.GetString(2)));
+            status,
+            metadata,
+            DateTimeOffset.Parse(reader.GetString(2)),
+            DateTimeOffset.Parse(reader.GetString(3)));
     }
 
     public async Task SetAsync(
         DependencyPackageInfo package,
-        PackageRegistryMetadata? metadata,
+        PackageMetadataLookupResult result,
         DateTimeOffset fetchedAt,
         DateTimeOffset expiresAt,
         CancellationToken cancellationToken)
@@ -67,7 +84,8 @@ public sealed class SqlitePackageMetadataCache(LocalIntelligenceDatabase databas
                 metadata_json,
                 fetched_at_utc,
                 expires_at_utc,
-                original_package_name)
+                original_package_name,
+                lookup_status)
             VALUES(
                 $ecosystem,
                 $package_name,
@@ -75,21 +93,31 @@ public sealed class SqlitePackageMetadataCache(LocalIntelligenceDatabase databas
                 $metadata_json,
                 $fetched_at_utc,
                 $expires_at_utc,
-                $original_package_name)
+                $original_package_name,
+                $lookup_status)
             ON CONFLICT(ecosystem, package_name, requested_version)
             DO UPDATE SET
                 metadata_json = excluded.metadata_json,
                 fetched_at_utc = excluded.fetched_at_utc,
                 expires_at_utc = excluded.expires_at_utc,
-                original_package_name = excluded.original_package_name;
+                original_package_name = excluded.original_package_name,
+                lookup_status = excluded.lookup_status;
             """;
+        if (result.Status is not (PackageMetadataLookupStatus.Found or PackageMetadataLookupStatus.NotFound))
+        {
+            throw new ArgumentException(
+                "Only found and not-found registry results may be cached.",
+                nameof(result));
+        }
+
         AddKeyParameters(command, package);
         command.Parameters.AddWithValue(
             "$metadata_json",
-            JsonSerializer.Serialize(metadata, JsonOptions));
+            JsonSerializer.Serialize(result.Metadata, JsonOptions));
         command.Parameters.AddWithValue("$fetched_at_utc", fetchedAt.ToString("O"));
         command.Parameters.AddWithValue("$expires_at_utc", expiresAt.ToString("O"));
         command.Parameters.AddWithValue("$original_package_name", package.Name.Trim());
+        command.Parameters.AddWithValue("$lookup_status", result.Status.ToString());
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 

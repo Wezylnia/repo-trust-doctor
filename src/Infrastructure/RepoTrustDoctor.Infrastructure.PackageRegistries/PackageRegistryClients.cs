@@ -7,7 +7,7 @@ public interface IPackageMetadataClient
 {
     DependencyEcosystem Ecosystem { get; }
 
-    Task<PackageRegistryMetadata?> GetMetadataAsync(
+    Task<PackageMetadataLookupResult> GetMetadataAsync(
         DependencyPackageInfo package,
         CancellationToken cancellationToken);
 }
@@ -16,14 +16,26 @@ public sealed class NuGetPackageMetadataClient(SafeHttpLookup lookup) : IPackage
 {
     public DependencyEcosystem Ecosystem => DependencyEcosystem.NuGet;
 
-    public async Task<PackageRegistryMetadata?> GetMetadataAsync(DependencyPackageInfo package, CancellationToken cancellationToken)
+    public async Task<PackageMetadataLookupResult> GetMetadataAsync(
+        DependencyPackageInfo package,
+        CancellationToken cancellationToken)
     {
         var id = Uri.EscapeDataString(package.Name.ToLowerInvariant());
         var uri = new Uri($"https://api.nuget.org/v3/registration5-gz-semver2/{id}/index.json");
         var result = await lookup.GetStringAsync(uri, cancellationToken);
-        return result.Success && result.Body is not null
-            ? PackageMetadataParser.ParseNuGet(package, result.Body)
-            : null;
+        if (!result.Success)
+        {
+            return PackageMetadataLookupResult.FromSafeLookupFailure(result);
+        }
+
+        if (result.Body is null)
+        {
+            return PackageMetadataLookup.InvalidResponse("NuGet registry returned an empty response.");
+        }
+
+        return PackageMetadataLookup.Parse(
+            () => PackageMetadataParser.ParseNuGet(package, result.Body),
+            "NuGet registry returned metadata without package versions.");
     }
 }
 
@@ -31,14 +43,26 @@ public sealed class NpmPackageMetadataClient(SafeHttpLookup lookup) : IPackageMe
 {
     public DependencyEcosystem Ecosystem => DependencyEcosystem.Npm;
 
-    public async Task<PackageRegistryMetadata?> GetMetadataAsync(DependencyPackageInfo package, CancellationToken cancellationToken)
+    public async Task<PackageMetadataLookupResult> GetMetadataAsync(
+        DependencyPackageInfo package,
+        CancellationToken cancellationToken)
     {
         var name = Uri.EscapeDataString(package.Name);
         var uri = new Uri($"https://registry.npmjs.org/{name}");
         var result = await lookup.GetStringAsync(uri, cancellationToken);
-        return result.Success && result.Body is not null
-            ? PackageMetadataParser.ParseNpm(package, result.Body)
-            : null;
+        if (!result.Success)
+        {
+            return PackageMetadataLookupResult.FromSafeLookupFailure(result);
+        }
+
+        if (result.Body is null)
+        {
+            return PackageMetadataLookup.InvalidResponse("npm registry returned an empty response.");
+        }
+
+        return PackageMetadataLookup.Parse(
+            () => PackageMetadataParser.ParseNpm(package, result.Body),
+            "npm registry returned metadata without package versions.");
     }
 }
 
@@ -46,28 +70,59 @@ public sealed class PyPiPackageMetadataClient(SafeHttpLookup lookup) : IPackageM
 {
     public DependencyEcosystem Ecosystem => DependencyEcosystem.Python;
 
-    public async Task<PackageRegistryMetadata?> GetMetadataAsync(DependencyPackageInfo package, CancellationToken cancellationToken)
+    public async Task<PackageMetadataLookupResult> GetMetadataAsync(
+        DependencyPackageInfo package,
+        CancellationToken cancellationToken)
     {
         var name = Uri.EscapeDataString(package.Name);
         var latestUri = new Uri($"https://pypi.org/pypi/{name}/json");
         var latestResult = await lookup.GetStringAsync(latestUri, cancellationToken);
-        if (!latestResult.Success || latestResult.Body is null)
+        if (!latestResult.Success)
         {
-            return null;
+            return PackageMetadataLookupResult.FromSafeLookupFailure(latestResult);
         }
 
-        var latestVersion = PackageMetadataParser.ReadPyPiVersion(latestResult.Body);
+        if (latestResult.Body is null)
+        {
+            return PackageMetadataLookup.InvalidResponse("PyPI returned an empty response.");
+        }
+
+        string? latestVersion;
+        try
+        {
+            latestVersion = PackageMetadataParser.ReadPyPiVersion(latestResult.Body);
+        }
+        catch (JsonException ex)
+        {
+            return PackageMetadataLookup.InvalidResponse(ex.Message);
+        }
+
+        if (string.IsNullOrWhiteSpace(latestVersion))
+        {
+            return PackageMetadataLookup.InvalidResponse("PyPI returned metadata without a latest version.");
+        }
+
         if (string.Equals(latestVersion, package.Version, StringComparison.OrdinalIgnoreCase))
         {
-            return PackageMetadataParser.ParsePyPi(package, latestResult.Body, latestResult.Body);
+            return PackageMetadataLookup.Parse(
+                () => PackageMetadataParser.ParsePyPi(package, latestResult.Body, latestResult.Body),
+                "PyPI returned incomplete package metadata.");
         }
 
         var requestedUri = new Uri($"https://pypi.org/pypi/{name}/{Uri.EscapeDataString(package.Version!)}/json");
         var requestedResult = await lookup.GetStringAsync(requestedUri, cancellationToken);
-        return PackageMetadataParser.ParsePyPi(
-            package,
-            latestResult.Body,
-            requestedResult.Success ? requestedResult.Body : null);
+        if (!requestedResult.Success &&
+            requestedResult.ErrorKind is not SafeLookupErrorKind.NotFound)
+        {
+            return PackageMetadataLookupResult.FromSafeLookupFailure(requestedResult);
+        }
+
+        return PackageMetadataLookup.Parse(
+            () => PackageMetadataParser.ParsePyPi(
+                package,
+                latestResult.Body,
+                requestedResult.Success ? requestedResult.Body : null),
+            "PyPI returned incomplete package metadata.");
     }
 }
 
@@ -75,22 +130,68 @@ public sealed class MavenCentralPackageMetadataClient(SafeHttpLookup lookup) : I
 {
     public DependencyEcosystem Ecosystem => DependencyEcosystem.Maven;
 
-    public async Task<PackageRegistryMetadata?> GetMetadataAsync(DependencyPackageInfo package, CancellationToken cancellationToken)
+    public async Task<PackageMetadataLookupResult> GetMetadataAsync(
+        DependencyPackageInfo package,
+        CancellationToken cancellationToken)
     {
         var coordinates = package.Name.Split(':', 2);
         if (coordinates.Length != 2)
         {
-            return null;
+            return PackageMetadataLookup.InvalidResponse("Maven package coordinates must use the 'group:artifact' form.");
         }
 
         var group = Uri.EscapeDataString(coordinates[0]);
         var artifact = Uri.EscapeDataString(coordinates[1]);
         var uri = new Uri($"https://search.maven.org/solrsearch/select?q=g:%22{group}%22+AND+a:%22{artifact}%22&rows=1&wt=json");
         var result = await lookup.GetStringAsync(uri, cancellationToken);
-        return result.Success && result.Body is not null
-            ? PackageMetadataParser.ParseMavenCentral(package, result.Body)
-            : null;
+        if (!result.Success)
+        {
+            return PackageMetadataLookupResult.FromSafeLookupFailure(result);
+        }
+
+        if (result.Body is null)
+        {
+            return PackageMetadataLookup.InvalidResponse("Maven Central returned an empty response.");
+        }
+
+        try
+        {
+            var metadata = PackageMetadataParser.ParseMavenCentral(package, result.Body);
+            return metadata is null
+                ? PackageMetadataLookupResult.NotFound("Maven Central returned no matching package.")
+                : PackageMetadataLookupResult.Found(metadata);
+        }
+        catch (JsonException ex)
+        {
+            return PackageMetadataLookup.InvalidResponse(ex.Message);
+        }
     }
+}
+
+internal static class PackageMetadataLookup
+{
+    public static PackageMetadataLookupResult Parse(
+        Func<PackageRegistryMetadata?> parser,
+        string missingMetadataMessage)
+    {
+        try
+        {
+            var metadata = parser();
+            return metadata is null
+                ? InvalidResponse(missingMetadataMessage)
+                : PackageMetadataLookupResult.Found(metadata);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
+        {
+            return InvalidResponse(ex.Message);
+        }
+    }
+
+    public static PackageMetadataLookupResult InvalidResponse(string message) =>
+        PackageMetadataLookupResult.Failure(
+            PackageMetadataLookupStatus.InvalidResponse,
+            SafeLookupErrorKind.MalformedResponse,
+            message);
 }
 
 public static class PackageMetadataParser

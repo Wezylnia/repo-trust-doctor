@@ -28,7 +28,7 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
 
     public DependencyEcosystem Ecosystem => inner.Ecosystem;
 
-    public async Task<PackageRegistryMetadata?> GetMetadataAsync(
+    public async Task<PackageMetadataLookupResult> GetMetadataAsync(
         DependencyPackageInfo package,
         CancellationToken cancellationToken)
     {
@@ -36,7 +36,7 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
         var cached = await TryGetCachedAsync(package, cancellationToken);
         if (cached?.IsFresh(now) == true)
         {
-            return AddCacheMetadata(cached.Metadata, "sqlite", cached.FetchedAt);
+            return CreateCachedResult(cached, "sqlite", isStale: false);
         }
 
         var key = $"{package.Ecosystem}:{package.Name}:{package.Version}";
@@ -48,10 +48,10 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
             cached = await TryGetCachedAsync(package, cancellationToken);
             if (cached?.IsFresh(now) == true)
             {
-                return AddCacheMetadata(cached.Metadata, "sqlite", cached.FetchedAt);
+                return CreateCachedResult(cached, "sqlite", isStale: false);
             }
 
-            PackageRegistryMetadata? fresh;
+            PackageMetadataLookupResult fresh;
             try
             {
                 fresh = await inner.GetMetadataAsync(package, cancellationToken);
@@ -60,12 +60,15 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
             {
                 throw;
             }
-            catch when (cached is not null)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                return AddCacheMetadata(cached.Metadata, "sqlite-stale", cached.FetchedAt);
+                fresh = PackageMetadataLookupResult.Failure(
+                    PackageMetadataLookupStatus.TransientFailure,
+                    SafeLookupErrorKind.TransportError,
+                    ex.Message);
             }
 
-            if (fresh is not null)
+            if (fresh.Status is PackageMetadataLookupStatus.Found or PackageMetadataLookupStatus.NotFound)
             {
                 await TrySetCachedAsync(
                     package,
@@ -73,21 +76,23 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
                     now,
                     now.Add(cacheTtl),
                     cancellationToken);
-                return AddCacheMetadata(fresh, "network", now);
+                return AddSourceMetadata(fresh, "network", now, isStale: false);
             }
 
-            if (cached is not null)
+            if (cached is { Status: PackageMetadataLookupStatus.Found, Metadata: not null })
             {
-                return AddCacheMetadata(cached.Metadata, "sqlite-stale", cached.FetchedAt);
+                return AddSourceMetadata(
+                    fresh with
+                    {
+                        Status = PackageMetadataLookupStatus.Found,
+                        Metadata = cached.Metadata
+                    },
+                    "sqlite-stale",
+                    cached.FetchedAt,
+                    isStale: true);
             }
 
-            await TrySetCachedAsync(
-                package,
-                null,
-                now,
-                now.Add(cacheTtl),
-                cancellationToken);
-            return null;
+            return AddSourceMetadata(fresh, "network", now, isStale: false);
         }
         finally
         {
@@ -111,7 +116,7 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
 
     private async Task TrySetCachedAsync(
         DependencyPackageInfo package,
-        PackageRegistryMetadata? metadata,
+        PackageMetadataLookupResult result,
         DateTimeOffset fetchedAt,
         DateTimeOffset expiresAt,
         CancellationToken cancellationToken)
@@ -120,7 +125,7 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
         {
             await cache.SetAsync(
                 package,
-                metadata,
+                result,
                 fetchedAt,
                 expiresAt,
                 cancellationToken);
@@ -135,23 +140,45 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
         exception is SqliteException or IOException or UnauthorizedAccessException or
             JsonException or FormatException;
 
-    private static PackageRegistryMetadata? AddCacheMetadata(
-        PackageRegistryMetadata? metadata,
+    private static PackageMetadataLookupResult CreateCachedResult(
+        PackageMetadataCacheEntry cached,
         string source,
-        DateTimeOffset fetchedAt)
+        bool isStale) =>
+        AddSourceMetadata(
+            new PackageMetadataLookupResult(cached.Status, cached.Metadata),
+            source,
+            cached.FetchedAt,
+            isStale);
+
+    private static PackageMetadataLookupResult AddSourceMetadata(
+        PackageMetadataLookupResult result,
+        string source,
+        DateTimeOffset fetchedAt,
+        bool isStale)
     {
-        if (metadata is null)
+        if (result.Metadata is null)
         {
-            return null;
+            return result with
+            {
+                Source = source,
+                FetchedAt = fetchedAt,
+                IsStale = isStale
+            };
         }
 
         var values = new Dictionary<string, string>(
-            metadata.Metadata ?? new Dictionary<string, string>(),
+            result.Metadata.Metadata ?? new Dictionary<string, string>(),
             StringComparer.OrdinalIgnoreCase)
         {
             ["lookup.source"] = source,
             ["lookup.fetchedAt"] = fetchedAt.ToString("O")
         };
-        return metadata with { Metadata = values };
+        return result with
+        {
+            Metadata = result.Metadata with { Metadata = values },
+            Source = source,
+            FetchedAt = fetchedAt,
+            IsStale = isStale
+        };
     }
 }

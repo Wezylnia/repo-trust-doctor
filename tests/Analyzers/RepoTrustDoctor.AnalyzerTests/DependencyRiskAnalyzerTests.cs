@@ -136,6 +136,34 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
+    public async Task PackageMetadataAnalyzer_ReportsLookupOutcomesSeparately()
+    {
+        var context = CreateContextWithInventory([
+            CreatePackage(DependencyEcosystem.Npm, "stale-lib", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "missing-lib", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "timeout-lib", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "invalid-lib", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "blocked-lib", "1.0.0")
+        ]);
+        var analyzer = new PackageMetadataAnalyzer([new StatusMetadataClient()]);
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Equal("5", result.Metrics!["dependency.metadata.lookup.attempted.count"]);
+        Assert.Equal("2", result.Metrics["dependency.metadata.lookup.completed.count"]);
+        Assert.Equal("3", result.Metrics["dependency.metadata.lookup.incomplete.count"]);
+        Assert.Equal("1", result.Metrics["dependency.metadata.lookup.not_found.count"]);
+        Assert.Equal("2", result.Metrics["dependency.metadata.lookup.failed.count"]);
+        Assert.Equal("1", result.Metrics["dependency.metadata.lookup.invalid_response.count"]);
+        Assert.Equal("1", result.Metrics["dependency.metadata.lookup.blocked.count"]);
+        Assert.Equal("1", result.Metrics["dependency.metadata.lookup.stale_used.count"]);
+        Assert.Contains(result.Warnings!, warning => warning.Contains("temporarily", StringComparison.Ordinal));
+        Assert.Contains(result.Warnings!, warning => warning.Contains("invalid metadata", StringComparison.Ordinal));
+        Assert.Contains(result.Warnings!, warning => warning.Contains("blocked", StringComparison.Ordinal));
+        Assert.Contains(result.Warnings!, warning => warning.Contains("stale cached", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task PackageFreshnessAnalyzer_ReportsOutdatedAndDeprecatedPackages()
     {
         var context = CreateContextWithMetadata([
@@ -576,8 +604,11 @@ public sealed class DependencyRiskAnalyzerTests
     {
         public DependencyEcosystem Ecosystem { get; } = ecosystem;
 
-        public Task<PackageRegistryMetadata?> GetMetadataAsync(DependencyPackageInfo package, CancellationToken cancellationToken) =>
-            Task.FromResult<PackageRegistryMetadata?>(new PackageRegistryMetadata(package.Ecosystem, package.Name, package.Version, package.Version, null, false, false, "https://github.com/example/repo", null, "MIT", null, "fake"));
+        public Task<PackageMetadataLookupResult> GetMetadataAsync(
+            DependencyPackageInfo package,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(PackageMetadataLookupResult.Found(
+                new PackageRegistryMetadata(package.Ecosystem, package.Name, package.Version, package.Version, null, false, false, "https://github.com/example/repo", null, "MIT", null, "fake")));
     }
 
     private sealed class TrackingMetadataClient(DependencyEcosystem ecosystem) : IPackageMetadataClient
@@ -592,7 +623,7 @@ public sealed class DependencyRiskAnalyzerTests
 
         public int QueryCount => Volatile.Read(ref queryCount);
 
-        public async Task<PackageRegistryMetadata?> GetMetadataAsync(
+        public async Task<PackageMetadataLookupResult> GetMetadataAsync(
             DependencyPackageInfo package,
             CancellationToken cancellationToken)
         {
@@ -603,7 +634,8 @@ public sealed class DependencyRiskAnalyzerTests
             try
             {
                 await Task.Delay(50, cancellationToken);
-                return new PackageRegistryMetadata(package.Ecosystem, package.Name, package.Version, package.Version, null, false, false, "https://github.com/example/repo", null, "MIT", null, "fake");
+                return PackageMetadataLookupResult.Found(
+                    new PackageRegistryMetadata(package.Ecosystem, package.Name, package.Version, package.Version, null, false, false, "https://github.com/example/repo", null, "MIT", null, "fake"));
             }
             finally
             {
@@ -633,7 +665,7 @@ public sealed class DependencyRiskAnalyzerTests
     {
         public DependencyEcosystem Ecosystem { get; } = ecosystem;
 
-        public Task<PackageRegistryMetadata?> GetMetadataAsync(
+        public Task<PackageMetadataLookupResult> GetMetadataAsync(
             DependencyPackageInfo package,
             CancellationToken cancellationToken) =>
             throw new FormatException("bad registry payload");
@@ -643,7 +675,7 @@ public sealed class DependencyRiskAnalyzerTests
     {
         public DependencyEcosystem Ecosystem { get; } = ecosystem;
 
-        public async Task<PackageRegistryMetadata?> GetMetadataAsync(
+        public async Task<PackageMetadataLookupResult> GetMetadataAsync(
             DependencyPackageInfo package,
             CancellationToken cancellationToken)
         {
@@ -652,19 +684,68 @@ public sealed class DependencyRiskAnalyzerTests
                 await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
             }
 
-            return new PackageRegistryMetadata(
-                package.Ecosystem,
-                package.Name,
-                package.Version,
-                package.Version,
-                null,
-                false,
-                false,
-                "https://github.com/example/repo",
-                null,
-                "MIT",
-                null,
-                "fake");
+            return PackageMetadataLookupResult.Found(
+                new PackageRegistryMetadata(
+                    package.Ecosystem,
+                    package.Name,
+                    package.Version,
+                    package.Version,
+                    null,
+                    false,
+                    false,
+                    "https://github.com/example/repo",
+                    null,
+                    "MIT",
+                    null,
+                    "fake"));
+        }
+    }
+
+    private sealed class StatusMetadataClient : IPackageMetadataClient
+    {
+        public DependencyEcosystem Ecosystem => DependencyEcosystem.Npm;
+
+        public Task<PackageMetadataLookupResult> GetMetadataAsync(
+            DependencyPackageInfo package,
+            CancellationToken cancellationToken)
+        {
+            var result = package.Name switch
+            {
+                "stale-lib" => PackageMetadataLookupResult.Found(
+                    new PackageRegistryMetadata(
+                        package.Ecosystem,
+                        package.Name,
+                        package.Version,
+                        package.Version,
+                        null,
+                        false,
+                        false,
+                        null,
+                        null,
+                        "MIT",
+                        null,
+                        "fake")) with
+                {
+                    Source = "sqlite-stale",
+                    IsStale = true,
+                    ErrorKind = SafeLookupErrorKind.Timeout,
+                    ErrorMessage = "refresh timed out"
+                },
+                "missing-lib" => PackageMetadataLookupResult.NotFound(),
+                "timeout-lib" => PackageMetadataLookupResult.Failure(
+                    PackageMetadataLookupStatus.TransientFailure,
+                    SafeLookupErrorKind.Timeout,
+                    "request timed out"),
+                "invalid-lib" => PackageMetadataLookupResult.Failure(
+                    PackageMetadataLookupStatus.InvalidResponse,
+                    SafeLookupErrorKind.MalformedResponse,
+                    "invalid JSON"),
+                _ => PackageMetadataLookupResult.Failure(
+                    PackageMetadataLookupStatus.Blocked,
+                    SafeLookupErrorKind.BlockedUrl,
+                    "blocked host")
+            };
+            return Task.FromResult(result);
         }
     }
 

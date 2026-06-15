@@ -76,7 +76,7 @@ as deduplicated repository-relative member directories instead of raw patterns.
 
 Consumes dependency inventory and safe package metadata/advisory clients:
 
-- package metadata collection for npm, NuGet, PyPI, and Maven Central with a version-specific SQLite cache, stale-if-error behavior, duplicate package lookup suppression, no fixed package-count cutoff, bounded concurrency, and partial-result preservation when the lookup time budget is exhausted,
+- package metadata collection for npm, NuGet, PyPI, and Maven Central with a version-specific SQLite cache, confirmed-not-found negative caching, explicit transient/invalid/blocked lookup outcomes, observable stale-if-error behavior, duplicate package lookup suppression, no fixed package-count cutoff, bounded concurrency, and partial-result preservation when the lookup time budget is exhausted,
 - dependency freshness checks,
 - deprecated or yanked package checks,
 - local SQLite OSV advisory lookup for exact resolved versions across npm, NuGet, PyPI, Maven, Go, Cargo, Composer, RubyGems, Pub, Hex, and Swift packages, with online fallback for missing indexes or conservatively unsupported range semantics,
