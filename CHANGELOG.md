@@ -2,6 +2,51 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
+## v0.8.7 - 2026-06-15
+
+This bugfix release completes the current correctness review with stronger
+dependency resolution, safer evidence comparison, clearer partial-analysis
+reporting, and lower false-positive risk.
+
+### Fixed
+
+- Distinguished confirmed package-not-found responses from registry timeouts,
+  transport failures, blocked requests, oversized responses, and invalid
+  payloads.
+- Restricted negative metadata caching to confirmed not-found responses and
+  prevented stale negative entries from hiding registry outages.
+- Added SQLite migration support for typed registry lookup status while
+  preserving legacy positive cache entries and refreshing untrusted legacy
+  null entries.
+- Bound npm and PyPI metadata claims to the requested dependency version and
+  corrected semantic NuGet latest-version ordering.
+- Corrected mixed-license classification and stabilized finding identities
+  across line movement, duplicate findings, reports, history, and policy links.
+- Resolved exact dependency versions from Python, pnpm, Yarn, Cargo workspace,
+  and Gradle version-catalog evidence without guessing ambiguous versions.
+- Normalized npm aliases to their real registry package identity.
+- Narrowed Maven and Gradle managed-version suppression to verified matching
+  coordinates.
+- Corrected workspace member discovery for npm/Yarn object declarations, Cargo
+  globs and exclusions, and single-line Go workspace directives.
+- Separated detached signatures from checksum evidence, ignored workflow
+  comments, and made Python release-version extraction section-aware.
+- Corrected monorepo release-note matching for package-local and explicitly
+  shared release models.
+- Prevented partial public API scans from reporting unobserved symbols as
+  removed and added a bounded 4 MiB baseline reader.
+- Removed false Go and C# import graph edges and deduplicated repeated
+  source-target imports.
+- Preserved every SARIF evidence location, deterministic maximum rule severity,
+  valid rule documentation links, and Markdown module warnings/failures.
+
+### Changed
+
+- Added explicit metadata lookup metrics for attempted, reliable, not-found,
+  failed, invalid, blocked, stale-cache, cache-hit, and network outcomes.
+- Split package metadata analysis and private-key example classification into
+  focused helpers; no production C# source file exceeds 500 lines.
+
 ## v0.8.3 - 2026-06-12
 
 This bugfix release hardens the v1.7 codebase analysis engine and reduces false positives across multiple analyzers.

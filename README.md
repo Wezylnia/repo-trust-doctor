@@ -13,7 +13,7 @@ The project is intentionally evidence-based: analyzers produce findings with rul
 
 ## What It Checks Today
 
-The current `v0.8.3` development line focuses on local, static repository trust signals across 12 package ecosystems, CI/CD pipeline security, infrastructure-as-code checks, and deep code intelligence:
+The current `v0.8.7` development line focuses on local, static repository trust signals across 12 package ecosystems, CI/CD pipeline security, infrastructure-as-code checks, and deep code intelligence:
 
 - repository health files such as README, LICENSE, SECURITY.md, contributing docs, CODEOWNERS, templates, and changelog,
 - GitHub Actions workflow risks such as broad permissions, `pull_request_target`, unpinned actions, shell pipe execution, checkout credential persistence, and advanced hardening rules,
@@ -37,9 +37,9 @@ The current `v0.8.3` development line focuses on local, static repository trust 
 
 ## Current Status
 
-This repository is at the `v0.8.3` development milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
+This repository is at the `v0.8.7` development milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
 
-Implemented through `v0.8.3`:
+Implemented through `v0.8.7`:
 
 - a clean .NET solution structure,
 - pure domain models,
@@ -257,6 +257,7 @@ The roadmap grows the platform gradually:
 | `v0.7.5` | GitLab CI, Docker Compose, and Kubernetes static security checks |
 | `v0.8.0` | SBOM/provenance evidence import and review hardening |
 | `v0.8.1` | Azure Pipelines, CircleCI, and Terraform static security checks; package registry configuration rules; SBOM correlation; GitHub Actions advanced hardening; Gradle version catalog support |
+| `v0.8.7` | Dependency resolution correctness, registry/cache outcome integrity, partial-analysis safeguards, release evidence fixes, and report completeness |
 | `v1.7.x` | Multi-language public API extraction, import graph analysis, framework route detection, deserialization/command execution heuristics, deeper code intelligence and false-positive reduction |
 
 See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scope boundaries, and success criteria.
