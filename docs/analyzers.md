@@ -98,7 +98,16 @@ Reviews release and publishing evidence without downloading arbitrary artifacts 
 - SBOM evidence,
 - provenance or attestation evidence.
 
-For Python packages, release versions are read only from `[project]` or `[tool.poetry]`, so unrelated tool configuration does not create version drift. Release workflow comments are excluded from publish and integrity-step detection. For monorepos, root release notes are matched to root package metadata only. Nested packages are evaluated against package-directory changelogs when present, and private fixtures/examples are ignored for release version drift.
+For Python packages, release names and versions are read only from `[project]`
+or `[tool.poetry]`, so unrelated tool configuration does not create version
+drift. Release workflow comments are excluded from publish and integrity-step
+detection. For monorepos, package-directory changelogs take precedence.
+Package-specific sections in a central root changelog are associated by package
+name or manifest directory, while global root versions are applied only to
+explicit fixed-version Lerna release models. Equal package versions alone do
+not imply a shared release model. Independent package versions, private
+packages, fixtures, and examples are not compared with unrelated root release
+notes.
 
 The analyzer distinguishes missing evidence from confirmed compromise.
 

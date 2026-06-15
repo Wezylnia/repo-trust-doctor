@@ -42,10 +42,304 @@ public sealed class ReleaseEvidenceAnalyzerTests
           "private": false
         }
         """);
-
         var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_UsesPackageSpecificRootChangelogEntry()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## runtime@2.0.0
+        """);
+        var packageDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "runtime"));
+        File.WriteAllText(Path.Combine(packageDirectory.FullName, "package.json"), """
+        {
+          "name": "runtime",
+          "version": "1.0.0"
+        }
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-REL001");
+        var mismatch = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-REL004");
+        Assert.Contains("2.0.0", mismatch.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PackageSpecificRootSectionCanUseParentVersionHeading()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## 1.4.0
+
+        ### @scope/runtime
+        - Added a safer parser.
+        """);
+        var packageDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "runtime"));
+        File.WriteAllText(Path.Combine(packageDirectory.FullName, "package.json"), """
+        {
+          "name": "@scope/runtime",
+          "version": "1.4.0"
+        }
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(
+            result.Findings,
+            finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PackageBulletCanUseParentVersionHeading()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## 1.4.0
+
+        - runtime: added a safer parser.
+        """);
+        var packageDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "runtime"));
+        File.WriteAllText(Path.Combine(packageDirectory.FullName, "package.json"), """
+        {
+          "name": "runtime",
+          "version": "1.4.0"
+        }
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(
+            result.Findings,
+            finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PackageMentionWithCalendarDateIsNotTreatedAsReleaseVersion()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        runtime migration notes were updated on 2026.06.15.
+        """);
+        var packageDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "runtime"));
+        File.WriteAllText(Path.Combine(packageDirectory.FullName, "package.json"), """
+        {
+          "name": "runtime",
+          "version": "1.4.0"
+        }
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(
+            result.Findings,
+            finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_FixedLernaWorkspaceUsesRootChangelog()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## v2.0.0
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "package.json"), """
+        {
+          "name": "workspace-root",
+          "private": true,
+          "workspaces": ["packages/*"]
+        }
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "lerna.json"), """
+        {
+          "version": "1.0.0",
+          "packages": ["packages/*"]
+        }
+        """);
+        foreach (var name in new[] { "runtime", "compiler" })
+        {
+            var directory = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", name));
+            File.WriteAllText(Path.Combine(directory.FullName, "package.json"), $$"""
+            {
+              "name": "{{name}}",
+              "version": "1.0.0"
+            }
+            """);
+        }
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.Equal(2, result.Findings.Count(finding => finding.RuleId == "TRUST-REL001"));
+        Assert.Equal(2, result.Findings.Count(finding => finding.RuleId == "TRUST-REL004"));
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_FixedLernaChangelogDoesNotApplyOutsideConfiguredPackages()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## v2.0.0
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "lerna.json"), """
+        {
+          "version": "1.0.0",
+          "packages": ["packages/*"]
+        }
+        """);
+        var packageDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "runtime"));
+        File.WriteAllText(Path.Combine(packageDirectory.FullName, "package.json"), """
+        { "name": "runtime", "version": "1.0.0" }
+        """);
+        var toolDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "tools", "publisher"));
+        File.WriteAllText(Path.Combine(toolDirectory.FullName, "package.json"), """
+        { "name": "publisher", "version": "1.0.0" }
+        """);
+        var dotnetDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "src", "Tool"));
+        File.WriteAllText(Path.Combine(dotnetDirectory.FullName, "Tool.csproj"), """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <Version>1.0.0</Version>
+          </PropertyGroup>
+        </Project>
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.Equal(1, result.Findings.Count(finding => finding.RuleId == "TRUST-REL001"));
+        Assert.Equal(1, result.Findings.Count(finding => finding.RuleId == "TRUST-REL004"));
+        Assert.All(
+            result.Findings.Where(finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004"),
+            finding => Assert.Equal("packages/runtime/package.json", finding.Evidence[0].FilePath));
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_FixedLernaHonorsNegatedPackagePatterns()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## v2.0.0
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "lerna.json"), """
+        {
+          "version": "1.0.0",
+          "packages": ["packages/*", "!packages/internal"]
+        }
+        """);
+        foreach (var name in new[] { "runtime", "internal" })
+        {
+            var directory = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", name));
+            File.WriteAllText(Path.Combine(directory.FullName, "package.json"), $$"""
+            { "name": "{{name}}", "version": "1.0.0" }
+            """);
+        }
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.Equal(1, result.Findings.Count(finding => finding.RuleId == "TRUST-REL001"));
+        Assert.Equal(1, result.Findings.Count(finding => finding.RuleId == "TRUST-REL004"));
+        Assert.All(
+            result.Findings.Where(finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004"),
+            finding => Assert.Equal("packages/runtime/package.json", finding.Evidence[0].FilePath));
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_IndependentVersionWorkspaceDoesNotUseGlobalRootVersion()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## v9.0.0
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "package.json"), """
+        {
+          "name": "workspace-root",
+          "private": true,
+          "workspaces": {
+            "packages": ["packages/*"]
+          }
+        }
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "lerna.json"), """
+        {
+          "version": "independent",
+          "packages": ["packages/*"]
+        }
+        """);
+        var runtime = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "runtime"));
+        File.WriteAllText(Path.Combine(runtime.FullName, "package.json"), """
+        { "name": "runtime", "version": "1.0.0" }
+        """);
+        var compiler = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "compiler"));
+        File.WriteAllText(Path.Combine(compiler.FullName, "package.json"), """
+        { "name": "compiler", "version": "2.0.0" }
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(
+            result.Findings,
+            finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_UnscopedPackageDoesNotUseScopedPackageReleaseEntry()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## @scope/runtime@1.0.0
+        """);
+        var packageDirectory = Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "runtime"));
+        File.WriteAllText(Path.Combine(packageDirectory.FullName, "package.json"), """
+        {
+          "name": "runtime",
+          "version": "1.0.0"
+        }
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(
+            result.Findings,
+            finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004");
     }
 
     [Fact]
@@ -105,7 +399,10 @@ public sealed class ReleaseEvidenceAnalyzerTests
         var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-REL004");
         Assert.Contains("2.0.0", finding.Message, StringComparison.Ordinal);
     }
+}
 
+public sealed class ReleaseArtifactEvidenceAnalyzerTests
+{
     [Fact]
     public async Task AnalyzeAsync_ArtifactWithoutIntegrityEvidenceReportsRules()
     {

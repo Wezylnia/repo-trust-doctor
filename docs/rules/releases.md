@@ -12,7 +12,14 @@ Why it matters: users need release notes that correspond to published package ve
 
 Recommendation: add release notes for the package version in `CHANGELOG.md`.
 
-Noise control: the root changelog is compared only with root-level package metadata. Nested package manifests are checked only when their own package directory contains a changelog, and private, fixture, example, test, and documentation package manifests are ignored.
+Noise control: nested packages use package-directory changelogs first. A root
+changelog is used for a nested package only when it contains a package-specific
+heading/section, or when a fixed-version Lerna release model is explicitly
+configured. Lerna package include and exclude patterns bound that shared
+release scope. Equal package versions alone are not treated as proof of a
+shared release model. Independent-version workspaces are not compared with an
+unrelated global changelog version. Private, fixture, example, test, and
+documentation package manifests are ignored.
 
 ## TRUST-REL002: Release Artifact Lacks Checksum Evidence
 
@@ -54,7 +61,11 @@ Recommendation: keep package version metadata and release notes aligned.
 
 Noise control: `pyproject.toml` versions are read only from `[project]` and `[tool.poetry]`; version fields belonging to linters, build plugins, or other tools are ignored.
 
-Noise control: monorepo helper packages, fixtures, examples, and private packages are not compared against the repository root changelog. Nested packages need package-directory release notes before version alignment is evaluated.
+Noise control: package-local release notes take precedence. Central root release
+notes are associated with nested packages through package names, manifest
+directories, or explicit fixed-version workspace evidence; another package's
+version entry does not satisfy the current package. Monorepo helper packages,
+fixtures, examples, and private packages remain excluded.
 
 ## Evidence Import Rules
 
