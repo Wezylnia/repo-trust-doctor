@@ -85,7 +85,9 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
-            if (ReleasePublishPattern().IsMatch(content) && !IntegrityEvidencePattern().IsMatch(content))
+            var executableContent = ReleaseEvidenceParsing.RemoveYamlComments(content);
+            if (ReleasePublishPattern().IsMatch(executableContent) &&
+                !IntegrityEvidencePattern().IsMatch(executableContent))
             {
                 var relativePath = Relative(context.RepositoryPath, workflow);
                 findings.Add(CreateFinding("TRUST-REL005", "Release workflow lacks integrity evidence steps", Severity.Medium, Confidence.Medium, "Release workflow appears to publish artifacts without integrity evidence steps.", "release-workflow", "Release publishing command found without checksum, SBOM, provenance, or attestation wording.", relativePath, "Add checksum, SBOM, provenance, or attestation generation to release workflows."));
@@ -148,14 +150,10 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
-            foreach (var line in content.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+            var version = ReleaseEvidenceParsing.ReadPyprojectVersion(content);
+            if (!string.IsNullOrWhiteSpace(version))
             {
-                var match = PyprojectVersionPattern().Match(line);
-                if (match.Success)
-                {
-                    yield return new PackageVersionEvidence(relativePath, match.Groups["version"].Value);
-                    break;
-                }
+                yield return new PackageVersionEvidence(relativePath, version);
             }
         }
     }
@@ -364,8 +362,7 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
         var name = Path.GetFileName(path);
         return name.Contains("sha256", StringComparison.OrdinalIgnoreCase) ||
                name.Contains("sha512", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("checksum", StringComparison.OrdinalIgnoreCase) ||
-               name.EndsWith(".sig", StringComparison.OrdinalIgnoreCase);
+               name.Contains("checksum", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsSupplyChainEvidenceFile(string path)
@@ -411,9 +408,6 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"^#+\s*\[?(?<version>v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)\]?", RegexOptions.CultureInvariant)]
     private static partial Regex ChangelogHeadingPattern();
-
-    [GeneratedRegex(@"^\s*version\s*=\s*[""'](?<version>[^""']+)[""']", RegexOptions.CultureInvariant)]
-    private static partial Regex PyprojectVersionPattern();
 
     [GeneratedRegex(@"(?mi)\b(gh\s+release\s+(?:create|upload)|npm\s+publish|dotnet\s+nuget\s+push|nuget\s+push|twine\s+upload|docker\s+(?:push|buildx\s+build.+--push))\b")]
     private static partial Regex ReleasePublishPattern();

@@ -362,6 +362,8 @@ For Cargo workspaces, member dependencies declared with `workspace = true` inher
 
 **Analyzer:** `ReleaseEvidenceAnalyzer` (`release-evidence`)
 
+Checksum files, signatures, SBOM/provenance files, and workflow integrity steps are evaluated as distinct signals. A detached `.sig` file does not satisfy checksum coverage. YAML comments are removed before release publish and integrity commands are detected, and Python package versions are read only from `[project]` or `[tool.poetry]` sections.
+
 | Rule ID | Title | Severity | Confidence |
 |---------|-------|----------|------------|
 | TRUST-REL001 | Changelog does not mention detected package version | Low | Medium |

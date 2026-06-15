@@ -149,6 +149,23 @@ public sealed class ReleaseEvidenceAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_SignatureDoesNotCountAsChecksum()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dist = Directory.CreateDirectory(Path.Combine(fixture.Path, "dist"));
+        File.WriteAllText(Path.Combine(dist.FullName, "tool.zip"), "synthetic");
+        File.WriteAllText(Path.Combine(dist.FullName, "tool.zip.sig"), "signature");
+        File.WriteAllText(Path.Combine(dist.FullName, "sbom.cdx.json"), "{}");
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-REL002");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REL003");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ReleaseWorkflowWithoutIntegrityStepsReportsRule()
     {
         using var fixture = TemporaryRepository.Create();
@@ -169,5 +186,76 @@ public sealed class ReleaseEvidenceAnalyzerTests
 
         var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-REL005");
         Assert.Equal(Severity.Medium, finding.Severity);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_IntegrityWordsInCommentsDoNotSuppressRule()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDir = Directory.CreateDirectory(Path.Combine(fixture.Path, ".github", "workflows"));
+        File.WriteAllText(Path.Combine(workflowDir.FullName, "release.yml"), """
+        name: release
+        jobs:
+          publish:
+            runs-on: ubuntu-latest
+            steps:
+              # TODO: add SBOM generation with syft and cosign
+              - run: npm publish
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-REL005");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PublishWordsInCommentsDoNotCreateRule()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDir = Directory.CreateDirectory(Path.Combine(fixture.Path, ".github", "workflows"));
+        File.WriteAllText(Path.Combine(workflowDir.FullName, "build.yml"), """
+        name: build
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              # Future release command: npm publish
+              - run: dotnet test
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REL005");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PyprojectVersionIsReadOnlyFromPackageSections()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## v1.2.0
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "pyproject.toml"), """
+        [tool.some-plugin]
+        version = "9.9.9"
+
+        [project]# package metadata
+        name = "example"
+        version = "1.2.0"
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(
+            result.Findings,
+            finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004");
     }
 }

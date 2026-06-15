@@ -89,10 +89,11 @@ Reviews release and publishing evidence without downloading arbitrary artifacts 
 - package version metadata alignment with tags,
 - release workflow presence,
 - checksum evidence,
+- signature evidence kept distinct from checksums,
 - SBOM evidence,
 - provenance or attestation evidence.
 
-For monorepos, root release notes are matched to root package metadata only. Nested packages are evaluated against package-directory changelogs when present, and private fixtures/examples are ignored for release version drift.
+For Python packages, release versions are read only from `[project]` or `[tool.poetry]`, so unrelated tool configuration does not create version drift. Release workflow comments are excluded from publish and integrity-step detection. For monorepos, root release notes are matched to root package metadata only. Nested packages are evaluated against package-directory changelogs when present, and private fixtures/examples are ignored for release version drift.
 
 The analyzer distinguishes missing evidence from confirmed compromise.
 

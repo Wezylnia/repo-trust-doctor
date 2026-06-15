@@ -26,6 +26,8 @@ Why it matters: checksums help users verify downloaded artifact integrity.
 
 Recommendation: publish SHA-256 or SHA-512 checksums next to release artifacts.
 
+Noise control: detached signatures such as `.sig` files are preserved as separate integrity evidence and do not count as SHA-256 or SHA-512 checksum files.
+
 ## TRUST-REL003: Release Artifact Lacks SBOM or Provenance Evidence
 
 - Category: Releases
@@ -49,6 +51,8 @@ Detects a mismatch between package version metadata and the latest version headi
 Why it matters: version drift can confuse users and weaken release traceability.
 
 Recommendation: keep package version metadata and release notes aligned.
+
+Noise control: `pyproject.toml` versions are read only from `[project]` and `[tool.poetry]`; version fields belonging to linters, build plugins, or other tools are ignored.
 
 Noise control: monorepo helper packages, fixtures, examples, and private packages are not compared against the repository root changelog. Nested packages need package-directory release notes before version alignment is evaluated.
 
@@ -149,3 +153,5 @@ Detects release workflows that appear to publish packages or artifacts without c
 Why it matters: release automation should make artifact integrity evidence easy for users to find.
 
 Recommendation: add checksum, SBOM, provenance, or attestation generation to release workflows.
+
+Noise control: YAML comments are removed before publish and integrity evidence patterns are evaluated, so TODO comments do not satisfy the rule or create a false release signal.
