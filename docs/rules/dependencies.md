@@ -214,7 +214,7 @@ Recommendation: commit Gradle dependency locking output or equivalent dependency
 - Default severity: Medium
 - Default confidence: High
 
-Detects Maven or Gradle dependencies with missing versions, dynamic Gradle versions such as `+`, Maven version ranges, unresolved Maven properties, or legacy `LATEST` / `RELEASE` declarations. Dependencies whose versions are supplied by Maven parent/dependency-management sections, Spring/Gradle dependency-management plugins, BOM/platform declarations, or Gradle property-style declarations are recorded as managed versions instead of unpinned dependencies.
+Detects Maven or Gradle dependencies with missing versions, dynamic Gradle versions such as `+`, Maven version ranges, unresolved Maven properties, or legacy `LATEST` / `RELEASE` declarations. Local Maven `dependencyManagement` suppresses the finding only when the same group/artifact coordinate has a pinned managed version. Recognizable Spring Boot parent or Gradle dependency management suppresses versionless Spring coordinates, and explicit Gradle property references remain managed signals. Arbitrary parents, unrelated managed entries, generic BOM/platform presence, and dynamic managed ranges do not hide the finding; when management may exist but cannot be verified statically, confidence is reduced to Medium.
 
 Why it matters: dynamic Java dependency declarations can resolve to different artifacts over time, making security review and build reproduction harder.
 
