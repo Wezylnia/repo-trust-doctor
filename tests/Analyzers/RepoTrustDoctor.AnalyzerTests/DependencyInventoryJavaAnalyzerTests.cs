@@ -208,6 +208,7 @@ public sealed class DependencyInventoryJavaAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
 
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP050");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP018");
     }
 
     [Fact]
@@ -244,6 +245,91 @@ public sealed class DependencyInventoryJavaAnalyzerTests
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP050");
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP051");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GradleVersionCatalog_AddsLibraryPackages()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "libs.versions.toml"), """
+        [versions]
+        jackson = "2.17.2"
+
+        [libraries]
+        jackson-core = {
+          module = "com.fasterxml.jackson.core:jackson-core",
+          version.ref = "jackson"
+        }
+        junit = "org.junit.jupiter:junit-jupiter:5.10.2"
+        slf4j = { group = "org.slf4j", name = "slf4j-api", version = { ref = "jackson" } }
+
+        [plugins]
+        spring-boot = { id = "org.springframework.boot", version = "3.3.1" }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+        var packages = GetInventory(result).Packages;
+
+        Assert.Contains(packages, package =>
+            package.Name == "com.fasterxml.jackson.core:jackson-core" &&
+            package.Version == "2.17.2" &&
+            package.Metadata?["catalogAlias"] == "jackson-core" &&
+            package.Metadata["versionSource"] == "gradle-version-catalog-ref");
+        Assert.Contains(packages, package =>
+            package.Name == "org.junit.jupiter:junit-jupiter" &&
+            package.Version == "5.10.2");
+        Assert.Contains(packages, package =>
+            package.Name == "org.slf4j:slf4j-api" &&
+            package.Version == "2.17.2");
+        Assert.DoesNotContain(packages, package => package.Name == "org.springframework.boot");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GradleVersionCatalog_MissingReferenceRemainsUnpinned()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "libs.versions.toml"), """
+        [libraries]
+        missing = { module = "com.example:missing", version.ref = "not-defined" }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+        var package = Assert.Single(GetInventory(result).Packages);
+        var finding = Assert.Single(result.Findings, item => item.RuleId == "TRUST-DEP018");
+
+        Assert.Null(package.Version);
+        Assert.False(package.IsVersionPinned);
+        Assert.Equal("gradle-version-catalog-ref-unresolved", package.Metadata!["versionSource"]);
+        Assert.Equal(Confidence.Medium, finding.Confidence);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GradleVersionCatalog_RichVersionAddsPackage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "libs.versions.toml"), """
+        [libraries]
+        guava = {
+          module = "com.google.guava:guava",
+          version = { strictly = "33.2.1-jre" }
+        }
+        """);
+
+        var analyzer = new DependencyInventoryAnalyzer();
+        var result = await analyzer.AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+        var package = Assert.Single(GetInventory(result).Packages);
+
+        Assert.Equal("com.google.guava:guava", package.Name);
+        Assert.Equal("33.2.1-jre", package.Version);
+        Assert.True(package.IsVersionPinned);
     }
 
     private static DependencyInventoryArtifact GetInventory(AnalyzerResult result)

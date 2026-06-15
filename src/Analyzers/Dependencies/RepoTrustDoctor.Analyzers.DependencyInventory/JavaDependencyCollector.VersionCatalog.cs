@@ -1,4 +1,3 @@
-﻿using System.Text.RegularExpressions;
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
 
@@ -6,96 +5,167 @@ namespace RepoTrustDoctor.Analyzers.DependencyInventory;
 
 internal sealed partial class JavaDependencyCollector
 {
-    private static void AnalyzeGradleVersionCatalog(AnalysisContext context, string filePath, DependencyInventoryState state)
+    private static void AnalyzeGradleVersionCatalog(
+        AnalysisContext context,
+        string filePath,
+        DependencyInventoryState state)
     {
         var relativePath = DependencyInventorySupport.Relative(context, filePath);
-        state.Manifests.Add(new DependencyManifestInfo(DependencyEcosystem.Maven, relativePath, "libs.versions.toml"));
+        state.Manifests.Add(new DependencyManifestInfo(
+            DependencyEcosystem.Maven,
+            relativePath,
+            "libs.versions.toml"));
 
-        if (!DependencyInventorySupport.TryReadText(filePath, out var content, state.Warnings, relativePath))
+        if (!DependencyInventorySupport.TryReadText(
+                filePath,
+                out var content,
+                state.Warnings,
+                relativePath))
         {
             return;
         }
 
-        string? currentSection = null;
-        var lines = content.Split('\n');
-
-        foreach (var rawLine in lines)
+        var catalog = GradleVersionCatalogParser.Parse(content);
+        foreach (var version in catalog.Versions.Values)
         {
-            var line = rawLine.Trim();
-            if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#'))
-                continue;
-
-            // Track section headers
-            if (line is "[versions]" or "[libraries]" or "[plugins]")
+            if (IsDynamicCatalogVersion(version))
             {
-                currentSection = line.Trim('[', ']');
-                continue;
+                AddCatalogFinding(
+                    "TRUST-DEP050",
+                    "Gradle version catalog uses dynamic dependency version",
+                    version,
+                    "versions",
+                    relativePath,
+                    state);
             }
-            if (line.StartsWith('['))
+        }
+
+        foreach (var library in catalog.Libraries)
+        {
+            var version = ResolveCatalogVersion(library, catalog.Versions, out var versionSource);
+            var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                currentSection = null;
-                continue;
+                ["catalogAlias"] = library.Alias
+            };
+            if (versionSource is not null)
+            {
+                metadata["versionSource"] = versionSource;
+            }
+            if (library.VersionReference is not null)
+            {
+                metadata["versionReference"] = library.VersionReference;
             }
 
-            if (currentSection is null)
-                continue;
+            var suppressUnpinnedFinding =
+                DependencyInventorySupport.IsLikelyExampleOrTestPath(relativePath) ||
+                IsDynamicCatalogVersion(version);
+            var confidence = library.VersionReference is not null && version is null
+                ? Confidence.Medium
+                : Confidence.High;
+            AddJavaPackage(
+                relativePath,
+                library.Module,
+                version,
+                DependencyScope.Production,
+                metadata,
+                suppressUnpinnedFinding,
+                confidence,
+                state);
 
-            // Extract version from "name = "value"" or "name = { ..., version = "value" }"
-            var version = ExtractTomlVersion(line);
-            if (version is null)
-                continue;
-
-            if (IsDynamicVersion(version))
+            if (IsDynamicCatalogVersion(version))
             {
-                var ruleId = currentSection == "plugins" ? "TRUST-DEP051" : "TRUST-DEP050";
-                var finding = new Finding(
-                    ruleId,
-                    "Gradle version catalog uses dynamic version",
-                    AnalysisCategory.Dependencies,
-                    Severity.Medium,
-                    Confidence.High,
-                    $"Version catalog declares dynamic version '{version}'.",
-                    [new Evidence("version-catalog", $"Dynamic version '{version}' in {currentSection} section.", relativePath)],
-                    new Recommendation("Pin dependency versions to specific releases for reproducible builds."));
+                AddCatalogFinding(
+                    "TRUST-DEP050",
+                    "Gradle version catalog uses dynamic dependency version",
+                    version!,
+                    "libraries",
+                    relativePath,
+                    state);
+            }
+        }
 
-                if (!state.Findings.Any(f => f.RuleId == ruleId && f.Evidence.Any(e => e.FilePath == relativePath)))
-                {
-                    state.Findings.Add(finding);
-                }
+        foreach (var plugin in catalog.Plugins)
+        {
+            var version = plugin.Version ??
+                          ResolveVersionReference(plugin.VersionReference, catalog.Versions);
+            if (IsDynamicCatalogVersion(version))
+            {
+                AddCatalogFinding(
+                    "TRUST-DEP051",
+                    "Gradle version catalog uses dynamic plugin version",
+                    version!,
+                    "plugins",
+                    relativePath,
+                    state);
             }
         }
     }
 
-    private static string? ExtractTomlVersion(string line)
+    private static string? ResolveCatalogVersion(
+        GradleCatalogLibrary library,
+        IReadOnlyDictionary<string, string> versions,
+        out string? versionSource)
     {
-        // Simple "name = "version"" form in [versions]
-        var simpleMatch = TomlSimpleVersionPattern().Match(line);
-        if (simpleMatch.Success)
-            return simpleMatch.Groups["version"].Value;
+        if (!string.IsNullOrWhiteSpace(library.Version))
+        {
+            versionSource = "gradle-version-catalog";
+            return library.Version;
+        }
 
-        // Inline table form: "name = { ..., version = "version", ... }" in [libraries] or [plugins]
-        var inlineMatch = TomlInlineVersionPattern().Match(line);
-        if (inlineMatch.Success)
-            return inlineMatch.Groups["version"].Value;
+        if (!string.IsNullOrWhiteSpace(library.VersionReference))
+        {
+            versionSource = versions.ContainsKey(library.VersionReference)
+                ? "gradle-version-catalog-ref"
+                : "gradle-version-catalog-ref-unresolved";
+            return ResolveVersionReference(library.VersionReference, versions);
+        }
 
+        versionSource = "gradle-version-catalog-unversioned";
         return null;
     }
 
-    private static bool IsDynamicVersion(string version)
-    {
-        if (string.IsNullOrWhiteSpace(version))
-            return false;
+    private static string? ResolveVersionReference(
+        string? reference,
+        IReadOnlyDictionary<string, string> versions) =>
+        !string.IsNullOrWhiteSpace(reference) &&
+        versions.TryGetValue(reference, out var version)
+            ? version
+            : null;
 
-        return version.Contains('+') ||
-               version.Contains("latest.release", StringComparison.OrdinalIgnoreCase) ||
-               version.Contains("latest.integration", StringComparison.OrdinalIgnoreCase) ||
-               version.Contains('[') || version.Contains('(');
+    private static void AddCatalogFinding(
+        string ruleId,
+        string title,
+        string version,
+        string section,
+        string relativePath,
+        DependencyInventoryState state)
+    {
+        if (state.Findings.Any(finding =>
+                finding.RuleId == ruleId &&
+                finding.Evidence.Any(evidence => evidence.FilePath == relativePath)))
+        {
+            return;
+        }
+
+        state.Findings.Add(new Finding(
+            ruleId,
+            title,
+            AnalysisCategory.Dependencies,
+            Severity.Medium,
+            Confidence.High,
+            $"Version catalog declares dynamic version '{version}'.",
+            [new Evidence(
+                "version-catalog",
+                $"Dynamic version '{version}' in {section} section.",
+                relativePath)],
+            new Recommendation("Pin dependency versions to specific releases for reproducible builds.")));
     }
 
-    [GeneratedRegex(@"^\s*(?:\w[\w.-]*)\s*=\s*""(?<version>[^""]+)""\s*$")]
-    private static partial Regex TomlSimpleVersionPattern();
-
-    [GeneratedRegex(@"version\s*=\s*""(?<version>[^""]+)""")]
-    private static partial Regex TomlInlineVersionPattern();
+    private static bool IsDynamicCatalogVersion(string? version) =>
+        !string.IsNullOrWhiteSpace(version) &&
+        (version.Contains('+') ||
+         version.Contains("latest.release", StringComparison.OrdinalIgnoreCase) ||
+         version.Contains("latest.integration", StringComparison.OrdinalIgnoreCase) ||
+         version.Contains('[') ||
+         version.Contains('('));
 }
-
