@@ -142,23 +142,32 @@ public sealed class DependencyRiskAnalyzerTests
             CreatePackage(DependencyEcosystem.Npm, "stale-lib", "1.0.0"),
             CreatePackage(DependencyEcosystem.Npm, "missing-lib", "1.0.0"),
             CreatePackage(DependencyEcosystem.Npm, "timeout-lib", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "rate-limited-lib", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "server-error-lib", "1.0.0"),
             CreatePackage(DependencyEcosystem.Npm, "invalid-lib", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "rejected-lib", "1.0.0"),
             CreatePackage(DependencyEcosystem.Npm, "blocked-lib", "1.0.0")
         ]);
         var analyzer = new PackageMetadataAnalyzer([new StatusMetadataClient()]);
 
         var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
 
-        Assert.Equal("5", result.Metrics!["dependency.metadata.lookup.attempted.count"]);
+        Assert.Equal("8", result.Metrics!["dependency.metadata.lookup.attempted.count"]);
         Assert.Equal("2", result.Metrics["dependency.metadata.lookup.completed.count"]);
-        Assert.Equal("3", result.Metrics["dependency.metadata.lookup.incomplete.count"]);
+        Assert.Equal("6", result.Metrics["dependency.metadata.lookup.incomplete.count"]);
         Assert.Equal("1", result.Metrics["dependency.metadata.lookup.not_found.count"]);
-        Assert.Equal("2", result.Metrics["dependency.metadata.lookup.failed.count"]);
+        Assert.Equal("4", result.Metrics["dependency.metadata.lookup.failed.count"]);
+        Assert.Equal("1", result.Metrics["dependency.metadata.lookup.rate_limited.count"]);
+        Assert.Equal("1", result.Metrics["dependency.metadata.lookup.server_error.count"]);
         Assert.Equal("1", result.Metrics["dependency.metadata.lookup.invalid_response.count"]);
+        Assert.Equal("1", result.Metrics["dependency.metadata.lookup.rejected.count"]);
         Assert.Equal("1", result.Metrics["dependency.metadata.lookup.blocked.count"]);
         Assert.Equal("1", result.Metrics["dependency.metadata.lookup.stale_used.count"]);
         Assert.Contains(result.Warnings!, warning => warning.Contains("temporarily", StringComparison.Ordinal));
         Assert.Contains(result.Warnings!, warning => warning.Contains("invalid metadata", StringComparison.Ordinal));
+        Assert.Contains(result.Warnings!, warning => warning.Contains("rate-limited", StringComparison.Ordinal));
+        Assert.Contains(result.Warnings!, warning => warning.Contains("server error", StringComparison.Ordinal));
+        Assert.Contains(result.Warnings!, warning => warning.Contains("rejected", StringComparison.Ordinal));
         Assert.Contains(result.Warnings!, warning => warning.Contains("blocked", StringComparison.Ordinal));
         Assert.Contains(result.Warnings!, warning => warning.Contains("stale cached", StringComparison.Ordinal));
     }
@@ -736,10 +745,22 @@ public sealed class DependencyRiskAnalyzerTests
                     PackageMetadataLookupStatus.TransientFailure,
                     SafeLookupErrorKind.Timeout,
                     "request timed out"),
+                "rate-limited-lib" => PackageMetadataLookupResult.Failure(
+                    PackageMetadataLookupStatus.TransientFailure,
+                    SafeLookupErrorKind.RateLimited,
+                    "request rate limited"),
+                "server-error-lib" => PackageMetadataLookupResult.Failure(
+                    PackageMetadataLookupStatus.TransientFailure,
+                    SafeLookupErrorKind.ServerError,
+                    "registry unavailable"),
                 "invalid-lib" => PackageMetadataLookupResult.Failure(
                     PackageMetadataLookupStatus.InvalidResponse,
                     SafeLookupErrorKind.MalformedResponse,
                     "invalid JSON"),
+                "rejected-lib" => PackageMetadataLookupResult.Failure(
+                    PackageMetadataLookupStatus.Rejected,
+                    SafeLookupErrorKind.RejectedRequest,
+                    "request rejected"),
                 _ => PackageMetadataLookupResult.Failure(
                     PackageMetadataLookupStatus.Blocked,
                     SafeLookupErrorKind.BlockedUrl,

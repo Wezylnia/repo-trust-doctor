@@ -8,6 +8,7 @@ public enum PackageMetadataLookupStatus
     NotFound,
     TransientFailure,
     InvalidResponse,
+    Rejected,
     Blocked
 }
 
@@ -56,7 +57,11 @@ public sealed record PackageMetadataLookupResult(
             SafeLookupErrorKind.BlockedUrl => PackageMetadataLookupStatus.Blocked,
             SafeLookupErrorKind.TooLarge or SafeLookupErrorKind.MalformedResponse =>
                 PackageMetadataLookupStatus.InvalidResponse,
-            SafeLookupErrorKind.Timeout or SafeLookupErrorKind.TransportError =>
+            SafeLookupErrorKind.RejectedRequest => PackageMetadataLookupStatus.Rejected,
+            SafeLookupErrorKind.Timeout or
+                SafeLookupErrorKind.RateLimited or
+                SafeLookupErrorKind.ServerError or
+                SafeLookupErrorKind.TransportError =>
                 PackageMetadataLookupStatus.TransientFailure,
             _ => PackageMetadataLookupStatus.TransientFailure
         };

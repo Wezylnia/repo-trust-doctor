@@ -29,9 +29,11 @@ NuGet, npm, PyPI, and Maven Central metadata is cached on demand. A package/vers
 - concurrent requests for the same package/version share one network lookup within a scan.
 
 Only a confirmed package-not-found response is stored as a negative cache
-entry. Timeouts, transport failures, blocked requests, oversized responses, and
-invalid payloads remain retryable and are reported separately. A stale negative
-entry is never used to hide a failed refresh.
+entry. Timeouts, rate limits, registry server errors, transport failures,
+rejected requests, blocked requests, oversized responses, and invalid payloads
+are not negative-cached. Analyzer metrics and warnings distinguish rate limits,
+server errors, rejected requests, invalid responses, and local policy blocks. A
+stale negative entry is never used to hide a failed refresh.
 
 The background refresh only revisits expired packages already present in the cache. It does not mirror complete public registries; complete npm, NuGet, PyPI, and Maven indexes would be much larger and more operationally complex than the OSV dataset.
 

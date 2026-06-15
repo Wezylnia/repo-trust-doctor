@@ -8,6 +8,9 @@ public enum SafeLookupErrorKind
 {
     BlockedUrl,
     Timeout,
+    RateLimited,
+    ServerError,
+    RejectedRequest,
     TooLarge,
     NotFound,
     MalformedResponse,
@@ -99,7 +102,11 @@ public sealed class SafeHttpLookup
                     continue;
                 }
 
-                response.EnsureSuccessStatusCode();
+                if (!response.IsSuccessStatusCode)
+                {
+                    return ClassifyHttpFailure(response.StatusCode);
+                }
+
                 await using var stream = await response.Content.ReadAsStreamAsync(linkedCts.Token);
                 await using var decodedStream = DecodeContentStream(stream, response.Content.Headers.ContentEncoding);
                 using var memory = new MemoryStream();
@@ -133,6 +140,22 @@ public sealed class SafeHttpLookup
         }
 
         return SafeLookupResult.Fail(SafeLookupErrorKind.BlockedUrl, "Redirect limit was exceeded.");
+    }
+
+    private static SafeLookupResult ClassifyHttpFailure(HttpStatusCode statusCode)
+    {
+        var code = (int)statusCode;
+        var message = $"The registry returned HTTP status code {code}.";
+        return statusCode switch
+        {
+            HttpStatusCode.RequestTimeout =>
+                SafeLookupResult.Fail(SafeLookupErrorKind.Timeout, message),
+            HttpStatusCode.TooManyRequests =>
+                SafeLookupResult.Fail(SafeLookupErrorKind.RateLimited, message),
+            _ when code >= 500 =>
+                SafeLookupResult.Fail(SafeLookupErrorKind.ServerError, message),
+            _ => SafeLookupResult.Fail(SafeLookupErrorKind.RejectedRequest, message)
+        };
     }
 
     private static Stream DecodeContentStream(Stream stream, ICollection<string> contentEncodings)

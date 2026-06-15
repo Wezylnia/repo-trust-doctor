@@ -75,11 +75,13 @@ public sealed class PackageMetadataAnalyzer : IRepositoryAnalyzer
                 PackageMetadataLookupStatus.NotFound);
         var transientFailureCount = lookupResults.Results.Count(item =>
             item.Result.Status == PackageMetadataLookupStatus.TransientFailure ||
-            item.Result.IsStale && item.Result.ErrorKind is
-                SafeLookupErrorKind.Timeout or SafeLookupErrorKind.TransportError);
+            item.Result.IsStale && IsTransientError(item.Result.ErrorKind));
         var invalidResponseCount = CountStatus(
             lookupResults.Results,
             PackageMetadataLookupStatus.InvalidResponse);
+        var rejectedCount = CountStatus(
+            lookupResults.Results,
+            PackageMetadataLookupStatus.Rejected);
         var blockedCount = CountStatus(
             lookupResults.Results,
             PackageMetadataLookupStatus.Blocked);
@@ -95,7 +97,10 @@ public sealed class PackageMetadataAnalyzer : IRepositoryAnalyzer
             ["dependency.metadata.lookup.found.count"] = CountStatus(lookupResults.Results, PackageMetadataLookupStatus.Found).ToString(),
             ["dependency.metadata.lookup.not_found.count"] = CountStatus(lookupResults.Results, PackageMetadataLookupStatus.NotFound).ToString(),
             ["dependency.metadata.lookup.failed.count"] = transientFailureCount.ToString(),
+            ["dependency.metadata.lookup.rate_limited.count"] = CountErrorKind(lookupResults.Results, SafeLookupErrorKind.RateLimited).ToString(),
+            ["dependency.metadata.lookup.server_error.count"] = CountErrorKind(lookupResults.Results, SafeLookupErrorKind.ServerError).ToString(),
             ["dependency.metadata.lookup.invalid_response.count"] = invalidResponseCount.ToString(),
+            ["dependency.metadata.lookup.rejected.count"] = rejectedCount.ToString(),
             ["dependency.metadata.lookup.blocked.count"] = blockedCount.ToString(),
             ["dependency.metadata.lookup.stale_used.count"] = lookupResults.Results.Count(item => item.Result.IsStale).ToString(),
             ["dependency.metadata.package.count"] = metadata.Length.ToString(),
@@ -166,6 +171,21 @@ public sealed class PackageMetadataAnalyzer : IRepositoryAnalyzer
             lookupResults.Results,
             PackageMetadataLookupStatus.InvalidResponse,
             "Package registry returned invalid metadata");
+        AddErrorWarning(
+            warnings,
+            lookupResults.Results,
+            SafeLookupErrorKind.RateLimited,
+            "Package registry rate-limited metadata lookup");
+        AddErrorWarning(
+            warnings,
+            lookupResults.Results,
+            SafeLookupErrorKind.ServerError,
+            "Package registry returned a server error");
+        AddStatusWarning(
+            warnings,
+            lookupResults.Results,
+            PackageMetadataLookupStatus.Rejected,
+            "Package registry rejected metadata lookup");
         AddStatusWarning(
             warnings,
             lookupResults.Results,
@@ -208,10 +228,34 @@ public sealed class PackageMetadataAnalyzer : IRepositoryAnalyzer
                 .Take(5)
                 .Select(item => $"{item.Package.Ecosystem}:{item.Package.Name}"));
 
+    private static void AddErrorWarning(
+        ICollection<string> warnings,
+        IReadOnlyList<PackageMetadataLookup> lookups,
+        SafeLookupErrorKind errorKind,
+        string message)
+    {
+        var matching = lookups.Where(item => item.Result.ErrorKind == errorKind).ToArray();
+        if (matching.Length > 0)
+        {
+            warnings.Add($"{message} for {matching.Length} package(s): {FormatPackageSample(matching)}.");
+        }
+    }
+
     private static int CountStatus(
         IReadOnlyList<PackageMetadataLookup> lookups,
         PackageMetadataLookupStatus status) =>
         lookups.Count(item => item.Result.Status == status);
+
+    private static int CountErrorKind(
+        IReadOnlyList<PackageMetadataLookup> lookups,
+        SafeLookupErrorKind errorKind) =>
+        lookups.Count(item => item.Result.ErrorKind == errorKind);
+
+    private static bool IsTransientError(SafeLookupErrorKind? errorKind) =>
+        errorKind is SafeLookupErrorKind.Timeout or
+            SafeLookupErrorKind.RateLimited or
+            SafeLookupErrorKind.ServerError or
+            SafeLookupErrorKind.TransportError;
 
     private static PackageRegistryMetadata WithDependencyContext(
         PackageRegistryMetadata metadata,
