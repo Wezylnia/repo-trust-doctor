@@ -161,6 +161,67 @@ public sealed class ScanApplicationServiceTests
     }
 
     [Fact]
+    public void InMemoryScanStore_RemovesTerminalScansAfterRetentionPeriod()
+    {
+        var time = new MutableTimeProvider(
+            new DateTimeOffset(2026, 6, 15, 8, 0, 0, TimeSpan.Zero));
+        var store = new InMemoryScanStore(time);
+        using var cancellation = new CancellationTokenSource();
+        var state = store.CreateQueued(CreateOptions(), cancellation);
+        Assert.True(store.TryUpdate(
+            state.ScanId,
+            current => current with
+            {
+                State = ScanLifecycleState.Completed,
+                CompletedAt = time.GetUtcNow()
+            }));
+
+        time.Advance(TimeSpan.FromHours(24));
+
+        Assert.False(store.TryGet(state.ScanId, out _));
+        Assert.Empty(store.List());
+    }
+
+    [Fact]
+    public void InMemoryScanStore_DoesNotExpireActiveScans()
+    {
+        var time = new MutableTimeProvider(
+            new DateTimeOffset(2026, 6, 15, 8, 0, 0, TimeSpan.Zero));
+        var store = new InMemoryScanStore(time);
+        using var cancellation = new CancellationTokenSource();
+        var state = store.CreateQueued(CreateOptions(), cancellation);
+
+        time.Advance(TimeSpan.FromDays(7));
+
+        Assert.True(store.TryGet(state.ScanId, out var retained));
+        Assert.Equal(ScanLifecycleState.Queued, retained!.State);
+    }
+
+    [Fact]
+    public void InMemoryScanStore_BoundsRetainedTerminalScans()
+    {
+        var time = new MutableTimeProvider(
+            new DateTimeOffset(2026, 6, 15, 8, 0, 0, TimeSpan.Zero));
+        var store = new InMemoryScanStore(time);
+
+        for (var index = 0; index < 1_005; index++)
+        {
+            using var cancellation = new CancellationTokenSource();
+            var state = store.CreateQueued(CreateOptions(), cancellation);
+            Assert.True(store.TryUpdate(
+                state.ScanId,
+                current => current with
+                {
+                    State = ScanLifecycleState.Completed,
+                    CompletedAt = time.GetUtcNow()
+                }));
+            time.Advance(TimeSpan.FromMilliseconds(1));
+        }
+
+        Assert.Equal(1_000, store.List().Count);
+    }
+
+    [Fact]
     public void ScanJsonSerializerOptions_WritesApiEnumsAsStrings()
     {
         var dto = new ScanStatusResponse(
@@ -212,5 +273,18 @@ public sealed class ScanApplicationServiceTests
     {
         public Task<RepositoryScan> RunAsync(ScanRequestOptions options, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("boom token=secret");
+    }
+
+    private static ScanRequestOptions CreateOptions() =>
+        new(
+            "https://github.com/owner/repo",
+            AnalysisDepth.Fast,
+            TrustProfile.ProductionDependency);
+
+    private sealed class MutableTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+
+        public void Advance(TimeSpan duration) => now += duration;
     }
 }

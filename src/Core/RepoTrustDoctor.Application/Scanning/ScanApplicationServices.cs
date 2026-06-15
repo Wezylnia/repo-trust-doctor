@@ -28,28 +28,44 @@ public interface IScanJobQueue
     ValueTask<ScanJob> DequeueAsync(CancellationToken cancellationToken);
 }
 
-public sealed class InMemoryScanStore(TimeProvider? timeProvider = null) : IScanStore
+public sealed class InMemoryScanStore : IScanStore
 {
+    private const int MaximumTerminalScans = 1_000;
+    private static readonly TimeSpan TerminalScanRetention = TimeSpan.FromHours(24);
     private readonly ConcurrentDictionary<Guid, ScanState> scans = new();
-    private readonly TimeProvider timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly TimeProvider timeProvider;
+
+    public InMemoryScanStore(TimeProvider? timeProvider = null)
+    {
+        this.timeProvider = timeProvider ?? TimeProvider.System;
+    }
 
     public ScanState CreateQueued(ScanRequestOptions options, CancellationTokenSource cancellation)
     {
+        PruneTerminalScans();
         var now = timeProvider.GetUtcNow();
         var state = new ScanState(Guid.NewGuid(), options, ScanLifecycleState.Queued, now, now, StatusMessage: "Scan queued.", Cancellation: cancellation);
         scans[state.ScanId] = state;
         return state;
     }
 
-    public bool TryGet(Guid scanId, out ScanState? state) => scans.TryGetValue(scanId, out state);
+    public bool TryGet(Guid scanId, out ScanState? state)
+    {
+        PruneTerminalScans();
+        return scans.TryGetValue(scanId, out state);
+    }
 
-    public IReadOnlyList<ScanState> List() =>
-        scans.Values
+    public IReadOnlyList<ScanState> List()
+    {
+        PruneTerminalScans();
+        return scans.Values
             .OrderByDescending(scan => scan.CreatedAt)
             .ToArray();
+    }
 
     public bool TryUpdate(Guid scanId, Func<ScanState, ScanState> update)
     {
+        PruneTerminalScans();
         while (scans.TryGetValue(scanId, out var existing))
         {
             if (IsTerminal(existing.State))
@@ -68,6 +84,11 @@ public sealed class InMemoryScanStore(TimeProvider? timeProvider = null) : IScan
             if (scans.TryUpdate(scanId, updated, existing))
             {
                 cancellationToDispose?.Dispose();
+                if (IsTerminal(updated.State))
+                {
+                    PruneTerminalScans();
+                }
+
                 return true;
             }
         }
@@ -77,6 +98,31 @@ public sealed class InMemoryScanStore(TimeProvider? timeProvider = null) : IScan
 
     private static bool IsTerminal(ScanLifecycleState state) =>
         state is ScanLifecycleState.Completed or ScanLifecycleState.Failed or ScanLifecycleState.Cancelled;
+
+    private void PruneTerminalScans()
+    {
+        var now = timeProvider.GetUtcNow();
+        foreach (var scan in scans.Values)
+        {
+            if (IsTerminal(scan.State) &&
+                now - scan.UpdatedAt >= TerminalScanRetention)
+            {
+                scans.TryRemove(scan.ScanId, out _);
+            }
+        }
+
+        var overflow = scans.Values
+            .Where(scan => IsTerminal(scan.State))
+            .OrderByDescending(scan => scan.UpdatedAt)
+            .ThenBy(scan => scan.ScanId)
+            .Skip(MaximumTerminalScans)
+            .Select(scan => scan.ScanId)
+            .ToArray();
+        foreach (var scanId in overflow)
+        {
+            scans.TryRemove(scanId, out _);
+        }
+    }
 }
 
 public sealed class InMemoryScanJobQueue : IScanJobQueue
