@@ -5,6 +5,7 @@ namespace RepoTrustDoctor.Analyzers.DependencyRisk;
 internal sealed record BoundedLookupResult<T>(
     IReadOnlyList<T> Results,
     int TotalCount,
+    int StartedCount,
     int CompletedCount,
     bool SoftBudgetExceeded);
 
@@ -19,13 +20,14 @@ internal static class BoundedLookupRunner
     {
         if (items.Count == 0)
         {
-            return new BoundedLookupResult<TOutput>([], 0, 0, false);
+            return new BoundedLookupResult<TOutput>([], 0, 0, 0, false);
         }
 
         using var budgetCts = new CancellationTokenSource(softBudget);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, budgetCts.Token);
         var results = new ConcurrentBag<IndexedResult<TOutput>>();
         var nextIndex = -1;
+        var startedCount = 0;
         var completedCount = 0;
         var workerCount = Math.Min(Math.Max(1, maxConcurrency), items.Count);
 
@@ -41,6 +43,7 @@ internal static class BoundedLookupRunner
                 .Select(result => result.Value)
                 .ToArray(),
             items.Count,
+            startedCount,
             completedCount,
             budgetCts.IsCancellationRequested && completedCount < items.Count);
 
@@ -49,6 +52,11 @@ internal static class BoundedLookupRunner
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (budgetCts.IsCancellationRequested)
+                {
+                    return;
+                }
+
                 var index = Interlocked.Increment(ref nextIndex);
                 if (index >= items.Count)
                 {
@@ -57,6 +65,7 @@ internal static class BoundedLookupRunner
 
                 try
                 {
+                    Interlocked.Increment(ref startedCount);
                     var result = await operation(items[index], linkedCts.Token);
                     results.Add(new IndexedResult<TOutput>(index, result));
                     Interlocked.Increment(ref completedCount);

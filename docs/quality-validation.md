@@ -74,6 +74,8 @@ For repeated network-intelligence benchmarks, also record:
 
 - `dependency.metadata.cache.hit.count`
 - `dependency.metadata.network.count`
+- `dependency.metadata.lookup.attempted.count`
+- `dependency.metadata.lookup.returned.count`
 - `dependency.metadata.lookup.not_found.count`
 - `dependency.metadata.lookup.failed.count`
 - `dependency.metadata.lookup.invalid_response.count`
@@ -81,6 +83,8 @@ For repeated network-intelligence benchmarks, also record:
 - `dependency.metadata.lookup.stale_used.count`
 - `dependency.vulnerability.lookup.local.count`
 - `dependency.vulnerability.lookup.online.count`
+- `dependency.vulnerability.batch.attempted.count`
+- `dependency.vulnerability.batch.returned.count`
 
 Use a fresh dedicated SQLite database to measure cold behavior, then repeat against the same database to measure warm behavior. Do not compare a cold scan with a warm scan without labeling the cache state.
 

@@ -99,6 +99,9 @@ public sealed class DependencyRiskAnalyzerTests
         Assert.Contains(result.Warnings, warning => warning.Contains("completed", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("12", result.Metrics!["dependency.metadata.supported.count"]);
         Assert.NotEqual("0", result.Metrics["dependency.metadata.lookup.incomplete.count"]);
+        Assert.True(
+            int.Parse(result.Metrics["dependency.metadata.lookup.attempted.count"]) >
+            int.Parse(result.Metrics["dependency.metadata.lookup.returned.count"]));
     }
 
     [Fact]
@@ -153,6 +156,7 @@ public sealed class DependencyRiskAnalyzerTests
         var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
 
         Assert.Equal("8", result.Metrics!["dependency.metadata.lookup.attempted.count"]);
+        Assert.Equal("8", result.Metrics["dependency.metadata.lookup.returned.count"]);
         Assert.Equal("2", result.Metrics["dependency.metadata.lookup.completed.count"]);
         Assert.Equal("6", result.Metrics["dependency.metadata.lookup.incomplete.count"]);
         Assert.Equal("1", result.Metrics["dependency.metadata.lookup.not_found.count"]);
@@ -421,6 +425,10 @@ public sealed class DependencyRiskAnalyzerTests
         Assert.Contains(result.Warnings, warning => warning.Contains("completed", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("100", result.Metrics!["dependency.vulnerability.lookup.completed.count"]);
         Assert.Equal("150", result.Metrics["dependency.vulnerability.lookup.incomplete.count"]);
+        Assert.Equal("3", result.Metrics["dependency.vulnerability.batch.attempted.count"]);
+        Assert.Equal("1", result.Metrics["dependency.vulnerability.batch.returned.count"]);
+        Assert.Equal("1", result.Metrics["dependency.vulnerability.batch.completed.count"]);
+        Assert.Equal("2", result.Metrics["dependency.vulnerability.batch.incomplete.count"]);
     }
 
     [Fact]

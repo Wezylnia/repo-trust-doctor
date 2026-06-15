@@ -91,7 +91,8 @@ public sealed class PackageMetadataAnalyzer : IRepositoryAnalyzer
             ["dependency.metadata.candidate.count"] = candidates.Length.ToString(),
             ["dependency.metadata.supported.count"] = packages.Length.ToString(),
             ["dependency.metadata.unsupported.count"] = (candidates.Length - packages.Length).ToString(),
-            ["dependency.metadata.lookup.attempted.count"] = lookupResults.CompletedCount.ToString(),
+            ["dependency.metadata.lookup.attempted.count"] = lookupResults.StartedCount.ToString(),
+            ["dependency.metadata.lookup.returned.count"] = lookupResults.CompletedCount.ToString(),
             ["dependency.metadata.lookup.completed.count"] = reliableCount.ToString(),
             ["dependency.metadata.lookup.incomplete.count"] = (lookupResults.TotalCount - reliableCount).ToString(),
             ["dependency.metadata.lookup.found.count"] = CountStatus(lookupResults.Results, PackageMetadataLookupStatus.Found).ToString(),
@@ -202,7 +203,7 @@ public sealed class PackageMetadataAnalyzer : IRepositoryAnalyzer
         if (lookupResults.SoftBudgetExceeded)
         {
             warnings.Add(
-                $"Package metadata lookup attempted {lookupResults.CompletedCount} of {lookupResults.TotalCount} supported packages before the {lookupBudget.TotalSeconds:0}-second soft budget; completed metadata was preserved.");
+                $"Package metadata lookup returned results for {lookupResults.CompletedCount} of {lookupResults.StartedCount} attempted packages before the {lookupBudget.TotalSeconds:0}-second soft budget; completed metadata was preserved.");
         }
 
         return warnings;

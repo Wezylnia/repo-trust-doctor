@@ -96,6 +96,13 @@ clean. Reports expose local and online package counts:
 - `dependency.vulnerability.lookup.online.count`
 - `dependency.vulnerability.lookup.completed.count`
 - `dependency.vulnerability.lookup.incomplete.count`
+- `dependency.vulnerability.batch.attempted.count`
+- `dependency.vulnerability.batch.returned.count`
+
+Soft-budget metrics distinguish work that was started from work that returned a
+result. Metadata uses `dependency.metadata.lookup.attempted.count` and
+`dependency.metadata.lookup.returned.count`; vulnerability batches expose the
+same distinction so canceled in-flight requests do not disappear from reports.
 
 Before an ecosystem has a ready local index, vulnerability checks use `api.osv.dev` when online fallback is enabled. If fallback is disabled, the analyzer records incomplete coverage rather than reporting an unverified clean result.
 
