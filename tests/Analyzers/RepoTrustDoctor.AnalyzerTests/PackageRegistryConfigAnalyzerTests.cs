@@ -189,4 +189,24 @@ public sealed class PackageRegistryConfigAnalyzerTests
         Assert.DoesNotContain("pass", evidence);
         Assert.DoesNotContain("token=secret", evidence);
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotExposeMalformedRegistryCredentials()
+    {
+        using var f = TemporaryRepository.Create();
+        File.WriteAllText(
+            Path.Combine(f.Path, ".npmrc"),
+            "registry=http://user:supersecret@\n");
+
+        var result = await new PackageRegistryConfigAnalyzer().AnalyzeAsync(
+            new AnalysisContext(f.Path, f.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        var finding = Assert.Single(
+            result.Findings,
+            finding => finding.RuleId == "TRUST-REG001");
+        Assert.Contains("unparseable-registry-url", finding.Evidence[0].Message);
+        Assert.DoesNotContain("user", finding.Evidence[0].Message);
+        Assert.DoesNotContain("supersecret", finding.Evidence[0].Message);
+    }
 }

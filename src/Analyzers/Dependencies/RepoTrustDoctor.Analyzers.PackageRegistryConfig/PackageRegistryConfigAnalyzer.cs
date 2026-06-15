@@ -146,7 +146,7 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
     {
         if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri))
         {
-            return rawUrl;
+            return "http://[unparseable-registry-url]";
         }
 
         var builder = new UriBuilder(uri)
