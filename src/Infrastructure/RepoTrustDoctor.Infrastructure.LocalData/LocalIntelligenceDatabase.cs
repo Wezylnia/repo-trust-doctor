@@ -1,7 +1,11 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 
 namespace RepoTrustDoctor.Infrastructure.LocalData;
+
+public sealed class LocalIntelligenceSchemaException(string message)
+    : InvalidOperationException(message);
 
 public sealed class LocalIntelligenceDatabase
 {
@@ -57,6 +61,19 @@ public sealed class LocalIntelligenceDatabase
             await using var transaction = connection.BeginTransaction(deferred: false);
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
+            command.CommandText = SchemaVersionTableSql;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+
+            var existingVersion = await ReadSchemaVersionAsync(
+                connection,
+                transaction,
+                cancellationToken);
+            if (existingVersion > SchemaVersion)
+            {
+                throw new LocalIntelligenceSchemaException(
+                    $"The local intelligence database schema version {existingVersion} is newer than the supported version {SchemaVersion}.");
+            }
+
             command.CommandText = SchemaSql;
             await command.ExecuteNonQueryAsync(cancellationToken);
             await EnsureRegistryOriginalPackageNameColumnAsync(
@@ -84,6 +101,35 @@ public sealed class LocalIntelligenceDatabase
         {
             initializationLock.Release();
         }
+    }
+
+    private static async Task<int> ReadSchemaVersionAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT value
+            FROM local_schema
+            WHERE key = 'schema_version';
+            """;
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        if (value is null)
+        {
+            return 0;
+        }
+
+        if (value is not string text ||
+            !int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var version) ||
+            version < 0)
+        {
+            throw new LocalIntelligenceSchemaException(
+                "The local intelligence database contains an invalid schema version.");
+        }
+
+        return version;
     }
 
     private async Task<SqliteConnection> OpenUninitializedConnectionAsync(CancellationToken cancellationToken)
@@ -173,12 +219,14 @@ public sealed class LocalIntelligenceDatabase
         await migrationCommand.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private const string SchemaSql = """
+    private const string SchemaVersionTableSql = """
         CREATE TABLE IF NOT EXISTS local_schema (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+        """;
 
+    private const string SchemaSql = """
         CREATE TABLE IF NOT EXISTS registry_metadata (
             ecosystem INTEGER NOT NULL,
             package_name TEXT NOT NULL,

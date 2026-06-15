@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using RepoTrustDoctor.Analysis.Abstractions;
+using RepoTrustDoctor.Infrastructure.LocalData;
 
 namespace RepoTrustDoctor.Infrastructure.PackageRegistries;
 
@@ -138,7 +139,7 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
 
     private static bool IsCacheFailure(Exception exception) =>
         exception is SqliteException or IOException or UnauthorizedAccessException or
-            JsonException or FormatException;
+            JsonException or FormatException or LocalIntelligenceSchemaException;
 
     private static PackageMetadataLookupResult CreateCachedResult(
         PackageMetadataCacheEntry cached,

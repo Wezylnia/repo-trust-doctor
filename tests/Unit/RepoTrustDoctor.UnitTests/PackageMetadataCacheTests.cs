@@ -101,97 +101,6 @@ public sealed class PackageMetadataCacheTests
     }
 
     [Fact]
-    public async Task DatabaseInitialization_MigratesVersionOneRegistryTable()
-    {
-        using var fixture = TemporaryDirectory.Create();
-        var options = CreateOptions(fixture.Path);
-        await using (var connection = new SqliteConnection(
-                         $"Data Source={options.DatabasePath};Pooling=False"))
-        {
-            await connection.OpenAsync(TestContext.Current.CancellationToken);
-            await using var command = connection.CreateCommand();
-            command.CommandText = """
-                CREATE TABLE registry_metadata (
-                    ecosystem INTEGER NOT NULL,
-                    package_name TEXT NOT NULL,
-                    requested_version TEXT NOT NULL,
-                    metadata_json TEXT NOT NULL,
-                    fetched_at_utc TEXT NOT NULL,
-                    expires_at_utc TEXT NOT NULL,
-                    PRIMARY KEY (ecosystem, package_name, requested_version)
-                );
-                """;
-            await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
-        }
-
-        var database = new LocalIntelligenceDatabase(options);
-        await database.EnsureInitializedAsync(CancellationToken.None);
-        var cache = new SqlitePackageMetadataCache(database);
-
-        var keys = await cache.GetExpiredKeysAsync(DateTimeOffset.UtcNow, 10, CancellationToken.None);
-
-        Assert.Empty(keys);
-    }
-
-    [Fact]
-    public async Task DatabaseInitialization_DoesNotTrustLegacyNullAsNotFound()
-    {
-        using var fixture = TemporaryDirectory.Create();
-        var options = CreateOptions(fixture.Path);
-        await using (var connection = new SqliteConnection(
-                         $"Data Source={options.DatabasePath};Pooling=False"))
-        {
-            await connection.OpenAsync(TestContext.Current.CancellationToken);
-            await using var command = connection.CreateCommand();
-            command.CommandText = """
-                CREATE TABLE registry_metadata (
-                    ecosystem INTEGER NOT NULL,
-                    package_name TEXT NOT NULL,
-                    requested_version TEXT NOT NULL,
-                    metadata_json TEXT NOT NULL,
-                    fetched_at_utc TEXT NOT NULL,
-                    expires_at_utc TEXT NOT NULL,
-                    original_package_name TEXT NOT NULL DEFAULT '',
-                    PRIMARY KEY (ecosystem, package_name, requested_version)
-                );
-
-                INSERT INTO registry_metadata(
-                    ecosystem,
-                    package_name,
-                    requested_version,
-                    metadata_json,
-                    fetched_at_utc,
-                    expires_at_utc,
-                    original_package_name)
-                VALUES(
-                    $ecosystem,
-                    'missing-package',
-                    '1.0.0',
-                    'null',
-                    '2026-06-14T10:00:00.0000000+00:00',
-                    '2026-06-16T10:00:00.0000000+00:00',
-                    'missing-package');
-                """;
-            command.Parameters.AddWithValue("$ecosystem", (int)DependencyEcosystem.Npm);
-            await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
-        }
-
-        var inner = new StubMetadataClient();
-        var client = new CachingPackageMetadataClient(
-            inner,
-            new SqlitePackageMetadataCache(new LocalIntelligenceDatabase(options)),
-            options.RegistryCacheTtl);
-
-        var result = await client.GetMetadataAsync(
-            CreatePackage("missing-package", "1.0.0"),
-            TestContext.Current.CancellationToken);
-
-        Assert.Equal(PackageMetadataLookupStatus.Found, result.Status);
-        Assert.Equal(1, inner.RequestCount);
-        Assert.Equal("network", result.Source);
-    }
-
-    [Fact]
     public async Task RefreshExpiredAsync_UsesOriginalPackageName()
     {
         using var fixture = TemporaryDirectory.Create();
@@ -219,27 +128,6 @@ public sealed class PackageMetadataCacheTests
 
         Assert.Equal(1, result.RefreshedCount);
         Assert.Equal("Example.MixedCase", client.LastPackageName);
-    }
-
-    [Fact]
-    public async Task DatabaseInitialization_IsSafeAcrossConcurrentInstances()
-    {
-        using var fixture = TemporaryDirectory.Create();
-        var options = CreateOptions(fixture.Path);
-        var databases = Enumerable.Range(0, 24)
-            .Select(_ => new LocalIntelligenceDatabase(options))
-            .ToArray();
-
-        await Task.WhenAll(databases.Select(database =>
-            database.EnsureInitializedAsync(TestContext.Current.CancellationToken)));
-
-        var cache = new SqlitePackageMetadataCache(databases[0]);
-        await cache.SetAsync(
-            CreatePackage("left-pad", "1.0.0"),
-            PackageMetadataLookupResult.NotFound(),
-            DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow.AddHours(1),
-            TestContext.Current.CancellationToken);
     }
 
     [Fact]

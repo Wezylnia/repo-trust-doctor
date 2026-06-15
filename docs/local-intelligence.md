@@ -12,6 +12,11 @@ The default database path is:
 
 `LocalIntelligenceOptions.DatabasePath` can point to a persistent application volume in production. SQLite uses WAL mode, foreign keys, a 30-second busy timeout, and a versioned schema.
 
+An older application build refuses to modify a database whose schema version
+is newer than it supports. Registry metadata then falls back to direct registry
+lookups, and vulnerability analysis uses online OSV fallback when configured;
+the newer schema marker and database contents are left unchanged.
+
 The database contains:
 
 - version-specific package metadata cache entries,

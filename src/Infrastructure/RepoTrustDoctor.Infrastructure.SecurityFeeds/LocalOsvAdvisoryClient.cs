@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using RepoTrustDoctor.Analysis.Abstractions;
+using RepoTrustDoctor.Infrastructure.LocalData;
 
 namespace RepoTrustDoctor.Infrastructure.SecurityFeeds;
 
@@ -240,7 +241,8 @@ public sealed class LocalOsvAdvisoryClient(
         string? Warning);
 
     private static bool IsLocalStoreFailure(Exception exception) =>
-        exception is SqliteException or IOException or UnauthorizedAccessException;
+        exception is SqliteException or IOException or UnauthorizedAccessException or
+            LocalIntelligenceSchemaException;
 
     private static int GetCompletedPackageCount(OsvBatchQueryResult result) =>
         result.CompletedPackageCount > 0 || result.Packages.Count == 0

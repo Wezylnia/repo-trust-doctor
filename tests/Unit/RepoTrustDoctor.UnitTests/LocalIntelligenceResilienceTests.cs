@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
 using RepoTrustDoctor.Infrastructure.LocalData;
@@ -28,6 +29,44 @@ public sealed class LocalIntelligenceResilienceTests
         Assert.True(result.QuerySucceeded);
         Assert.Equal(1, result.OnlinePackageCount);
         Assert.Equal("ONLINE-1", Assert.Single(Assert.Single(result.Packages).Advisories).Id);
+        Assert.Contains(
+            result.Warnings,
+            warning => warning.Contains("local OSV", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task QueryBatchAsync_UsesOnlineFallbackWhenDatabaseSchemaIsNewer()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var options = CreateOptions(fixture.Path);
+        await using (var connection = new SqliteConnection(
+                         $"Data Source={options.DatabasePath};Pooling=False"))
+        {
+            await connection.OpenAsync(TestContext.Current.CancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE local_schema (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+
+                INSERT INTO local_schema(key, value)
+                VALUES ('schema_version', '99');
+                """;
+            await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        }
+
+        var fallback = new StubOsvClient();
+        var client = new LocalOsvAdvisoryClient(
+            new SqliteOsvAdvisoryStore(new LocalIntelligenceDatabase(options)),
+            fallback);
+
+        var result = await client.QueryBatchAsync(
+            [CreatePackage(DependencyEcosystem.Npm, "left-pad", "1.0.0")],
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.QuerySucceeded);
+        Assert.Equal(1, result.OnlinePackageCount);
         Assert.Contains(
             result.Warnings,
             warning => warning.Contains("local OSV", StringComparison.OrdinalIgnoreCase));
