@@ -8,6 +8,8 @@ namespace RepoTrustDoctor.Analyzers.Codebase;
 public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
 {
     private const int MaxAnalyzedSourceFiles = 6000;
+    private const long MaxBaselineBytes = 4L * 1024 * 1024;
+    private readonly int maxAnalyzedSourceFiles;
 
     private static readonly string[] BaselinePaths =
     [
@@ -15,6 +17,17 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
         Path.Combine("docs", "public-api-baseline.txt"),
         "public-api-baseline.txt"
     ];
+
+    public PublicApiAnalyzer()
+        : this(MaxAnalyzedSourceFiles)
+    {
+    }
+
+    internal PublicApiAnalyzer(int maxAnalyzedSourceFiles)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxAnalyzedSourceFiles);
+        this.maxAnalyzedSourceFiles = maxAnalyzedSourceFiles;
+    }
 
     public string Id => "codebase-04-public-api";
 
@@ -46,7 +59,7 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
             AnalysisCategory.Codebase,
             Severity.Medium,
             Confidence.Medium,
-            "The current public .NET API symbol list differs from the committed baseline.",
+            "The current public API symbol list differs from the committed baseline.",
             "Review added and removed symbols before release; removed symbols may be breaking changes for consumers.")
     ];
 
@@ -58,18 +71,35 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
             .Where(file => extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
             .Where(file => !IsLowSignalSource(context.RepositoryPath, file))
             .ToArray();
-        var selection = CodebaseFileSelection.Select(context.RepositoryPath, sourceFiles, MaxAnalyzedSourceFiles);
+        var selection = CodebaseFileSelection.Select(context.RepositoryPath, sourceFiles, maxAnalyzedSourceFiles);
         var files = selection.Files;
+        var unreadableSourceFileCount = 0;
 
         foreach (var file in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!RepositoryFileSystem.CanReadAsText(file))
             {
+                unreadableSourceFileCount++;
                 continue;
             }
 
-            var text = await File.ReadAllTextAsync(file, cancellationToken);
+            string text;
+            try
+            {
+                text = await File.ReadAllTextAsync(file, cancellationToken);
+            }
+            catch (IOException)
+            {
+                unreadableSourceFileCount++;
+                continue;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                unreadableSourceFileCount++;
+                continue;
+            }
+
             var ext = Path.GetExtension(file).ToLowerInvariant();
 
             IReadOnlyList<string> fileSymbols = ext switch
@@ -89,12 +119,17 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
             }
         }
 
-        var baseline = await ReadBaselineAsync(context.RepositoryPath, cancellationToken);
+        var baselineRead = await ReadBaselineAsync(context.RepositoryPath, cancellationToken);
+        var baseline = baselineRead.Baseline;
+        var sourceInventoryComplete =
+            sourceFiles.Length == files.Count &&
+            unreadableSourceFileCount == 0;
+        var diffComparable = sourceInventoryComplete && baseline is not null;
         var added = Array.Empty<string>();
         var removed = Array.Empty<string>();
         var findings = new List<Finding>();
 
-        if (symbols.Count > 0 && baseline is null)
+        if (symbols.Count > 0 && !baselineRead.Exists)
         {
             findings.Add(new Finding(
                 "TRUST-CODE008",
@@ -107,9 +142,9 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
                 new Recommendation("Add .repo-trust/public-api-baseline.txt for packages with a stable public API."),
                 Tags: ["codebase", "public-api"]));
         }
-        else if (baseline is not null)
+        else if (diffComparable)
         {
-            added = symbols.Except(baseline.Symbols, StringComparer.Ordinal).ToArray();
+            added = symbols.Except(baseline!.Symbols, StringComparer.Ordinal).ToArray();
             removed = baseline.Symbols.Except(symbols, StringComparer.Ordinal).ToArray();
             if (added.Length > 0 || removed.Length > 0)
             {
@@ -128,28 +163,43 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
 
         var artifact = new CodePublicApiArtifact(
             symbols.ToArray(),
-            baseline?.RelativePath,
+            baselineRead.RelativePath,
             added,
             removed,
             new Dictionary<string, string>
             {
                 ["code.public_api.source_file.count"] = sourceFiles.Length.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.analyzed_file.count"] = files.Count.ToString(CultureInfo.InvariantCulture),
+                ["code.public_api.unreadable_file.count"] = unreadableSourceFileCount.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.truncated"] = (sourceFiles.Length > files.Count).ToString(CultureInfo.InvariantCulture),
+                ["code.public_api.inventory.complete"] = sourceInventoryComplete.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.partition.count"] = selection.EligiblePartitionCount.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.selected_partition.count"] = selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.symbol.count"] = symbols.Count.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.added.count"] = added.Length.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.removed.count"] = removed.Length.ToString(CultureInfo.InvariantCulture),
-                ["code.public_api.baseline.present"] = (baseline is not null).ToString(CultureInfo.InvariantCulture)
+                ["code.public_api.baseline.present"] = baselineRead.Exists.ToString(CultureInfo.InvariantCulture),
+                ["code.public_api.baseline.readable"] = (baseline is not null).ToString(CultureInfo.InvariantCulture),
+                ["code.public_api.diff.comparable"] = diffComparable.ToString(CultureInfo.InvariantCulture)
             });
 
-        var warnings = sourceFiles.Length > files.Count
-            ? new[]
-            {
-                $"Public API analysis processed {files.Count.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} source files, balanced across {selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture)} of {selection.EligiblePartitionCount.ToString(CultureInfo.InvariantCulture)} repository partitions."
-            }
-            : [];
+        var warnings = new List<string>();
+        if (sourceFiles.Length > files.Count)
+        {
+            warnings.Add(
+                $"Public API analysis processed {files.Count.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} source files, balanced across {selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture)} of {selection.EligiblePartitionCount.ToString(CultureInfo.InvariantCulture)} repository partitions. Baseline comparison was skipped because the current API inventory is incomplete.");
+        }
+
+        if (unreadableSourceFileCount > 0)
+        {
+            warnings.Add(
+                $"Public API analysis skipped {unreadableSourceFileCount.ToString(CultureInfo.InvariantCulture)} source files that exceeded the text safety limit or could not be read. Baseline comparison was skipped because the current API inventory is incomplete.");
+        }
+
+        if (baselineRead.Warning is not null)
+        {
+            warnings.Add(baselineRead.Warning);
+        }
 
         return AnalyzerResult.Completed(findings, [new AnalyzerArtifact(CodePublicApiArtifact.ArtifactKey, artifact)], warnings: warnings);
     }
@@ -203,7 +253,9 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
         return RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath);
     }
 
-    private static async Task<ApiBaseline?> ReadBaselineAsync(string repositoryPath, CancellationToken cancellationToken)
+    private static async Task<BaselineReadResult> ReadBaselineAsync(
+        string repositoryPath,
+        CancellationToken cancellationToken)
     {
         foreach (var relativePath in BaselinePaths)
         {
@@ -213,17 +265,46 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
-            var symbols = (await File.ReadAllLinesAsync(fullPath, cancellationToken))
-                .Select(line => line.Trim())
-                .Where(line => line.Length > 0 && !line.StartsWith("#", StringComparison.Ordinal))
-                .Distinct(StringComparer.Ordinal)
-                .Order(StringComparer.Ordinal)
-                .ToArray();
-            return new ApiBaseline(relativePath.Replace('\\', '/'), symbols);
+            var normalizedPath = relativePath.Replace('\\', '/');
+            if (!RepositoryFileSystem.CanReadAsText(fullPath, MaxBaselineBytes))
+            {
+                return new BaselineReadResult(
+                    normalizedPath,
+                    null,
+                    $"Public API baseline '{normalizedPath}' exceeded the {MaxBaselineBytes / (1024 * 1024)} MiB safety limit or could not be read as text. Baseline comparison was skipped.");
+            }
+
+            try
+            {
+                var symbols = (await File.ReadAllLinesAsync(fullPath, cancellationToken))
+                    .Select(line => line.Trim())
+                    .Where(line => line.Length > 0 && !line.StartsWith("#", StringComparison.Ordinal))
+                    .Distinct(StringComparer.Ordinal)
+                    .Order(StringComparer.Ordinal)
+                    .ToArray();
+                return new BaselineReadResult(
+                    normalizedPath,
+                    new ApiBaseline(normalizedPath, symbols),
+                    null);
+            }
+            catch (IOException)
+            {
+                return CreateUnreadableBaselineResult(normalizedPath);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return CreateUnreadableBaselineResult(normalizedPath);
+            }
         }
 
-        return null;
+        return new BaselineReadResult(null, null, null);
     }
+
+    private static BaselineReadResult CreateUnreadableBaselineResult(string relativePath) =>
+        new(
+            relativePath,
+            null,
+            $"Public API baseline '{relativePath}' could not be read. Baseline comparison was skipped.");
 
     private static string StripInlineComment(string line)
     {
@@ -241,4 +322,12 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
     private static partial Regex PropertyRegex();
 
     private sealed record ApiBaseline(string RelativePath, IReadOnlyList<string> Symbols);
+
+    private sealed record BaselineReadResult(
+        string? RelativePath,
+        ApiBaseline? Baseline,
+        string? Warning)
+    {
+        public bool Exists => RelativePath is not null;
+    }
 }

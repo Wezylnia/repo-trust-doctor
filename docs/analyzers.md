@@ -120,7 +120,7 @@ Deep scan analyzers import or infer code quality and change-risk signals:
 - critical-code heuristics for auth, authorization, payments, data access, file operations, networking, cryptography, secrets, deserialization, and command execution,
 - large file and broad exception handling signals,
 - correlation between critical code and weak coverage,
-- multi-language public API surface extraction and baseline diff review,
+- multi-language public API surface extraction and completeness-aware baseline diff review,
 - static import graph centrality analysis,
 - framework route detection for common web stacks.
 
@@ -129,6 +129,12 @@ conservative Go file edges. Go parsing follows real import statement/block
 context and repository `go.mod` module paths; duplicate source-target edges are
 collapsed. C# namespace `using` directives are excluded until a semantic
 project/type resolver can map them without inventing file-level dependencies.
+
+Public API baseline comparison is skipped when the source inventory is
+truncated or contains unreadable files, or when the selected baseline is
+unreadable or exceeds 4 MiB. The artifact retains the detected symbols and
+records completeness/comparability metrics without emitting false API removal
+signals from partial evidence.
 
 Deep code intelligence remains conservative. It does not run tests or build projects to generate coverage, and it skips common sample, fixture, analyzer implementation, test, generated, third-party, and vendored static-library paths for route and criticality heuristics. On very large repositories, expensive codebase analyzers complete with warnings and truncation metrics rather than timing out.
 

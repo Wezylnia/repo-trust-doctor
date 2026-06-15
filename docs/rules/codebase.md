@@ -145,7 +145,7 @@ Recommendation: review custom serialization hooks and validate any data restored
 
 Public API symbols were detected, but no baseline file was found for compatibility comparison.
 
-The analyzer extracts a conservative multi-language public API surface from C#, TypeScript/JavaScript, Python, Java, Go, and Rust source files. On very large repositories, it processes a deterministic subset after low-signal filtering and reports truncation in metrics and warnings instead of timing out.
+The analyzer extracts a conservative multi-language public API surface from C#, TypeScript/JavaScript, Python, Java, Go, and Rust source files. On very large repositories, it processes a deterministic subset after low-signal filtering and reports truncation in metrics and warnings instead of timing out. A missing baseline is reported only when no baseline file exists; a baseline that is present but unreadable is treated as incomplete evidence.
 
 Baseline paths checked:
 
@@ -162,6 +162,8 @@ Recommendation: commit a reviewed public API baseline when the repository expose
 - Default confidence: `Medium`
 
 The current public API symbol list differs from the committed baseline. This is a review signal; it is not a claim that every change is breaking.
+
+Baseline comparison runs only when the current source inventory is complete and the baseline is readable. If source selection is truncated, any selected source file is unreadable, or the baseline exceeds its 4 MiB text safety limit, the analyzer leaves added/removed symbols empty and reports the comparison as indeterminate through warnings and completeness metrics. This prevents files outside the analyzed subset from being reported as removed APIs.
 
 Recommendation: review added and removed symbols before release and update the baseline only after compatibility impact is understood.
 
