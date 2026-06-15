@@ -14,7 +14,7 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
     private const double LowCoverageThreshold = 0.60;
 
     private static readonly string[] SourceExtensions =
-        [".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".go", ".rs"];
+        [".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".go", ".rs"];
 
     public string Id => "codebase-05-import-graph";
 
@@ -60,7 +60,10 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
         var allFiles = analyzedSourceFiles
             .Select(file => ToRepoRelative(context.RepositoryPath, file))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var fileIndex = new ImportGraphFileIndex(allFiles);
+        var resolutionFiles = sourceFiles
+            .Select(file => ToRepoRelative(context.RepositoryPath, file))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var fileIndex = new ImportGraphFileIndex(resolutionFiles, context.RepositoryPath, SourceExtensions);
 
         foreach (var file in analyzedSourceFiles)
         {
@@ -89,17 +92,18 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
             }
         }
 
-        var importedByMap = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var importedByMap = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (var kvp in adjacency)
         {
             foreach (var imported in kvp.Value)
             {
-                if (!importedByMap.TryGetValue(imported, out var list))
+                if (!importedByMap.TryGetValue(imported, out var importers))
                 {
-                    list = new List<string>();
-                    importedByMap[imported] = list;
+                    importers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    importedByMap[imported] = importers;
                 }
-                list.Add(kvp.Key);
+
+                importers.Add(kvp.Key);
             }
         }
 
@@ -230,7 +234,7 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
     private static List<CentralFileEntry> IdentifyCentralFiles(
         Dictionary<string, int> inDegree,
         int totalFileCount,
-        Dictionary<string, List<string>> importedByMap)
+        IReadOnlyDictionary<string, HashSet<string>> importedByMap)
     {
         if (inDegree.Count == 0)
         {
@@ -262,7 +266,10 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
             .Select(kv =>
             {
                 importedByMap.TryGetValue(kv.Key, out var list);
-                return new CentralFileEntry(kv.Key, kv.Value, list ?? (IReadOnlyList<string>)Array.Empty<string>());
+                return new CentralFileEntry(
+                    kv.Key,
+                    kv.Value,
+                    list?.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray() ?? []);
             })
             .ToList();
     }

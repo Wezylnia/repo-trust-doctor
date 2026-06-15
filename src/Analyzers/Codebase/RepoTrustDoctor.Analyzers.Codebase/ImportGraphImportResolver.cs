@@ -12,6 +12,14 @@ public sealed partial class ImportGraphAnalyzer
     {
         var imports = new List<string>();
 
+        if (extension == ".go")
+        {
+            ParseGoImports(text, imports, fileIndex);
+            return imports
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
         var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
 
         foreach (var line in lines)
@@ -20,9 +28,6 @@ public sealed partial class ImportGraphAnalyzer
 
             switch (extension)
             {
-                case ".cs":
-                    ParseCSharpImport(trimmed, imports, fileIndex);
-                    break;
                 case ".ts" or ".tsx" or ".js" or ".jsx":
                     ParseJavaScriptImport(trimmed, imports, sourceRelativePath, fileIndex);
                     break;
@@ -32,43 +37,15 @@ public sealed partial class ImportGraphAnalyzer
                 case ".java":
                     ParseJavaImport(trimmed, imports, fileIndex);
                     break;
-                case ".go":
-                    ParseGoImport(trimmed, imports, fileIndex);
-                    break;
                 case ".rs":
                     ParseRustImport(trimmed, imports, fileIndex);
                     break;
             }
         }
 
-        return imports;
-    }
-
-    private static void ParseCSharpImport(string line, List<string> imports, ImportGraphFileIndex fileIndex)
-    {
-        if (!line.StartsWith("using ", StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        var match = CSharpUsingRegex().Match(line);
-        if (!match.Success)
-        {
-            return;
-        }
-
-        var ns = match.Groups["ns"].Value;
-        if (ns.StartsWith("System", StringComparison.Ordinal) ||
-            ns.StartsWith("Microsoft", StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        var resolved = fileIndex.ResolveSuffixPath(ns.Replace('.', '/'));
-        if (resolved is not null)
-        {
-            imports.Add(resolved);
-        }
+        return imports
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static void ParseJavaScriptImport(string line, List<string> imports, string sourceRelativePath, ImportGraphFileIndex fileIndex)
@@ -149,13 +126,90 @@ public sealed partial class ImportGraphAnalyzer
         }
     }
 
-    private static void ParseGoImport(string line, List<string> imports, ImportGraphFileIndex fileIndex)
+    private static void ParseGoImports(
+        string text,
+        ICollection<string> imports,
+        ImportGraphFileIndex fileIndex)
     {
-        var match = GoImportRegex().Match(line);
-        if (match.Success)
+        var inImportBlock = false;
+        foreach (var rawLine in text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
         {
-            AddResolvedModule(match.Groups["path"].Value, fileIndex, imports);
+            var line = StripGoLineComment(rawLine).Trim();
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            if (inImportBlock)
+            {
+                if (line.StartsWith(')'))
+                {
+                    inImportBlock = false;
+                    continue;
+                }
+
+                AddResolvedGoImport(line, imports, fileIndex);
+                continue;
+            }
+
+            if (!line.StartsWith("import", StringComparison.Ordinal) ||
+                line.Length <= "import".Length ||
+                !char.IsWhiteSpace(line["import".Length]))
+            {
+                continue;
+            }
+
+            var importSpec = line["import".Length..].Trim();
+            if (importSpec == "(")
+            {
+                inImportBlock = true;
+            }
+            else
+            {
+                AddResolvedGoImport(importSpec, imports, fileIndex);
+            }
         }
+    }
+
+    private static void AddResolvedGoImport(
+        string importSpec,
+        ICollection<string> imports,
+        ImportGraphFileIndex fileIndex)
+    {
+        var match = GoImportSpecRegex().Match(importSpec);
+        if (!match.Success)
+        {
+            return;
+        }
+
+        var resolved = fileIndex.ResolveGoPackage(match.Groups["path"].Value);
+        if (resolved is not null)
+        {
+            imports.Add(resolved);
+        }
+    }
+
+    private static string StripGoLineComment(string line)
+    {
+        var quote = '\0';
+        for (var index = 0; index < line.Length - 1; index++)
+        {
+            var current = line[index];
+            if (quote == '\0' && current is '"' or '`')
+            {
+                quote = current;
+            }
+            else if (quote == current && (quote == '`' || index == 0 || line[index - 1] != '\\'))
+            {
+                quote = '\0';
+            }
+            else if (quote == '\0' && current == '/' && line[index + 1] == '/')
+            {
+                return line[..index];
+            }
+        }
+
+        return line;
     }
 
     private static void ParseRustImport(string line, List<string> imports, ImportGraphFileIndex fileIndex)
@@ -246,72 +300,6 @@ public sealed partial class ImportGraphAnalyzer
         return fileIndex.ResolveSuffixPath(normalized);
     }
 
-    private sealed class ImportGraphFileIndex
-    {
-        private readonly HashSet<string> knownFiles;
-        private readonly Dictionary<string, string?> uniqueSuffixes;
-
-        public ImportGraphFileIndex(IEnumerable<string> files)
-        {
-            knownFiles = files.ToHashSet(StringComparer.OrdinalIgnoreCase);
-            uniqueSuffixes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var file in knownFiles)
-            {
-                AddSuffixes(file);
-            }
-        }
-
-        public bool Contains(string normalizedPath) => knownFiles.Contains(normalizedPath);
-
-        public string? ResolveSuffixPath(string modulePath)
-        {
-            if (string.IsNullOrWhiteSpace(modulePath))
-            {
-                return null;
-            }
-
-            foreach (var extension in SourceExtensions)
-            {
-                var suffix = modulePath.EndsWith(extension, StringComparison.OrdinalIgnoreCase)
-                    ? modulePath
-                    : modulePath + extension;
-                if (uniqueSuffixes.TryGetValue(suffix, out var match))
-                {
-                    return match;
-                }
-            }
-
-            return null;
-        }
-
-        private void AddSuffixes(string file)
-        {
-            var parts = file.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            for (var index = 0; index < parts.Length; index++)
-            {
-                AddUniqueSuffix(string.Join("/", parts[index..]), file);
-            }
-        }
-
-        private void AddUniqueSuffix(string suffix, string file)
-        {
-            if (!uniqueSuffixes.TryGetValue(suffix, out var existing))
-            {
-                uniqueSuffixes[suffix] = file;
-                return;
-            }
-
-            if (!string.Equals(existing, file, StringComparison.OrdinalIgnoreCase))
-            {
-                uniqueSuffixes[suffix] = null;
-            }
-        }
-    }
-
-    [GeneratedRegex(@"^using\s+(?!var\b)(?!static\b)(?<ns>[A-Za-z_][\w.]*)\s*;", RegexOptions.None)]
-    private static partial Regex CSharpUsingRegex();
-
     [GeneratedRegex(@"import\s+.*?\s+from\s+['""](?<path>[^'""]+)['""]", RegexOptions.None)]
     private static partial Regex JsImportFromRegex();
 
@@ -333,12 +321,13 @@ public sealed partial class ImportGraphAnalyzer
     [GeneratedRegex(@"^import\s+(?:static\s+)?(?<pkg>[A-Za-z_][\w.]*)\s*;", RegexOptions.None)]
     private static partial Regex JavaImportRegex();
 
-    [GeneratedRegex(@"""(?<path>[^""]+)""", RegexOptions.None)]
-    private static partial Regex GoImportRegex();
+    [GeneratedRegex(@"^(?:(?:[._A-Za-z][A-Za-z0-9_]*)\s+)?[""`](?<path>[^""`]+)[""`]\s*$", RegexOptions.None)]
+    private static partial Regex GoImportSpecRegex();
 
     [GeneratedRegex(@"^use\s+(?<path>[A-Za-z_][\w:]*(?:::[A-Za-z_][\w:]*)*)", RegexOptions.None)]
     private static partial Regex RustUseRegex();
 
     [GeneratedRegex(@"^mod\s+(?<name>[A-Za-z_]\w*)\s*;", RegexOptions.None)]
     private static partial Regex RustModRegex();
+
 }

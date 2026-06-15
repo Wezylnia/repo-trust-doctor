@@ -124,6 +124,12 @@ Deep scan analyzers import or infer code quality and change-risk signals:
 - static import graph centrality analysis,
 - framework route detection for common web stacks.
 
+The static import graph models JavaScript/TypeScript, Python, Java, Rust, and
+conservative Go file edges. Go parsing follows real import statement/block
+context and repository `go.mod` module paths; duplicate source-target edges are
+collapsed. C# namespace `using` directives are excluded until a semantic
+project/type resolver can map them without inventing file-level dependencies.
+
 Deep code intelligence remains conservative. It does not run tests or build projects to generate coverage, and it skips common sample, fixture, analyzer implementation, test, generated, third-party, and vendored static-library paths for route and criticality heuristics. On very large repositories, expensive codebase analyzers complete with warnings and truncation metrics rather than timing out.
 
 ## Policy, Scoring, And Reports

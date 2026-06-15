@@ -179,6 +179,13 @@ Type-only TypeScript imports such as `import type { Foo } from './types'` are ig
 
 On very large repositories, import graph analysis processes a deterministic subset after low-signal filtering and returns `CompletedWithWarnings` instead of timing out. The report metrics include total candidate files, analyzed files, and truncation status.
 
+Import edges are unique per source and target. Go edges are extracted only from
+actual `import` statements or blocks and resolve through repository `go.mod`
+module paths to a unique local package file; ordinary string literals and
+external packages are ignored. C# namespace `using` directives are not modeled
+as file imports because namespace references cannot be mapped safely without a
+semantic compiler model.
+
 Recommendation: ensure highly central files have thorough tests and careful review gates.
 
 ### `TRUST-CODE011` - Central file has low or missing coverage

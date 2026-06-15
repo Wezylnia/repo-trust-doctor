@@ -167,4 +167,138 @@ public sealed class ImportGraphAnalyzerTests
         var graph = Assert.IsType<ImportGraphArtifact>(artifact.Value);
         Assert.Contains("src/shared/Common.ts", graph.CentralFiles.Select(f => f.FilePath));
     }
+
+    [Fact]
+    public async Task ImportGraphAnalyzer_GoStringLiteralDoesNotCreateImportEdge()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), "module example.com/repo // local module");
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "internal", "service"));
+        File.WriteAllText(
+            Path.Combine(fixture.Path, "internal", "service", "service.go"),
+            "package service");
+        File.WriteAllText(
+            Path.Combine(fixture.Path, "main.go"),
+            """
+            package main
+
+            func main() {
+                message := "example.com/repo/internal/service"
+                _ = message
+            }
+            """);
+
+        var result = await new ImportGraphAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep),
+            CancellationToken.None);
+
+        var graph = Assert.IsType<ImportGraphArtifact>(
+            Assert.Single(result.Artifacts!, artifact => artifact.Key == ImportGraphArtifact.ArtifactKey).Value);
+        Assert.Empty(graph.Edges);
+    }
+
+    [Fact]
+    public async Task ImportGraphAnalyzer_GoImportStatementsResolveUniqueLocalPackage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), "module example.com/repo // local module");
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "internal", "service"));
+        File.WriteAllText(
+            Path.Combine(fixture.Path, "internal", "service", "service.go"),
+            "package service");
+        File.WriteAllText(
+            Path.Combine(fixture.Path, "main.go"),
+            """
+            package main
+
+            import (
+                svc "example.com/repo/internal/service"
+                "net/http"
+            )
+            """);
+
+        var result = await new ImportGraphAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep),
+            CancellationToken.None);
+
+        var graph = Assert.IsType<ImportGraphArtifact>(
+            Assert.Single(result.Artifacts!, artifact => artifact.Key == ImportGraphArtifact.ArtifactKey).Value);
+        Assert.Equal(
+            ["internal/service/service.go"],
+            Assert.Single(graph.Edges).Value);
+    }
+
+    [Fact]
+    public async Task ImportGraphAnalyzer_GoImportDoesNotChooseArbitraryFileFromMultiFilePackage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "go.mod"), "module example.com/repo");
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "internal", "service"));
+        File.WriteAllText(
+            Path.Combine(fixture.Path, "internal", "service", "service.go"),
+            "package service");
+        File.WriteAllText(
+            Path.Combine(fixture.Path, "internal", "service", "handler.go"),
+            "package service");
+        File.WriteAllText(
+            Path.Combine(fixture.Path, "main.go"),
+            """
+            package main
+            import "example.com/repo/internal/service"
+            """);
+
+        var result = await new ImportGraphAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep),
+            CancellationToken.None);
+
+        var graph = Assert.IsType<ImportGraphArtifact>(
+            Assert.Single(result.Artifacts!, artifact => artifact.Key == ImportGraphArtifact.ArtifactKey).Value);
+        Assert.Empty(graph.Edges);
+    }
+
+    [Fact]
+    public async Task ImportGraphAnalyzer_CSharpNamespaceUsingDoesNotCreateFileEdge()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "Company", "Project"));
+        File.WriteAllText(
+            Path.Combine(fixture.Path, "Company", "Project", "Services.cs"),
+            "namespace Company.Project.Services;");
+        File.WriteAllText(
+            Path.Combine(fixture.Path, "App.cs"),
+            "using Company.Project.Services;");
+
+        var result = await new ImportGraphAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep),
+            CancellationToken.None);
+
+        var graph = Assert.IsType<ImportGraphArtifact>(
+            Assert.Single(result.Artifacts!, artifact => artifact.Key == ImportGraphArtifact.ArtifactKey).Value);
+        Assert.Empty(graph.Edges);
+        Assert.Equal("0", graph.Metrics["import.graph.file.count"]);
+    }
+
+    [Fact]
+    public async Task ImportGraphAnalyzer_DeduplicatesRepeatedSourceTargetEdges()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Common.ts"), "export class Common {}");
+        File.WriteAllText(
+            Path.Combine(fixture.Path, "App.ts"),
+            """
+            import { Common } from './Common';
+            import { Common as CommonAlias } from './Common';
+            export { Common, CommonAlias };
+            """);
+
+        var result = await new ImportGraphAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep),
+            CancellationToken.None);
+
+        var graph = Assert.IsType<ImportGraphArtifact>(
+            Assert.Single(result.Artifacts!, artifact => artifact.Key == ImportGraphArtifact.ArtifactKey).Value);
+        Assert.Equal(["Common.ts"], graph.Edges["App.ts"]);
+        Assert.Equal("1", graph.Metrics["import.graph.edge.count"]);
+        Assert.Empty(graph.CentralFiles);
+    }
 }
