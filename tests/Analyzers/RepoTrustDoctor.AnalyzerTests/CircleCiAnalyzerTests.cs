@@ -93,6 +93,25 @@ public sealed class CircleCiAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_RegistryPortWithoutTag_ReportsCIRCLE002()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, ".circleci"));
+        File.WriteAllText(Path.Combine(fixture.Path, ".circleci", "config.yml"), """
+        jobs:
+          build:
+            docker:
+              - image: registry.example:5000/team/service
+        """);
+
+        var result = await new CircleCiAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-CIRCLE002");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_DetectsBroadWorkspacePersist()
     {
         using var fixture = TemporaryRepository.Create();

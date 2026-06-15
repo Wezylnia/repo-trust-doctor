@@ -78,7 +78,7 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
 
     private void CheckAlwaysAuth(string content, string relativePath, List<Finding> findings)
     {
-        if (GlobalAlwaysAuthPattern().IsMatch(content) && !ScopedAlwaysAuthPattern().IsMatch(content))
+        if (GlobalAlwaysAuthPattern().IsMatch(content))
             findings.Add(F("TRUST-REG002", "Global always-auth", Severity.Medium, relativePath, "always-auth=true is not scoped to a registry.", Confidence.Medium));
     }
 
@@ -195,9 +195,6 @@ public sealed partial class PackageRegistryConfigAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?mi)^\s*always-auth\s*=\s*true\s*$")]
     private static partial Regex GlobalAlwaysAuthPattern();
-
-    [GeneratedRegex(@"//[^/]+\.[^/]+/:_authToken")]
-    private static partial Regex ScopedAlwaysAuthPattern();
 
     [GeneratedRegex(@"(?mi)(?<key>_authToken|_auth|_password|password|ClearTextPassword)\s*[=:]\s*(?<value>\S+)")]
     private static partial Regex InlineTokenPattern();

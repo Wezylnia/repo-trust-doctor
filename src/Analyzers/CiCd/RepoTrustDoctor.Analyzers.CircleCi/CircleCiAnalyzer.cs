@@ -102,9 +102,9 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
             if (image.Contains("@sha256:", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // Check if pinned: must have a tag (colon followed by non-whitespace, not 'latest')
-            var colonIdx = image.LastIndexOf(':');
-            if (colonIdx < 0)
+            var lastSlash = image.LastIndexOf('/');
+            var tagSeparator = image.LastIndexOf(':');
+            if (tagSeparator <= lastSlash)
             {
                 // No tag at all
                 findings.Add(CreateFinding("TRUST-CIRCLE002", "Unpinned Docker image",
@@ -113,7 +113,7 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
             }
             else
             {
-                var tag = image[(colonIdx + 1)..].Trim();
+                var tag = image[(tagSeparator + 1)..].Trim();
                 if (tag.Equals("latest", StringComparison.OrdinalIgnoreCase))
                 {
                     findings.Add(CreateFinding("TRUST-CIRCLE002", "Unpinned Docker image",

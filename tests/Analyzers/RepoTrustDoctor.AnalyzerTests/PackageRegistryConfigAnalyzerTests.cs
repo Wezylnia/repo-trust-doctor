@@ -86,6 +86,25 @@ public sealed class PackageRegistryConfigAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_GlobalAlwaysAuthWithScopedToken_StillReportsREG002()
+    {
+        using var f = TemporaryRepository.Create();
+        File.WriteAllText(
+            Path.Combine(f.Path, ".npmrc"),
+            """
+            always-auth=true
+            //registry.npmjs.org/:_authToken=${NPM_TOKEN}
+            """);
+
+        var result = await new PackageRegistryConfigAnalyzer().AnalyzeAsync(
+            new AnalysisContext(f.Path, f.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-REG002");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REG003");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_DetectsInlineToken()
     {
         using var f = TemporaryRepository.Create();

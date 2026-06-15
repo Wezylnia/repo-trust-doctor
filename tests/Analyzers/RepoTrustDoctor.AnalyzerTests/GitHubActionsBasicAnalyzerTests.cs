@@ -525,6 +525,37 @@ public sealed class GitHubActionsBasicAnalyzerTests
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-GHA014");
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_ReportsMatrixInjectionInMultilineRunBlock()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        permissions:
+          contents: read
+        jobs:
+          test:
+            strategy:
+              matrix:
+                version: [1, 2, 3]
+            runs-on: ubuntu-latest
+            steps:
+              - run: |
+                  echo "building"
+                  echo "version is ${{ matrix.version }}"
+        """);
+
+        var result = await new GitHubActionsBasicAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-GHA014");
+        Assert.Equal(14, finding.Evidence[0].LineNumber);
+    }
+
     // ── GHA015: pull_request_target + secrets ─────────────────────────
 
     [Fact]
@@ -703,5 +734,30 @@ public sealed class GitHubActionsBasicAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA018");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_RegistryPortWithoutContainerTag_ReportsGHA018()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+            container:
+              image: registry.example:5000/team/service
+            steps:
+              - run: echo done
+        """);
+
+        var result = await new GitHubActionsBasicAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-GHA018");
     }
 }

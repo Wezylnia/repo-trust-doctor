@@ -49,10 +49,14 @@ public sealed class CoverageCriticalityAnalyzer : IRepositoryAnalyzer
         var coverageByPath = coverage.Files
             .GroupBy(file => Normalize(file.FilePath), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var uniqueCoverageByFileName = coverage.Files
+            .GroupBy(file => Path.GetFileName(Normalize(file.FilePath)), StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.Single(), StringComparer.OrdinalIgnoreCase);
 
         var findings = criticality.Files
             .Where(file => file.Score >= 50)
-            .Select(file => CreateCoverageFinding(file, coverageByPath))
+            .Select(file => CreateCoverageFinding(file, coverageByPath, uniqueCoverageByFileName))
             .Where(finding => finding is not null)
             .Cast<Finding>()
             .Take(10)
@@ -61,7 +65,10 @@ public sealed class CoverageCriticalityAnalyzer : IRepositoryAnalyzer
         return Task.FromResult(AnalyzerResult.Completed(findings));
     }
 
-    private static Finding? CreateCoverageFinding(CodeCriticalityFile criticalFile, IReadOnlyDictionary<string, CoverageFileInfo> coverageByPath)
+    private static Finding? CreateCoverageFinding(
+        CodeCriticalityFile criticalFile,
+        IReadOnlyDictionary<string, CoverageFileInfo> coverageByPath,
+        IReadOnlyDictionary<string, CoverageFileInfo> uniqueCoverageByFileName)
     {
         var normalizedPath = Normalize(criticalFile.FilePath);
         var matchingCoverage = coverageByPath.TryGetValue(normalizedPath, out var exactMatch)
@@ -69,10 +76,10 @@ public sealed class CoverageCriticalityAnalyzer : IRepositoryAnalyzer
             : coverageByPath
                 .Where(pair => 
                     normalizedPath.EndsWith(pair.Key, StringComparison.OrdinalIgnoreCase) || 
-                    pair.Key.EndsWith(normalizedPath, StringComparison.OrdinalIgnoreCase) ||
-                    Path.GetFileName(normalizedPath).Equals(Path.GetFileName(pair.Key), StringComparison.OrdinalIgnoreCase))
+                    pair.Key.EndsWith(normalizedPath, StringComparison.OrdinalIgnoreCase))
                 .Select(pair => pair.Value)
-                .FirstOrDefault();
+                .FirstOrDefault() ??
+              uniqueCoverageByFileName.GetValueOrDefault(Path.GetFileName(normalizedPath));
 
         if (matchingCoverage is not null &&
             matchingCoverage.LineRate is double lineRate &&

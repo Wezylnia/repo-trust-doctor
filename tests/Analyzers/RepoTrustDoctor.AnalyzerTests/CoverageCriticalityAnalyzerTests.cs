@@ -45,6 +45,26 @@ public sealed class CoverageCriticalityAnalyzerTests
     }
 
     [Fact]
+    public async Task CoverageCriticalityAnalyzer_DoesNotUseAmbiguousFileNameMatch()
+    {
+        var context = CreateContext(
+            [
+                new CoverageFileInfo("src/A/Service.cs", 0.95, null, 19, 20, null, null),
+                new CoverageFileInfo("src/B/Service.cs", 0.90, null, 18, 20, null, null)
+            ],
+            [new CodeCriticalityFile("src/C/Service.cs", 75, 70, [CodeCriticalityReason.Authentication], 7)]);
+
+        var result = await new CoverageCriticalityAnalyzer().AnalyzeAsync(
+            context,
+            CancellationToken.None);
+
+        Assert.Contains(
+            result.Findings,
+            finding => finding.RuleId == "TRUST-CODE007" &&
+                       finding.Message.Contains("missing", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task CoverageCriticalityAnalyzer_SkipsWhenCoverageIsUnknown()
     {
         var context = new AnalysisContext(".", ".", AnalysisDepth.Deep);

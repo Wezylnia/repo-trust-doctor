@@ -356,9 +356,8 @@ public sealed partial class GitHubActionsBasicAnalyzer
             if (image.Contains("@sha256:", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // Only flag :latest or no tag (no colon)
-            var colonIdx = image.LastIndexOf(':');
-            if (colonIdx < 0 || image[(colonIdx + 1)..].Equals("latest", StringComparison.OrdinalIgnoreCase))
+            var tag = GetContainerImageTag(image);
+            if (tag is null || tag.Equals("latest", StringComparison.OrdinalIgnoreCase))
             {
                 AddFinding(findings, "TRUST-GHA018", "Unpinned container image",
                     Severity.Medium, "Pin container images to specific versions or digests.",
@@ -373,7 +372,18 @@ public sealed partial class GitHubActionsBasicAnalyzer
         var lines = SplitLines(content);
         for (int i = 0; i < lines.Length; i++)
         {
-            if (RunBlockPattern().IsMatch(lines[i]) && MatrixInjectionPattern().IsMatch(lines[i]))
+            if (!RunBlockPattern().IsMatch(lines[i]))
+            {
+                continue;
+            }
+
+            var isMultiLine = lines[i].Contains('|') || lines[i].Contains('>');
+            var findingLine = MatrixInjectionPattern().IsMatch(lines[i])
+                ? i
+                : isMultiLine
+                    ? FindIndentedMatch(lines, i, MatrixInjectionPattern())
+                    : -1;
+            if (findingLine >= 0)
             {
                 AddFinding(
                     findings,
@@ -383,11 +393,42 @@ public sealed partial class GitHubActionsBasicAnalyzer
                     "Avoid direct inline shell interpolation of matrix values. Pass matrix values as environment variables instead.",
                     relativePath,
                     "Potential matrix injection found in run block.",
-                    i + 1,
+                    findingLine + 1,
                     Confidence.Medium);
                 break;
             }
         }
+    }
+
+    private static int FindIndentedMatch(string[] lines, int headerIndex, Regex pattern)
+    {
+        var baseIndentation = GetIndentation(lines[headerIndex]);
+        for (var index = headerIndex + 1; index < lines.Length; index++)
+        {
+            if (string.IsNullOrWhiteSpace(lines[index]))
+            {
+                continue;
+            }
+
+            if (GetIndentation(lines[index]) <= baseIndentation)
+            {
+                break;
+            }
+
+            if (pattern.IsMatch(lines[index]))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string? GetContainerImageTag(string image)
+    {
+        var lastSlash = image.LastIndexOf('/');
+        var lastColon = image.LastIndexOf(':');
+        return lastColon > lastSlash ? image[(lastColon + 1)..] : null;
     }
 
     private static string[] SplitLines(string content) => content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
