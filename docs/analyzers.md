@@ -67,6 +67,11 @@ Current ecosystem collectors:
 
 The inventory analyzer is split into per-ecosystem collectors so future language support can be added without growing one large analyzer class.
 
+Workspace detection resolves npm/Yarn array and object declarations, Cargo
+members and excludes, and single-line or block Go `use` directives. Glob
+declarations are matched only against existing package manifests, then stored
+as deduplicated repository-relative member directories instead of raw patterns.
+
 ## Dependency Risk Intelligence
 
 Consumes dependency inventory and safe package metadata/advisory clients:

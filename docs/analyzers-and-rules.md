@@ -68,9 +68,18 @@ Analyzers implement `IRepositoryAnalyzer` and produce `Finding` records with rul
 
 **Analyzer:** `WorkspaceAnalyzer` (`workspace`)
 
+JavaScript workspace declarations support both the npm array form and Yarn's
+`workspaces.packages` object form. npm/Yarn and Cargo glob declarations are
+expanded only to repository directories containing the ecosystem's manifest;
+Cargo `exclude` entries and JavaScript negated patterns are applied. Go
+workspace parsing supports both `use ./module` and `use (...)` forms. The
+workspace artifact contains normalized, repository-relative project
+directories rather than unresolved glob strings, and overlapping declarations
+are deduplicated.
+
 | Rule ID | Title | Severity | Confidence |
 |---------|-------|----------|------------|
-| TRUST-WS001 | npm workspace detected | Info | High |
+| TRUST-WS001 | npm or Yarn workspace detected | Info | High |
 | TRUST-WS002 | Cargo workspace detected | Info | High |
 | TRUST-WS003 | Go workspace detected | Info | High |
 

@@ -1,5 +1,6 @@
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
+using System.Text.Json;
 
 namespace RepoTrustDoctor.Analyzers.Repository;
 
@@ -21,8 +22,8 @@ public sealed class WorkspaceAnalyzer : IRepositoryAnalyzer
 
     public IReadOnlyCollection<RuleMetadata> Rules =>
     [
-        new("TRUST-WS001", "Repository uses npm workspaces", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High,
-            "The repository uses npm workspace configuration.", "Workspaces are a valid monorepo pattern. Ensure workspace boundaries are documented."),
+        new("TRUST-WS001", "Repository uses npm or Yarn workspaces", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High,
+            "The repository uses package.json workspace configuration.", "Workspaces are a valid monorepo pattern. Ensure workspace boundaries are documented."),
         new("TRUST-WS002", "Repository uses Cargo workspace", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High,
             "The repository uses Cargo workspace configuration.", "Workspaces are a valid monorepo pattern. Ensure workspace members are documented."),
         new("TRUST-WS003", "Repository uses Go workspace", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High,
@@ -33,9 +34,17 @@ public sealed class WorkspaceAnalyzer : IRepositoryAnalyzer
     {
         var findings = new List<Finding>();
         var workspaceMembers = new List<WorkspaceMember>();
+        var packageJsonFiles = RepositoryFileSystem
+            .EnumerateFiles(context.RepositoryPath, "package.json")
+            .ToArray();
+        var cargoManifestFiles = RepositoryFileSystem
+            .EnumerateFiles(context.RepositoryPath, "Cargo.toml")
+            .ToArray();
+        var goModuleFiles = RepositoryFileSystem
+            .EnumerateFiles(context.RepositoryPath, "go.mod")
+            .ToArray();
 
-        // npm workspaces
-        foreach (var packageJson in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "package.json"))
+        foreach (var packageJson in packageJsonFiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var relativePath = GetRelative(context, packageJson);
@@ -46,33 +55,34 @@ public sealed class WorkspaceAnalyzer : IRepositoryAnalyzer
 
             try
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(content);
-                if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
-                    doc.RootElement.TryGetProperty("workspaces", out var workspaces) &&
-                    workspaces.ValueKind == System.Text.Json.JsonValueKind.Array)
+                using var doc = JsonDocument.Parse(content);
+                if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                    doc.RootElement.TryGetProperty("workspaces", out var workspaces))
                 {
-                    findings.Add(CreateInfoFinding("TRUST-WS001", "Repository uses npm workspaces", relativePath,
-                        "The root package.json defines npm workspaces."));
-
-                    foreach (var ws in workspaces.EnumerateArray())
+                    var declarations = WorkspaceDeclarationParser.ReadNpmPatterns(workspaces);
+                    if (declarations.Count > 0)
                     {
-                        var pattern = ws.GetString();
-                        if (!string.IsNullOrWhiteSpace(pattern))
-                        {
-                            workspaceMembers.Add(new WorkspaceMember(
-                                "npm", pattern, Path.GetDirectoryName(relativePath)?.Replace('\\', '/') ?? ""));
-                        }
+                        var members = WorkspaceMemberResolver.Resolve(
+                            context.RepositoryPath,
+                            packageJson,
+                            declarations,
+                            packageJsonFiles);
+                        AddMembers(workspaceMembers, "npm", relativePath, members);
+                        findings.Add(CreateInfoFinding(
+                            "TRUST-WS001",
+                            "Repository uses npm or Yarn workspaces",
+                            relativePath,
+                            BuildEvidence("package.json defines npm or Yarn workspaces", members.Count)));
                     }
                 }
             }
-            catch (System.Text.Json.JsonException)
+            catch (JsonException)
             {
                 // Skip malformed JSON
             }
         }
 
-        // Cargo workspace
-        foreach (var cargoToml in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "Cargo.toml"))
+        foreach (var cargoToml in cargoManifestFiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var relativePath = GetRelative(context, cargoToml);
@@ -81,48 +91,45 @@ public sealed class WorkspaceAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
-            if (content.Contains("[workspace]", StringComparison.Ordinal))
+            var declarations = WorkspaceDeclarationParser.ReadCargoPatterns(content);
+            if (declarations.IsWorkspace)
             {
-                findings.Add(CreateInfoFinding("TRUST-WS002", "Repository uses Cargo workspace", relativePath,
-                    "The Cargo.toml contains a [workspace] section."));
-
-                var memberPattern = System.Text.RegularExpressions.Regex.Match(content, @"members\s*=\s*\[([^\]]+)\]");
-                if (memberPattern.Success)
-                {
-                    foreach (var member in memberPattern.Groups[1].Value.Split(','))
-                    {
-                        var trimmed = member.Trim().Trim('"', '\'');
-                        if (!string.IsNullOrWhiteSpace(trimmed))
-                        {
-                            workspaceMembers.Add(new WorkspaceMember(
-                                "cargo", trimmed, Path.GetDirectoryName(relativePath)?.Replace('\\', '/') ?? ""));
-                        }
-                    }
-                }
+                var members = WorkspaceMemberResolver.Resolve(
+                    context.RepositoryPath,
+                    cargoToml,
+                    declarations.Members,
+                    cargoManifestFiles,
+                    declarations.Excludes);
+                AddMembers(workspaceMembers, "cargo", relativePath, members);
+                findings.Add(CreateInfoFinding(
+                    "TRUST-WS002",
+                    "Repository uses Cargo workspace",
+                    relativePath,
+                    BuildEvidence("Cargo.toml contains a [workspace] section", members.Count)));
             }
         }
 
-        // Go workspace
         foreach (var goWork in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "go.work"))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var relativePath = GetRelative(context, goWork);
-
-            findings.Add(CreateInfoFinding("TRUST-WS003", "Repository uses Go workspace", relativePath,
-                "A go.work file was found."));
-
+            IReadOnlyList<string> members = [];
             if (TryReadFile(goWork, out var content))
             {
-                foreach (var line in content.Replace("\r\n", "\n").Split('\n'))
-                {
-                    var trimmed = line.Trim();
-                    if (trimmed.StartsWith("./", StringComparison.Ordinal) || trimmed.EndsWith("/...", StringComparison.Ordinal))
-                    {
-                        workspaceMembers.Add(new WorkspaceMember(
-                            "go", trimmed, Path.GetDirectoryName(relativePath)?.Replace('\\', '/') ?? ""));
-                    }
-                }
+                var declarations = WorkspaceDeclarationParser.ReadGoUsePaths(content);
+                members = WorkspaceMemberResolver.Resolve(
+                    context.RepositoryPath,
+                    goWork,
+                    declarations,
+                    goModuleFiles);
+                AddMembers(workspaceMembers, "go", relativePath, members);
             }
+
+            findings.Add(CreateInfoFinding(
+                "TRUST-WS003",
+                "Repository uses Go workspace",
+                relativePath,
+                BuildEvidence("A go.work file was found", members.Count)));
         }
 
         var artifacts = new List<AnalyzerArtifact>();
@@ -130,7 +137,12 @@ public sealed class WorkspaceAnalyzer : IRepositoryAnalyzer
         {
             artifacts.Add(new AnalyzerArtifact(
                 WorkspaceArtifact.ArtifactKey,
-                new WorkspaceArtifact(workspaceMembers)));
+                new WorkspaceArtifact(workspaceMembers
+                    .Distinct()
+                    .OrderBy(member => member.Ecosystem, StringComparer.Ordinal)
+                    .ThenBy(member => member.RootDirectory, StringComparer.Ordinal)
+                    .ThenBy(member => member.MemberPath, StringComparer.Ordinal)
+                    .ToArray())));
         }
 
         return Task.FromResult(AnalyzerResult.Completed(findings, artifacts, null, null));
@@ -144,6 +156,24 @@ public sealed class WorkspaceAnalyzer : IRepositoryAnalyzer
             [new Evidence("workspace", evidence, filePath)],
             new Recommendation("Workspaces are a valid monorepo pattern. Ensure workspace boundaries are documented."));
     }
+
+    private static void AddMembers(
+        ICollection<WorkspaceMember> workspaceMembers,
+        string ecosystem,
+        string workspaceFile,
+        IEnumerable<string> members)
+    {
+        var rootDirectory = Path.GetDirectoryName(workspaceFile)?.Replace('\\', '/') ?? "";
+        foreach (var member in members)
+        {
+            workspaceMembers.Add(new WorkspaceMember(ecosystem, member, rootDirectory));
+        }
+    }
+
+    private static string BuildEvidence(string prefix, int memberCount) =>
+        memberCount == 0
+            ? $"{prefix}; no existing member manifests matched its declarations."
+            : $"{prefix}; {memberCount} existing member manifest(s) matched.";
 
     private static string GetRelative(AnalysisContext context, string filePath) =>
         Path.GetRelativePath(context.RepositoryPath, filePath).Replace('\\', '/');
