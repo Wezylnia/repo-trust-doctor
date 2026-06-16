@@ -33,6 +33,7 @@ Diff output includes:
 
 - overall score delta,
 - decision change,
+- comparability state (`Direct`, `Partial`, or `DifferentTarget`) with reasons when score deltas are not directly comparable,
 - category score deltas for comparable categories,
 - newly evaluated or no-longer-evaluated category states when a category exists in only one report,
 - new findings,

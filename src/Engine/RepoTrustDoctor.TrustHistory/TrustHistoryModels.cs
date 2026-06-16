@@ -31,6 +31,8 @@ public sealed record TrustDiffResult(
     ScanSnapshot After,
     int OverallScoreDelta,
     bool DecisionChanged,
+    TrustDiffComparability Comparability,
+    IReadOnlyList<string> ComparabilityReasons,
     IReadOnlyList<CategoryScoreDelta> CategoryDeltas,
     IReadOnlyList<FindingSnapshot> NewFindings,
     IReadOnlyList<FindingSnapshot> ResolvedFindings,
@@ -50,6 +52,13 @@ public enum CategoryScoreComparisonState
     Comparable,
     NewlyEvaluated,
     NoLongerEvaluated
+}
+
+public enum TrustDiffComparability
+{
+    Direct,
+    Partial,
+    DifferentTarget
 }
 
 public sealed record FindingChange(FindingSnapshot Before, FindingSnapshot After);

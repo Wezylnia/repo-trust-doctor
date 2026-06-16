@@ -91,12 +91,67 @@ public sealed class TrustDiffEngine
             after,
             after.OverallScore - before.OverallScore,
             before.Decision != after.Decision,
+            BuildComparability(before, after, out var comparabilityReasons),
+            comparabilityReasons,
             BuildCategoryDeltas(before, after),
             newFindings,
             resolvedFindings,
             worsened,
             improved,
             unchanged);
+    }
+
+    private static TrustDiffComparability BuildComparability(
+        ScanSnapshot before,
+        ScanSnapshot after,
+        out IReadOnlyList<string> reasons)
+    {
+        var values = new List<string>();
+        if (!TargetsEqual(before.Target, after.Target))
+        {
+            values.Add("Targets differ.");
+            reasons = values;
+            return TrustDiffComparability.DifferentTarget;
+        }
+
+        if (before.TrustProfile != after.TrustProfile)
+        {
+            values.Add($"Profiles differ: {before.TrustProfile} -> {after.TrustProfile}.");
+        }
+
+        if (before.Depth != after.Depth)
+        {
+            values.Add($"Depth differs: {before.Depth} -> {after.Depth}.");
+        }
+
+        if (GetMajorVersion(before.ToolVersion) != GetMajorVersion(after.ToolVersion))
+        {
+            values.Add($"Tool major versions differ: {before.ToolVersion} -> {after.ToolVersion}.");
+        }
+
+        var beforeCategories = before.CategoryScores.Select(score => score.Category).Order().ToArray();
+        var afterCategories = after.CategoryScores.Select(score => score.Category).Order().ToArray();
+        if (!beforeCategories.SequenceEqual(afterCategories))
+        {
+            values.Add("Evaluated category sets differ.");
+        }
+
+        reasons = values;
+        return values.Count == 0 ? TrustDiffComparability.Direct : TrustDiffComparability.Partial;
+    }
+
+    private static bool TargetsEqual(string before, string after) =>
+        string.Equals(NormalizeTarget(before), NormalizeTarget(after), StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeTarget(string target) =>
+        target.Trim().TrimEnd('/', '\\');
+
+    private static int? GetMajorVersion(string version)
+    {
+        var trimmed = version.TrimStart('v', 'V');
+        var dotIndex = trimmed.IndexOf('.');
+        var majorText = dotIndex < 0 ? trimmed : trimmed[..dotIndex];
+        return int.TryParse(majorText, out var major) ? major : null;
     }
 
     private static IReadOnlyList<CategoryScoreDelta> BuildCategoryDeltas(ScanSnapshot before, ScanSnapshot after)

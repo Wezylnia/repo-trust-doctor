@@ -103,6 +103,49 @@ public sealed class TrustHistoryTests
     }
 
     [Fact]
+    public void TrustDiffEngine_MarksMatchingScanShapeAsDirectlyComparable()
+    {
+        var before = Snapshot("repo", 90, FinalDecisionKind.SafeToTry, []);
+        var after = Snapshot("repo", 88, FinalDecisionKind.SafeToTry, []);
+
+        var diff = new TrustDiffEngine().Compare(before, after);
+
+        Assert.Equal(TrustDiffComparability.Direct, diff.Comparability);
+        Assert.Empty(diff.ComparabilityReasons);
+    }
+
+    [Fact]
+    public void TrustDiffEngine_MarksProfileAndDepthChangesAsPartialComparison()
+    {
+        var before = Snapshot("repo", 90, FinalDecisionKind.SafeToTry, []);
+        var after = Snapshot(
+            "repo",
+            88,
+            FinalDecisionKind.SafeToTry,
+            [],
+            depth: AnalysisDepth.Fast,
+            trustProfile: TrustProfile.SecuritySensitiveDependency);
+
+        var diff = new TrustDiffEngine().Compare(before, after);
+
+        Assert.Equal(TrustDiffComparability.Partial, diff.Comparability);
+        Assert.Contains(diff.ComparabilityReasons, reason => reason.Contains("Profiles differ", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(diff.ComparabilityReasons, reason => reason.Contains("Depth differs", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void TrustDiffEngine_MarksDifferentTargetsSeparately()
+    {
+        var before = Snapshot("https://github.com/example/one", 90, FinalDecisionKind.SafeToTry, []);
+        var after = Snapshot("https://github.com/example/two", 88, FinalDecisionKind.SafeToTry, []);
+
+        var diff = new TrustDiffEngine().Compare(before, after);
+
+        Assert.Equal(TrustDiffComparability.DifferentTarget, diff.Comparability);
+        Assert.Contains(diff.ComparabilityReasons, reason => reason.Contains("Targets differ", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void TrustDiffEngine_TracksWorsenedAndImprovedMatchedFindings()
     {
         var before = Snapshot("repo", 80, FinalDecisionKind.UseWithCaution, [
@@ -200,13 +243,16 @@ public sealed class TrustHistoryTests
         int score,
         FinalDecisionKind decision,
         IReadOnlyList<FindingSnapshot> findings,
-        IReadOnlyList<CategoryScoreSnapshot>? categoryScores = null) =>
+        IReadOnlyList<CategoryScoreSnapshot>? categoryScores = null,
+        AnalysisDepth depth = AnalysisDepth.Deep,
+        TrustProfile trustProfile = TrustProfile.ProductionDependency,
+        string toolVersion = "test") =>
         new(
             Guid.NewGuid(),
             target,
-            AnalysisDepth.Deep,
-            TrustProfile.ProductionDependency,
-            "test",
+            depth,
+            trustProfile,
+            toolVersion,
             DateTimeOffset.Parse("2026-06-10T00:00:01Z"),
             score,
             decision,

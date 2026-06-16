@@ -254,6 +254,7 @@ type StartScanRequest
 type StartScanResponse
 type TerraformAnalyzer
 type TrustDiffEngine
+type TrustDiffComparability
 type TrustDiffResult
 type TrustPolicy
 type TrustPolicyEvaluator

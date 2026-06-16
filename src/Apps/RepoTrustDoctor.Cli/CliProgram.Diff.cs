@@ -133,14 +133,22 @@ internal static partial class CliProgram
             $"After: {diff.After.Target} ({diff.After.OverallScore}/100, {diff.After.Decision})",
             $"Score delta: {FormatDelta(diff.OverallScoreDelta)}",
             $"Decision changed: {diff.DecisionChanged}",
+            $"Comparability: {diff.Comparability}",
             $"New findings: {diff.NewFindings.Count}",
             $"Resolved findings: {diff.ResolvedFindings.Count}",
             $"Worsened findings: {diff.WorsenedFindings.Count}",
             $"Improved findings: {diff.ImprovedFindings.Count}",
-            string.Empty,
-            "Top new findings:"
+            string.Empty
         };
 
+        if (diff.ComparabilityReasons.Count > 0)
+        {
+            lines.Add("Comparability notes:");
+            lines.AddRange(diff.ComparabilityReasons.Select(reason => $"- {reason}"));
+            lines.Add(string.Empty);
+        }
+
+        lines.Add("Top new findings:");
         lines.AddRange(diff.NewFindings
             .Take(10)
             .Select(finding => $"- [{finding.Severity}] {finding.RuleId}: {finding.Title}"));
@@ -162,6 +170,11 @@ internal static partial class CliProgram
         builder.AppendLine($"- After: `{diff.After.Target}` (`{diff.After.OverallScore}/100`, `{diff.After.Decision}`)");
         builder.AppendLine($"- Score delta: `{FormatDelta(diff.OverallScoreDelta)}`");
         builder.AppendLine($"- Decision changed: `{diff.DecisionChanged}`");
+        builder.AppendLine($"- Comparability: `{diff.Comparability}`");
+        foreach (var reason in diff.ComparabilityReasons)
+        {
+            builder.AppendLine($"  - {reason}");
+        }
         builder.AppendLine();
         builder.AppendLine("## Finding Changes");
         builder.AppendLine();
