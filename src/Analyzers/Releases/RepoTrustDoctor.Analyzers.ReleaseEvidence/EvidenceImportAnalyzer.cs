@@ -6,7 +6,7 @@ namespace RepoTrustDoctor.Analyzers.ReleaseEvidence;
 
 public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
 {
-    private static readonly string[] SbomFilePatterns = ["cyclonedx.json", "spdx.json", "bom.json", "sbom.json", "sbom.spdx.json"];
+    private static readonly string[] SbomFilePatterns = ["cyclonedx.json", "spdx.json", "bom.json", "sbom.json", "sbom.spdx.json", "*.cdx.json", "*.spdx.json"];
     private static readonly string[] ProvenanceFilePatterns = ["provenance.json", "attestation.json", "*.intoto.jsonl", "slsa.json"];
 
     public string Id => "evidence-import";
@@ -46,24 +46,28 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var findings = new List<Finding>();
+        var processedSbomFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var pattern in SbomFilePatterns)
         {
             foreach (var file in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, pattern))
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (!processedSbomFiles.Add(Path.GetFullPath(file)))
+                {
+                    continue;
+                }
+
                 var relativePath = Path.GetRelativePath(context.RepositoryPath, file).Replace('\\', '/');
 
-                findings.Add(new Finding("TRUST-EVI001", "SBOM evidence found in repository",
-                    AnalysisCategory.Releases, Severity.Info, Confidence.High,
-                    $"SBOM file '{Path.GetFileName(file)}' found.",
-                    [new Evidence("sbom", $"SBOM file '{Path.GetFileName(file)}' detected.", relativePath)],
-                    new Recommendation("SBOMs help track dependencies. Ensure the SBOM is up-to-date and covers all components.")));
-
-                // Validate SBOM parseability
-                if (file.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                if (file.EndsWith(".json", StringComparison.OrdinalIgnoreCase) &&
+                    ValidateSbomJson(file, relativePath, context, findings, cancellationToken))
                 {
-                    ValidateSbomJson(file, relativePath, context, findings, cancellationToken);
+                    findings.Add(new Finding("TRUST-EVI001", "SBOM evidence found in repository",
+                        AnalysisCategory.Releases, Severity.Info, Confidence.High,
+                        $"SBOM file '{Path.GetFileName(file)}' found.",
+                        [new Evidence("sbom", $"Recognized SBOM file '{Path.GetFileName(file)}' detected.", relativePath)],
+                        new Recommendation("SBOMs help track dependencies. Ensure the SBOM is up-to-date and covers all components.")));
                 }
             }
         }
@@ -89,10 +93,10 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
         return AnalyzerResult.Completed(findings);
     }
 
-    private static void ValidateSbomJson(string file, string relativePath, AnalysisContext context, List<Finding> findings, CancellationToken ct)
+    private static bool ValidateSbomJson(string file, string relativePath, AnalysisContext context, List<Finding> findings, CancellationToken ct)
     {
         if (!RepositoryFileSystem.CanReadAsText(file))
-            return;
+            return false;
 
         ct.ThrowIfCancellationRequested();
 
@@ -103,46 +107,34 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
 
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
-
-            // Check for empty components/packages
-            if (root.TryGetProperty("components", out var components))
+            if (!IsRecognizedSbom(root, out var componentArray, out var packageArray))
             {
-                if (components.ValueKind == JsonValueKind.Array)
-                {
-                    var count = components.GetArrayLength();
-                    if (count == 0)
-                    {
-                        findings.Add(CreateEviFinding("TRUST-EVI005", "SBOM evidence appears empty",
-                            Severity.Low, relativePath, "SBOM has an empty 'components' array.", Confidence.Medium));
-                    }
-
-                    var directDependencyCount = GetDirectDependencyCount(context);
-                    if (count > 0 && directDependencyCount >= 20 && count < Math.Ceiling(directDependencyCount * 0.25))
-                    {
-                        findings.Add(CreateEviFinding("TRUST-EVI007", "SBOM appears potentially incomplete",
-                            Severity.Low, relativePath, $"SBOM has {count} components for {directDependencyCount} direct dependencies.", Confidence.Medium));
-                    }
-
-                    foreach (var sbomComponent in components.EnumerateArray())
-                    {
-                        if (sbomComponent.ValueKind == JsonValueKind.Object &&
-                            sbomComponent.TryGetProperty("purl", out var purl) &&
-                            purl.ValueKind == JsonValueKind.String)
-                        {
-                            var value = purl.GetString() ?? "";
-                            if (!IsValidPackageUrl(value))
-                            {
-                                findings.Add(CreateEviFinding("TRUST-EVI008", "Malformed purl",
-                                    Severity.Low, relativePath, $"Purl '{value}' is malformed."));
-                                break;
-                            }
-                        }
-                    }
-                }
+                findings.Add(CreateEviFinding("TRUST-EVI004", "SBOM evidence file is not parseable",
+                    Severity.Medium, relativePath, "SBOM JSON file does not match recognized CycloneDX or SPDX structure."));
+                return false;
             }
-            else if (root.TryGetProperty("packages", out var packages) &&
-                     packages.ValueKind == JsonValueKind.Array &&
-                     packages.GetArrayLength() == 0)
+
+            if (componentArray.ValueKind == JsonValueKind.Array)
+            {
+                var count = componentArray.GetArrayLength();
+                if (count == 0)
+                {
+                    findings.Add(CreateEviFinding("TRUST-EVI005", "SBOM evidence appears empty",
+                        Severity.Low, relativePath, "SBOM has an empty 'components' array.", Confidence.Medium));
+                }
+
+                var directDependencyCount = GetDirectDependencyCount(context);
+                if (count > 0 && directDependencyCount >= 20 && count < Math.Ceiling(directDependencyCount * 0.25))
+                {
+                    findings.Add(CreateEviFinding("TRUST-EVI007", "SBOM appears potentially incomplete",
+                        Severity.Low, relativePath, $"SBOM has {count} components for {directDependencyCount} direct dependencies.", Confidence.Medium));
+                }
+
+                ValidateComponentPackageUrls(componentArray, relativePath, findings);
+            }
+
+            if (packageArray.ValueKind == JsonValueKind.Array &&
+                packageArray.GetArrayLength() == 0)
             {
                 findings.Add(CreateEviFinding("TRUST-EVI005", "SBOM evidence appears empty",
                     Severity.Low, relativePath, "SBOM has an empty 'packages' array.", Confidence.Medium));
@@ -160,15 +152,65 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
                         Severity.Medium, relativePath, $"SBOM metadata references '{n}' which may differ from scanned repo.", Confidence.Medium));
                 }
             }
+
+            return true;
         }
         catch (JsonException)
         {
             findings.Add(CreateEviFinding("TRUST-EVI004", "SBOM evidence file is not parseable",
                 Severity.Medium, relativePath, "SBOM JSON file is not valid JSON."));
+            return false;
         }
         catch (IOException)
         {
             // Skip unreadable files
+            return false;
+        }
+    }
+
+    private static bool IsRecognizedSbom(JsonElement root, out JsonElement components, out JsonElement packages)
+    {
+        components = default;
+        packages = default;
+        var isCycloneDx = root.TryGetProperty("bomFormat", out var bomFormat) &&
+            bomFormat.ValueKind == JsonValueKind.String &&
+            string.Equals(bomFormat.GetString(), "CycloneDX", StringComparison.OrdinalIgnoreCase);
+        if (isCycloneDx &&
+            root.TryGetProperty("components", out components) &&
+            components.ValueKind == JsonValueKind.Array)
+        {
+            return true;
+        }
+
+        var isSpdx = root.TryGetProperty("spdxVersion", out var spdxVersion) &&
+            spdxVersion.ValueKind == JsonValueKind.String &&
+            (spdxVersion.GetString() ?? string.Empty).StartsWith("SPDX-", StringComparison.OrdinalIgnoreCase);
+        if (isSpdx &&
+            root.TryGetProperty("packages", out packages) &&
+            packages.ValueKind == JsonValueKind.Array)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void ValidateComponentPackageUrls(JsonElement components, string relativePath, List<Finding> findings)
+    {
+        foreach (var sbomComponent in components.EnumerateArray())
+        {
+            if (sbomComponent.ValueKind == JsonValueKind.Object &&
+                sbomComponent.TryGetProperty("purl", out var purl) &&
+                purl.ValueKind == JsonValueKind.String)
+            {
+                var value = purl.GetString() ?? "";
+                if (!IsValidPackageUrl(value))
+                {
+                    findings.Add(CreateEviFinding("TRUST-EVI008", "Malformed purl",
+                        Severity.Low, relativePath, $"Purl '{value}' is malformed."));
+                    break;
+                }
+            }
         }
     }
 

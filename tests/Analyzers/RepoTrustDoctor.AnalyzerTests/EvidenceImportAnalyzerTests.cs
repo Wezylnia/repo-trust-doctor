@@ -7,10 +7,12 @@ namespace RepoTrustDoctor.AnalyzerTests;
 public sealed class EvidenceImportAnalyzerTests
 {
     [Fact]
-    public async Task AnalyzeAsync_SbomAndProvenanceAreInformationalEvidence()
+    public async Task AnalyzeAsync_RecognizedSbomAndProvenanceAreInformationalEvidence()
     {
         using var fixture = TemporaryRepository.Create();
-        File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), "{}");
+        File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
+        {"bomFormat":"CycloneDX","components":[{"name":"x"}]}
+        """);
         File.WriteAllText(Path.Combine(fixture.Path, "attestation.json"), "{}");
 
         var analyzer = new EvidenceImportAnalyzer();
@@ -19,6 +21,33 @@ public sealed class EvidenceImportAnalyzerTests
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-EVI001" && finding.Severity == Severity.Info);
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-EVI003" && finding.Severity == Severity.Info);
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-EVI002");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_UnrecognizedSbomJson_DoesNotReportPositiveEvidence()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), "{}");
+
+        var analyzer = new EvidenceImportAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-EVI001");
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-EVI004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_SpdxWildcardFile_ReportsPositiveEvidence()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "project.spdx.json"), """
+        {"spdxVersion":"SPDX-2.3","packages":[{"name":"example"}]}
+        """);
+
+        var analyzer = new EvidenceImportAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
+
+        Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-EVI001");
     }
 
     [Fact]
@@ -38,7 +67,7 @@ public sealed class EvidenceImportAnalyzerTests
     {
         using var fixture = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
-        {"components":[{"name":"x"}]}
+        {"bomFormat":"CycloneDX","components":[{"name":"x"}]}
         """);
 
         var analyzer = new EvidenceImportAnalyzer();
@@ -66,7 +95,7 @@ public sealed class EvidenceImportAnalyzerTests
     {
         using var fixture = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
-        {"components":[{"name":"x"}]}
+        {"bomFormat":"CycloneDX","components":[{"name":"x"}]}
         """);
 
         var analyzer = new EvidenceImportAnalyzer();
@@ -76,18 +105,18 @@ public sealed class EvidenceImportAnalyzerTests
     }
 
     [Fact]
-    public async Task AnalyzeAsync_NonArrayComponents_DoesNotThrow()
+    public async Task AnalyzeAsync_NonArrayComponents_ReportsInvalidSchema()
     {
         using var fixture = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
-        {"components":{"name":"x"}}
+        {"bomFormat":"CycloneDX","components":{"name":"x"}}
         """);
 
         var analyzer = new EvidenceImportAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
 
-        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-EVI001");
-        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-EVI004");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-EVI001");
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-EVI004");
     }
 
     [Fact]
@@ -95,7 +124,7 @@ public sealed class EvidenceImportAnalyzerTests
     {
         using var fixture = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
-        {"components":[{"name":"x","purl":"npm/x@1.0.0"}]}
+        {"bomFormat":"CycloneDX","components":[{"name":"x","purl":"npm/x@1.0.0"}]}
         """);
 
         var analyzer = new EvidenceImportAnalyzer();
@@ -109,7 +138,7 @@ public sealed class EvidenceImportAnalyzerTests
     {
         using var fixture = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
-        {"components":[{"name":"@scope/name","purl":"pkg:npm/%40scope/name@1.0.0"}]}
+        {"bomFormat":"CycloneDX","components":[{"name":"@scope/name","purl":"pkg:npm/%40scope/name@1.0.0"}]}
         """);
 
         var analyzer = new EvidenceImportAnalyzer();
@@ -123,7 +152,7 @@ public sealed class EvidenceImportAnalyzerTests
     {
         using var fixture = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
-        {"components":[{"name":"x"}]}
+        {"bomFormat":"CycloneDX","components":[{"name":"x"}]}
         """);
 
         var analyzer = new EvidenceImportAnalyzer();
@@ -137,7 +166,7 @@ public sealed class EvidenceImportAnalyzerTests
     {
         using var fixture = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
-        {"components":[{"name":"x"},{"name":"y"}]}
+        {"bomFormat":"CycloneDX","components":[{"name":"x"},{"name":"y"}]}
         """);
 
         var context = new AnalysisContext("https://github.com/acme/service", fixture.Path, AnalysisDepth.Standard);
@@ -161,7 +190,7 @@ public sealed class EvidenceImportAnalyzerTests
     {
         using var fixture = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fixture.Path, "sbom.json"), """
-        {"metadata":{"component":{"name":"acme/service"}},"components":[{"name":"x"}]}
+        {"bomFormat":"CycloneDX","metadata":{"component":{"name":"acme/service"}},"components":[{"name":"x"}]}
         """);
 
         var analyzer = new EvidenceImportAnalyzer();

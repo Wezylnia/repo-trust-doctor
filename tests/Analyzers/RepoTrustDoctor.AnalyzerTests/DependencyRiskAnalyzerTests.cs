@@ -61,6 +61,35 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
+    public void PackageMetadataAnalyzer_DeduplicatesCaseInsensitiveEcosystems()
+    {
+        var distinct = PackageMetadataAnalyzer.DistinctPackagesForLookup([
+            CreatePackage(DependencyEcosystem.Npm, "Serilog", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "serilog", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Python, "zope.interface", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Python, "zope-interface", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Python, "zope_interface", "1.0.0")
+        ]).ToArray();
+
+        Assert.Equal(2, distinct.Length);
+        Assert.Contains(distinct, package => package.Ecosystem == DependencyEcosystem.Npm);
+        Assert.Contains(distinct, package => package.Ecosystem == DependencyEcosystem.Python);
+    }
+
+    [Fact]
+    public void PackageMetadataAnalyzer_PreservesCaseSensitiveEcosystemIdentities()
+    {
+        var distinct = PackageMetadataAnalyzer.DistinctPackagesForLookup([
+            CreatePackage(DependencyEcosystem.Go, "Example.com/Company/Module", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Go, "example.com/company/module", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Maven, "com.Example:Library", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Maven, "com.example:library", "1.0.0")
+        ]).ToArray();
+
+        Assert.Equal(4, distinct.Length);
+    }
+
+    [Fact]
     public async Task PackageMetadataAnalyzer_QueriesAllSupportedDistinctPackagesBeyondPreviousLimit()
     {
         var packages = Enumerable.Range(0, 75)

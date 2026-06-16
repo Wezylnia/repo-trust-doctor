@@ -277,15 +277,50 @@ public sealed class PackageMetadataAnalyzer : IRepositoryAnalyzer
     internal static IEnumerable<DependencyPackageInfo> DistinctPackagesForLookup(
         IEnumerable<DependencyPackageInfo> packages)
     {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var package in packages)
         {
-            var key = $"{package.Ecosystem}:{package.Name}:{package.Version}";
+            var key = BuildLookupKey(package);
             if (seen.Add(key))
             {
                 yield return package;
             }
         }
+    }
+
+    private static string BuildLookupKey(DependencyPackageInfo package) =>
+        string.Join(
+            ':',
+            package.Ecosystem,
+            NormalizePackageNameForLookup(package),
+            package.Version ?? string.Empty);
+
+    private static string NormalizePackageNameForLookup(DependencyPackageInfo package) =>
+        package.Ecosystem switch
+        {
+            DependencyEcosystem.Python => NormalizePyPiName(package.Name),
+            DependencyEcosystem.NuGet or
+            DependencyEcosystem.Npm or
+            DependencyEcosystem.Cargo or
+            DependencyEcosystem.Composer or
+            DependencyEcosystem.Ruby or
+            DependencyEcosystem.Pub or
+            DependencyEcosystem.Hex => package.Name.ToLowerInvariant(),
+            DependencyEcosystem.Go or
+            DependencyEcosystem.Maven or
+            DependencyEcosystem.Swift => package.Name,
+            _ => package.Name.ToLowerInvariant()
+        };
+
+    private static string NormalizePyPiName(string name)
+    {
+        var normalized = name.ToLowerInvariant().Replace('_', '-').Replace('.', '-');
+        while (normalized.Contains("--", StringComparison.Ordinal))
+        {
+            normalized = normalized.Replace("--", "-", StringComparison.Ordinal);
+        }
+
+        return normalized;
     }
 
     private sealed record PackageMetadataLookup(
