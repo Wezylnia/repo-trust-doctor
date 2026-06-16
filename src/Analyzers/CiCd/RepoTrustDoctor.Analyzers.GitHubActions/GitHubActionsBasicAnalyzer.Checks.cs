@@ -78,7 +78,9 @@ public sealed partial class GitHubActionsBasicAnalyzer
         var jobsByName = jobs.ToDictionary(job => job.Name, StringComparer.OrdinalIgnoreCase);
         var unsafePublishJob = jobs
             .Where(job => ReleasePublishPattern().IsMatch(job.Body))
-            .FirstOrDefault(job => !JobTransitivelyNeedsValidation(job, jobsByName));
+            .FirstOrDefault(job =>
+                JobRunsRegardlessOfNeedsResult(job) ||
+                !JobTransitivelyNeedsValidation(job, jobsByName));
 
         if (jobs.Count > 0 && unsafePublishJob is null)
         {
@@ -88,7 +90,9 @@ public sealed partial class GitHubActionsBasicAnalyzer
         var match = ReleasePublishPattern().Match(content);
         var evidence = unsafePublishJob is null
             ? "Release or package publishing command was found without a visible test dependency."
-            : $"Release or package publishing command was found in job '{unsafePublishJob.Name}' without a visible test dependency.";
+            : JobRunsRegardlessOfNeedsResult(unsafePublishJob)
+                ? $"Release or package publishing command was found in job '{unsafePublishJob.Name}' with if: always(), which can bypass failed validation jobs."
+                : $"Release or package publishing command was found in job '{unsafePublishJob.Name}' without a visible test dependency.";
 
         AddFinding(
             findings,

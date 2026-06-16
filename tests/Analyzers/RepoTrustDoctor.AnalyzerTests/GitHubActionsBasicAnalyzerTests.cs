@@ -885,6 +885,60 @@ public sealed class GitHubActionsBasicAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_TestJobContinueOnError_DoesNotSatisfyPublishValidation()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "release.yml"), """
+        jobs:
+          test:
+            continue-on-error: true
+            runs-on: ubuntu-latest
+            steps:
+              - run: dotnet test
+          publish:
+            needs: test
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PublishJobAlwaysCondition_ReportsGHA009()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "release.yml"), """
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - run: dotnet test
+          publish:
+            needs: test
+            if: ${{ always() }}
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f =>
+            f.RuleId == "TRUST-GHA009" &&
+            f.Evidence.Any(evidence => evidence.Message.Contains("always", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_NarrowCachePath_NoGHA017()
     {
         using var fixture = TemporaryRepository.Create();

@@ -128,7 +128,9 @@ public sealed partial class GitHubActionsBasicAnalyzer
                 continue;
             }
 
-            if (IsValidationJobName(dependency))
+            if (IsValidationJobName(dependency) &&
+                (!jobs.TryGetValue(dependency, out var validationJob) ||
+                 !JobAllowsValidationFailure(validationJob)))
             {
                 return true;
             }
@@ -149,6 +151,12 @@ public sealed partial class GitHubActionsBasicAnalyzer
         name.Contains("test", StringComparison.OrdinalIgnoreCase) ||
         name.Contains("ci", StringComparison.OrdinalIgnoreCase) ||
         name.Contains("build-and-test", StringComparison.OrdinalIgnoreCase);
+
+    private static bool JobAllowsValidationFailure(WorkflowJob job) =>
+        Regex.IsMatch(job.Body, @"(?mi)^\s*continue-on-error\s*:\s*true\s*(?:#.*)?$");
+
+    private static bool JobRunsRegardlessOfNeedsResult(WorkflowJob job) =>
+        Regex.IsMatch(job.Body, @"(?mi)^\s*if\s*:\s*(?:\$\{\{\s*)?always\s*\(\s*\)\s*(?:\}\})?\s*(?:#.*)?$");
 
     private sealed record WorkflowJob(string Name, string Body, IReadOnlyList<string> Needs);
 }
