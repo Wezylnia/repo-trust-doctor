@@ -169,6 +169,32 @@ public sealed class ImportGraphAnalyzerTests
     }
 
     [Fact]
+    public async Task ImportGraphAnalyzer_ReportsUnknownCoverageSeparatelyFromLowCoverage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "Common.ts"), "export class Common {}");
+        for (int i = 1; i <= 10; i++)
+        {
+            File.WriteAllText(
+                Path.Combine(fixture.Path, $"Service{i}.ts"),
+                "import { Common } from './Common';");
+        }
+
+        var coverageArtifact = new CoverageArtifact(
+            [new CoverageReportInfo("coverage.xml", CoverageReportFormat.Cobertura, 0.8, null, 8, 10, null, null)],
+            [new CoverageFileInfo("Other.ts", 1.0, null, 10, 10, null, null)],
+            new Dictionary<string, string>());
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        context.AddArtifact(new AnalyzerArtifact(CoverageArtifact.ArtifactKey, coverageArtifact));
+
+        var result = await new ImportGraphAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, finding => finding.RuleId == "TRUST-CODE019");
+        Assert.Equal(Severity.Medium, finding.Severity);
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-CODE011");
+    }
+
+    [Fact]
     public async Task ImportGraphAnalyzer_GoStringLiteralDoesNotCreateImportEdge()
     {
         using var fixture = TemporaryRepository.Create();

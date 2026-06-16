@@ -194,6 +194,7 @@ describe('report selectors', () => {
   it('explains v1.7 codebase rules specifically', () => {
     expect(explainFinding(finding('TRUST-CODE012', 'Medium', false))).toContain('authentication');
     expect(explainFinding(finding('TRUST-CODE015', 'High', false))).toContain('command execution');
+    expect(explainFinding(finding('TRUST-CODE019', 'Medium', false))).toContain('observability gap');
   });
 });
 

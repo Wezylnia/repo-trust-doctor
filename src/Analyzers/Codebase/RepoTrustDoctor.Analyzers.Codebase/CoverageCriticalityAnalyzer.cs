@@ -26,12 +26,20 @@ public sealed class CoverageCriticalityAnalyzer : IRepositoryAnalyzer
     [
         new(
             "TRUST-CODE007",
-            "Critical code has low or missing coverage",
+            "Critical code has measured low coverage",
             AnalysisCategory.Codebase,
             Severity.High,
             Confidence.Medium,
-            "A critical source file has low line coverage or is absent from the imported coverage report.",
-            "Add targeted tests around the critical code path, or document why coverage is intentionally unavailable.")
+            "A critical source file has measured low line coverage.",
+            "Add targeted tests around the critical code path."),
+        new(
+            "TRUST-CODE018",
+            "Coverage is unknown for critical code",
+            AnalysisCategory.Codebase,
+            Severity.Medium,
+            Confidence.Medium,
+            "A critical source file is absent from the imported coverage report.",
+            "Ensure coverage reports include this source path, or document why coverage is intentionally unavailable.")
     ];
 
     public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -71,15 +79,10 @@ public sealed class CoverageCriticalityAnalyzer : IRepositoryAnalyzer
         IReadOnlyDictionary<string, CoverageFileInfo> uniqueCoverageByFileName)
     {
         var normalizedPath = Normalize(criticalFile.FilePath);
-        var matchingCoverage = coverageByPath.TryGetValue(normalizedPath, out var exactMatch)
-            ? exactMatch
-            : coverageByPath
-                .Where(pair => 
-                    normalizedPath.EndsWith(pair.Key, StringComparison.OrdinalIgnoreCase) || 
-                    pair.Key.EndsWith(normalizedPath, StringComparison.OrdinalIgnoreCase))
-                .Select(pair => pair.Value)
-                .FirstOrDefault() ??
-              uniqueCoverageByFileName.GetValueOrDefault(Path.GetFileName(normalizedPath));
+        var matchingCoverage = FindCoverage(
+            normalizedPath,
+            coverageByPath,
+            uniqueCoverageByFileName);
 
         if (matchingCoverage is not null &&
             matchingCoverage.LineRate is double lineRate &&
@@ -88,22 +91,50 @@ public sealed class CoverageCriticalityAnalyzer : IRepositoryAnalyzer
             return null;
         }
 
-        var coverageText = matchingCoverage?.LineRate is double knownRate
-            ? knownRate.ToString("P0", CultureInfo.InvariantCulture)
-            : "missing";
+        var isUnknown = matchingCoverage?.LineRate is null;
+        var coverageText = isUnknown
+            ? "unknown"
+            : matchingCoverage!.LineRate!.Value.ToString("P0", CultureInfo.InvariantCulture);
         var message = $"{criticalFile.FilePath} is critical code with {coverageText} line coverage.";
 
         return new Finding(
-            "TRUST-CODE007",
-            "Critical code has low or missing coverage",
+            isUnknown ? "TRUST-CODE018" : "TRUST-CODE007",
+            isUnknown ? "Coverage is unknown for critical code" : "Critical code has measured low coverage",
             AnalysisCategory.Codebase,
-            Severity.High,
+            isUnknown ? Severity.Medium : Severity.High,
             Confidence.Medium,
             message,
             [new Evidence("code.coverage_criticality", message, criticalFile.FilePath, criticalFile.FirstRelevantLine)],
-            new Recommendation("Add targeted unit or integration tests for the critical code path before relying on this repository in production."),
-            IsBlocking: true,
+            new Recommendation(isUnknown
+                ? "Ensure the imported coverage report includes this critical source path, or review the path mapping."
+                : "Add targeted unit or integration tests for the critical code path before relying on this repository in production."),
             Tags: ["codebase", "coverage", "criticality"]);
+    }
+
+    private static CoverageFileInfo? FindCoverage(
+        string normalizedPath,
+        IReadOnlyDictionary<string, CoverageFileInfo> coverageByPath,
+        IReadOnlyDictionary<string, CoverageFileInfo> uniqueCoverageByFileName)
+    {
+        if (coverageByPath.TryGetValue(normalizedPath, out var exactMatch))
+        {
+            return exactMatch;
+        }
+
+        var suffixMatches = coverageByPath
+            .Where(pair =>
+                normalizedPath.EndsWith(pair.Key, StringComparison.OrdinalIgnoreCase) ||
+                pair.Key.EndsWith(normalizedPath, StringComparison.OrdinalIgnoreCase))
+            .Take(2)
+            .ToArray();
+        if (suffixMatches.Length == 1)
+        {
+            return suffixMatches[0].Value;
+        }
+
+        return suffixMatches.Length == 0
+            ? uniqueCoverageByFileName.GetValueOrDefault(Path.GetFileName(normalizedPath))
+            : null;
     }
 
     private static string Normalize(string path) => path.Replace('\\', '/').TrimStart('.', '/');

@@ -42,12 +42,20 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
             "Ensure highly central files have thorough tests and careful review gates."),
         new(
             "TRUST-CODE011",
-            "Central file has low or missing coverage",
+            "Central file has measured low coverage",
             AnalysisCategory.Codebase,
             Severity.High,
             Confidence.Medium,
-            "A highly central file has low or missing test coverage, amplifying the blast radius of defects.",
-            "Add targeted tests for central files to reduce risk of cascading breakage.")
+            "A highly central file has measured low test coverage, amplifying the blast radius of defects.",
+            "Add targeted tests for central files to reduce risk of cascading breakage."),
+        new(
+            "TRUST-CODE019",
+            "Coverage is unknown for central file",
+            AnalysisCategory.Codebase,
+            Severity.Medium,
+            Confidence.Medium,
+            "A highly central file is absent from the imported coverage report.",
+            "Ensure coverage reports include central files, or review the path mapping.")
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -129,7 +137,7 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
                 Tags: ["codebase", "import-graph", "centrality"]));
         }
 
-        // TRUST-CODE011: central files with low or missing coverage
+        // TRUST-CODE011/019: central files with low or unknown coverage
         context.TryGetArtifact<CoverageArtifact>(CoverageArtifact.ArtifactKey, out var coverageArtifact);
         var coverageLookup = BuildCoverageLookup(coverageArtifact);
 
@@ -143,15 +151,19 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
                     break;
                 }
 
-                var hasLowCoverage = false;
-                string coverageMessage;
-
                 if (TryFindCoverageRate(coverageLookup, entry.FilePath, out var rate))
                 {
                     if (rate < LowCoverageThreshold)
                     {
-                        hasLowCoverage = true;
-                        coverageMessage = $"{entry.FilePath} is imported by {entry.InDegree.ToString(CultureInfo.InvariantCulture)} files but has only {rate.ToString("P0", CultureInfo.InvariantCulture)} line coverage.";
+                        var coverageMessage = $"{entry.FilePath} is imported by {entry.InDegree.ToString(CultureInfo.InvariantCulture)} files but has only {rate.ToString("P0", CultureInfo.InvariantCulture)} line coverage.";
+                        findings.Add(CreateCoverageFinding(
+                            "TRUST-CODE011",
+                            "Central file has measured low coverage",
+                            Severity.High,
+                            entry.FilePath,
+                            coverageMessage,
+                            "Add targeted tests for central files to reduce risk of cascading breakage."));
+                        coverageFindingCount++;
                     }
                     else
                     {
@@ -160,25 +172,14 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
                 }
                 else
                 {
-                    hasLowCoverage = true;
-                    coverageMessage = $"{entry.FilePath} is imported by {entry.InDegree.ToString(CultureInfo.InvariantCulture)} files but has no coverage data.";
-                }
-
-                if (hasLowCoverage)
-                {
-                    findings.Add(new Finding(
-                        "TRUST-CODE011",
-                        "Central file has low or missing coverage",
-                        AnalysisCategory.Codebase,
-                        Severity.High,
-                        Confidence.Medium,
+                    var coverageMessage = $"{entry.FilePath} is imported by {entry.InDegree.ToString(CultureInfo.InvariantCulture)} files but has no matching coverage data.";
+                    findings.Add(CreateCoverageFinding(
+                        "TRUST-CODE019",
+                        "Coverage is unknown for central file",
+                        Severity.Medium,
+                        entry.FilePath,
                         coverageMessage,
-                        [new Evidence(
-                            "import.centrality.coverage",
-                            coverageMessage,
-                            entry.FilePath)],
-                        new Recommendation("Add targeted tests for central files to reduce risk of cascading breakage."),
-                        Tags: ["codebase", "import-graph", "coverage"]));
+                        "Ensure imported coverage reports include this central source path, or review the path mapping."));
                     coverageFindingCount++;
                 }
             }
@@ -216,6 +217,24 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
             [new AnalyzerArtifact(ImportGraphArtifact.ArtifactKey, artifact)],
             warnings: warnings);
     }
+
+    private static Finding CreateCoverageFinding(
+        string ruleId,
+        string title,
+        Severity severity,
+        string filePath,
+        string message,
+        string recommendation) =>
+        new(
+            ruleId,
+            title,
+            AnalysisCategory.Codebase,
+            severity,
+            Confidence.Medium,
+            message,
+            [new Evidence("import.centrality.coverage", message, filePath)],
+            new Recommendation(recommendation),
+            Tags: ["codebase", "import-graph", "coverage"]);
 
     private static IEnumerable<string> EnumerateSourceFiles(string root) =>
         RepositoryFileSystem.EnumerateFiles(root, "*", SearchOption.AllDirectories)

@@ -198,7 +198,11 @@ export function explainFinding(finding: Finding): string {
   }
 
   if (finding.ruleId === 'TRUST-CODE011') {
-    return 'A highly central file has low or missing imported coverage evidence. Because many files depend on it, defects here can spread widely. Add focused tests before risky changes.';
+    return 'A highly central file has measured low imported coverage. Because many files depend on it, defects here can spread widely. Add focused tests before risky changes.';
+  }
+
+  if (finding.ruleId === 'TRUST-CODE019') {
+    return 'A highly central file does not have matching imported coverage evidence. Treat this as an observability gap first, then add or import coverage before making risky changes.';
   }
 
   if (finding.ruleId === 'TRUST-CODE012') {

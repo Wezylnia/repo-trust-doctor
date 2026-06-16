@@ -81,15 +81,25 @@ Recommendation: catch specific exception types and preserve diagnostic context.
 
 Noise control: handlers that immediately rethrow, wrap the exception into a domain-specific failure, log with exception context, or explicitly fail a module command are treated as bounded diagnostic boundaries instead of hidden failures.
 
-### `TRUST-CODE007` - Critical code has low or missing coverage
+### `TRUST-CODE007` - Critical code has measured low coverage
 
 - Category: `Codebase`
 - Default severity: `High`
 - Default confidence: `Medium`
 
-An imported coverage report exists, and a critical source file has low line coverage or is absent from the report.
+An imported coverage report exists, and a critical source file has measured line coverage below the critical-code threshold.
 
 Recommendation: add targeted unit or integration tests for the critical code path before relying on this repository in production.
+
+### `TRUST-CODE018` - Coverage is unknown for critical code
+
+- Category: `Codebase`
+- Default severity: `Medium`
+- Default confidence: `Medium`
+
+An imported coverage report exists, but a critical source file is absent from that report. This is different from measured low coverage: the scanner cannot tell whether the file is untested or whether the imported report only covers another project or path mapping.
+
+Recommendation: ensure imported coverage artifacts include the critical source path, or review the coverage path mapping.
 
 ### `TRUST-CODE014` - Deserialization in critical code
 
@@ -190,15 +200,25 @@ semantic compiler model.
 
 Recommendation: ensure highly central files have thorough tests and careful review gates.
 
-### `TRUST-CODE011` - Central file has low or missing coverage
+### `TRUST-CODE011` - Central file has measured low coverage
 
 - Category: `Codebase`
 - Default severity: `High`
 - Default confidence: `Medium`
 
-A highly central file has low or missing test coverage, amplifying the blast radius of defects.
+A highly central file has measured low test coverage, amplifying the blast radius of defects.
 
 Recommendation: add targeted tests for central files to reduce risk of cascading breakage.
+
+### `TRUST-CODE019` - Coverage is unknown for central file
+
+- Category: `Codebase`
+- Default severity: `Medium`
+- Default confidence: `Medium`
+
+A highly central file is absent from the imported coverage report. This is a review signal, not proof that the file has low measured coverage.
+
+Recommendation: ensure imported coverage artifacts include central source files, or review the coverage path mapping.
 
 ## Framework Routes
 

@@ -88,7 +88,7 @@ Implemented through `v0.8.7`:
 - SBOM and provenance evidence import as informational release evidence,
 - coverage import for Cobertura XML and lcov in deep scans,
 - critical code heuristics for auth, authorization, payments, data access, file operations, network calls, cryptography, secrets, large files, and broad exception handling,
-- low or missing coverage correlation for critical code,
+- measured low coverage and unknown coverage correlation for critical code,
 - .NET public API surface extraction and baseline diff review,
 - scan snapshot, trust diff, repository comparison, scheduled scan, and regression alert models,
 - CLI `diff` command for comparing two JSON scan reports,
@@ -259,6 +259,7 @@ The roadmap grows the platform gradually:
 | `v0.8.1` | Azure Pipelines, CircleCI, and Terraform static security checks; package registry configuration rules; SBOM correlation; GitHub Actions advanced hardening; Gradle version catalog support |
 | `v0.8.7` | Dependency resolution correctness, registry/cache outcome integrity, partial-analysis safeguards, release evidence fixes, and report completeness |
 | `v1.7.x` | Multi-language public API extraction, import graph analysis, framework route detection, deserialization/command execution heuristics, deeper code intelligence and false-positive reduction |
+| `v2.0.0` | Policy fact engine, trust graph correlation, suppression/waiver workflow, VEX/provenance verification, deterministic remediation patches, and plugin-ready analyzer platform |
 
 See [docs/roadmap.md](docs/roadmap.md) for detailed milestone scope, out-of-scope boundaries, and success criteria.
 

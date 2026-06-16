@@ -427,7 +427,8 @@ Checksum files, signatures, SBOM/provenance files, and workflow integrity steps 
 
 | Rule ID | Title | Severity | Confidence |
 |---------|-------|----------|------------|
-| TRUST-CODE007 | Critical code has low or missing coverage | High | Medium |
+| TRUST-CODE007 | Critical code has measured low coverage | High | Medium |
+| TRUST-CODE018 | Coverage is unknown for critical code | Medium | Medium |
 
 ### Public API
 
@@ -445,7 +446,8 @@ Checksum files, signatures, SBOM/provenance files, and workflow integrity steps 
 | Rule ID | Title | Severity | Confidence |
 |---------|-------|----------|------------|
 | TRUST-CODE010 | Highly central file detected | Low | Medium |
-| TRUST-CODE011 | Central file with low or missing coverage | Medium | Medium |
+| TRUST-CODE011 | Central file has measured low coverage | High | Medium |
+| TRUST-CODE019 | Coverage is unknown for central file | Medium | Medium |
 
 ### Framework Routes
 

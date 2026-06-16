@@ -17,7 +17,8 @@ public sealed class CoverageCriticalityAnalyzerTests
 
         var finding = Assert.Single(result.Findings);
         Assert.Equal("TRUST-CODE007", finding.RuleId);
-        Assert.True(finding.IsBlocking);
+        Assert.Equal(Severity.High, finding.Severity);
+        Assert.False(finding.IsBlocking);
     }
 
     [Fact]
@@ -29,7 +30,11 @@ public sealed class CoverageCriticalityAnalyzerTests
 
         var result = await new CoverageCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
 
-        Assert.Contains(result.Findings, finding => finding.Message.Contains("missing", StringComparison.OrdinalIgnoreCase));
+        var finding = Assert.Single(result.Findings);
+        Assert.Equal("TRUST-CODE018", finding.RuleId);
+        Assert.Equal(Severity.Medium, finding.Severity);
+        Assert.False(finding.IsBlocking);
+        Assert.Contains("unknown", finding.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -60,8 +65,8 @@ public sealed class CoverageCriticalityAnalyzerTests
 
         Assert.Contains(
             result.Findings,
-            finding => finding.RuleId == "TRUST-CODE007" &&
-                       finding.Message.Contains("missing", StringComparison.OrdinalIgnoreCase));
+            finding => finding.RuleId == "TRUST-CODE018" &&
+                       finding.Message.Contains("unknown", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
