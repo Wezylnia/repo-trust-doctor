@@ -281,9 +281,6 @@ For Cargo workspaces, member dependencies declared with `workspace = true` inher
 | TRUST-DEP042 | Elixir dependency uses external Git/path source | Medium | High |
 | TRUST-DEP043 | Swift executable package has no Package.resolved | Medium | High |
 | TRUST-DEP044 | Swift uses branch-based dependency | Medium | High |
-| TRUST-DEP046 | C/C++ uses Conan package manager | Low | High |
-| TRUST-DEP047 | C/C++ uses vcpkg | Low | High |
-| TRUST-DEP048 | C/C++ uses CMake external dependencies | Low | High |
 | TRUST-DEP049 | Ruby gem uses prerelease version | Low | High |
 | TRUST-DEP050 | Gradle version catalog uses dynamic dependency version | Medium | High |
 | TRUST-DEP051 | Gradle version catalog uses dynamic plugin version | Medium | High |

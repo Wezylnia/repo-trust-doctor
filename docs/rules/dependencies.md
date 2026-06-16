@@ -655,44 +655,6 @@ Why it matters: branch-based dependencies can change without a manifest change.
 
 Recommendation: prefer version-based dependencies with a committed `Package.resolved`.
 
-## TRUST-DEP046: C/C++ Project Uses Conan Package Manager
-
-- Category: Dependencies
-- Default severity: Low
-- Default confidence: High
-
-Detects `conanfile.txt` or `conanfile.py`.
-
-Why it matters: C/C++ package manager evidence helps reviewers understand dependency sources that may otherwise be hidden in build scripts.
-
-Recommendation: review Conan dependencies and commit lockfiles where the project uses them.
-
-## TRUST-DEP047: C/C++ Project Uses vcpkg
-
-- Category: Dependencies
-- Default severity: Low
-- Default confidence: High
-
-Detects `vcpkg.json`.
-
-Why it matters: vcpkg manifests define native dependencies that should be reviewed alongside application code.
-
-Recommendation: review vcpkg dependencies and version constraints.
-
-## TRUST-DEP048: C/C++ Project Uses CMake External Dependencies
-
-- Category: Dependencies
-- Default severity: Low
-- Default confidence: High
-
-Detects `find_package` or `FetchContent_Declare` in `CMakeLists.txt`. CMake
-manifests are streamed up to 8 MiB so large generated project definitions do
-not disappear behind the general 512 KiB text-file guard.
-
-Why it matters: CMake can pull in external dependencies through build configuration.
-
-Recommendation: review CMake external dependencies and document expected package sources.
-
 ## TRUST-DEP049: Ruby Gem Uses a Prerelease Version
 
 - Category: Dependencies
