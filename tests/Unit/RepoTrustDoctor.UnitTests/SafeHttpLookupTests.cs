@@ -161,6 +161,7 @@ public sealed class SafeHttpLookupTests
         var agpl = PackageLicenseNormalizer.Normalize("AGPL-3.0-only");
 
         Assert.Equal(PackageLicenseFamily.Copyleft, agpl.Family);
+        Assert.Equal("AGPL-3.0-ONLY", agpl.SpdxId);
         Assert.True(agpl.IsPolicySensitive);
         var mixed = PackageLicenseNormalizer.Normalize("MIT AND GPL-3.0-only");
         Assert.Equal(PackageLicenseFamily.Copyleft, mixed.Family);

@@ -35,6 +35,8 @@ Recommendation: publish SHA-256 or SHA-512 checksums next to release artifacts.
 
 Noise control: detached signatures such as `.sig` files are preserved as separate integrity evidence and do not count as SHA-256 or SHA-512 checksum files.
 
+Policy impact: profiles that require release checksum evidence, such as `SecuritySensitiveDependency`, treat this finding as a blocking policy violation.
+
 ## TRUST-REL003: Release Artifact Lacks SBOM or Provenance Evidence
 
 - Category: Releases

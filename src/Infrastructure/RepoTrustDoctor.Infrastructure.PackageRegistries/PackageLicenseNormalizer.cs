@@ -6,7 +6,15 @@ public static class PackageLicenseNormalizer
 {
     private const int MaxExpressionLength = 120;
     private static readonly string[] PermissiveLicenses = ["MIT", "APACHE-2.0", "BSD-2-CLAUSE", "BSD-3-CLAUSE", "ISC"];
-    private static readonly string[] CopyleftLicenses = ["AGPL", "LGPL", "GPL"];
+    private static readonly string[] CopyleftLicenses =
+    [
+        "AGPL-3.0-OR-LATER", "AGPL-3.0-ONLY", "AGPL-3.0",
+        "LGPL-3.0-OR-LATER", "LGPL-3.0-ONLY", "LGPL-3.0",
+        "LGPL-2.1-OR-LATER", "LGPL-2.1-ONLY", "LGPL-2.1",
+        "GPL-3.0-OR-LATER", "GPL-3.0-ONLY", "GPL-3.0",
+        "GPL-2.0-OR-LATER", "GPL-2.0-ONLY", "GPL-2.0",
+        "AGPL", "LGPL", "GPL"
+    ];
 
     public static NormalizedPackageLicense Normalize(string? expression)
     {

@@ -313,7 +313,10 @@ public sealed class DependencyLicenseAnalyzer : IRepositoryAnalyzer
             }
             else if (license.IsPolicySensitive)
             {
-                findings.Add(CreateFinding("TRUST-LIC002", "Dependency uses a policy-sensitive license", Severity.Medium, Confidence.Medium, $"Package `{package.Name}` uses policy-sensitive license `{license.OriginalExpression}`.", "license-metadata", $"License family `{license.Family}` detected for `{package.Name}`.", "Review license obligations with the appropriate legal or compliance process."));
+                var tags = license.SpdxId is null
+                    ? null
+                    : new[] { $"license-spdx:{license.SpdxId}" };
+                findings.Add(CreateFinding("TRUST-LIC002", "Dependency uses a policy-sensitive license", Severity.Medium, Confidence.Medium, $"Package `{package.Name}` uses policy-sensitive license `{license.OriginalExpression}`.", "license-metadata", $"License family `{license.Family}` detected for `{package.Name}`.", "Review license obligations with the appropriate legal or compliance process.", tags));
             }
         }
 

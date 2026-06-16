@@ -20,6 +20,8 @@ Recommendation: manually review the package license before production use.
 
 Detects common copyleft license families such as GPL, LGPL, and AGPL in package metadata. Expressions where a copyleft license is required, such as `MIT AND GPL-3.0-only`, are treated as policy-sensitive. Expressions with a clear permissive alternative, such as `MIT OR GPL-3.0-only`, are not reported by this rule.
 
+When a normalized SPDX identifier can be derived, the finding carries a structured `license-spdx:*` tag. Policy evaluation uses that tag to distinguish an explicitly denied license, such as GPL or AGPL in the strict profile, from a sensitive-but-not-denied license that still needs review but should not be automatically blocking.
+
 Why it matters: copyleft licenses may carry obligations that depend on usage context. RepoTrustDoctor reports this as a review signal, not a legal conclusion.
 
 Recommendation: review license obligations with the appropriate legal or compliance process.

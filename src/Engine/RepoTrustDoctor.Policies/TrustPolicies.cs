@@ -121,7 +121,11 @@ public sealed record PolicyEvaluation(
 
 public sealed class TrustPolicyEvaluator
 {
-    public PolicyEvaluation Evaluate(IReadOnlyList<Finding> findings, TrustPolicy policy)
+    public PolicyEvaluation Evaluate(
+        IReadOnlyList<Finding> findings,
+        TrustPolicy policy,
+        int? overallScore = null,
+        IReadOnlyList<CategoryScore>? categoryScores = null)
     {
         var violations = new List<PolicyViolation>();
         var blocking = new List<PolicyViolation>();
@@ -145,6 +149,13 @@ public sealed class TrustPolicyEvaluator
                 warnings.Add(violation.Message);
             }
         }
+
+        AddScoreViolations(
+            policy,
+            overallScore,
+            categoryScores,
+            violations,
+            warnings);
 
         return new PolicyEvaluation(policy.Name, policy.Profile, violations, blocking, warnings.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
     }
@@ -172,10 +183,16 @@ public sealed class TrustPolicyEvaluator
 
         if (finding.RuleId == "TRUST-LIC002")
         {
+            if (MatchesLicenseSet(finding, policy.AllowedLicenses))
+            {
+                return null;
+            }
+
+            var denied = MatchesLicenseSet(finding, policy.DeniedLicenses);
             return new PolicyViolation(
                 "POLICY-LICENSE-SENSITIVE",
                 "Policy-sensitive dependency license requires review.",
-                policy.DeniedLicenses.Count > 0 ? Severity.High : Severity.Medium,
+                denied ? Severity.High : Severity.Medium,
                 finding.Fingerprint);
         }
 
@@ -194,6 +211,15 @@ public sealed class TrustPolicyEvaluator
                 "POLICY-GHA-PINNING",
                 "The selected policy requires pinned GitHub Actions.",
                 policy.UnpinnedActionHandling == PolicyRiskHandling.Block ? Severity.High : Severity.Medium,
+                finding.Fingerprint);
+        }
+
+        if (finding.RuleId == "TRUST-REL002" && policy.RequireReleaseChecksums)
+        {
+            return new PolicyViolation(
+                "POLICY-RELEASE-CHECKSUM",
+                "The selected policy requires checksums for release artifacts.",
+                Severity.High,
                 finding.Fingerprint);
         }
 
@@ -231,6 +257,95 @@ public sealed class TrustPolicyEvaluator
             return true;
         }
 
-        return violation.RuleId == "POLICY-LICENSE-SENSITIVE" && policy.DeniedLicenses.Count > 0;
+        if (violation.RuleId == "POLICY-LICENSE-SENSITIVE")
+        {
+            return MatchesLicenseSet(finding, policy.DeniedLicenses);
+        }
+
+        return violation.RuleId == "POLICY-RELEASE-CHECKSUM" &&
+               policy.RequireReleaseChecksums;
     }
+
+    private static void AddScoreViolations(
+        TrustPolicy policy,
+        int? overallScore,
+        IReadOnlyList<CategoryScore>? categoryScores,
+        List<PolicyViolation> violations,
+        List<string> warnings)
+    {
+        if (overallScore is int overall &&
+            overall < policy.MinimumOverallScore)
+        {
+            var violation = new PolicyViolation(
+                "POLICY-MINIMUM-OVERALL-SCORE",
+                $"Overall score {overall} is below the policy minimum of {policy.MinimumOverallScore}.",
+                Severity.Medium);
+            violations.Add(violation);
+            warnings.Add(violation.Message);
+        }
+
+        if (categoryScores is null)
+        {
+            return;
+        }
+
+        foreach (var categoryScore in categoryScores)
+        {
+            if (!policy.MinimumCategoryScores.TryGetValue(
+                    categoryScore.Category,
+                    out var minimum) ||
+                categoryScore.Score >= minimum)
+            {
+                continue;
+            }
+
+            var violation = new PolicyViolation(
+                $"POLICY-MINIMUM-{categoryScore.Category.ToString().ToUpperInvariant()}-SCORE",
+                $"{categoryScore.Category} score {categoryScore.Score} is below the policy minimum of {minimum}.",
+                Severity.Medium);
+            violations.Add(violation);
+            warnings.Add(violation.Message);
+        }
+    }
+
+    private static bool MatchesLicenseSet(
+        Finding finding,
+        IReadOnlySet<string> licenses)
+    {
+        if (licenses.Count == 0)
+        {
+            return false;
+        }
+
+        const string tagPrefix = "license-spdx:";
+        var licenseTag = finding.Tags?
+            .FirstOrDefault(tag => tag.StartsWith(
+                tagPrefix,
+                StringComparison.OrdinalIgnoreCase));
+        var licenseId = licenseTag is null
+            ? null
+            : licenseTag[tagPrefix.Length..];
+        if (string.IsNullOrWhiteSpace(licenseId))
+        {
+            return false;
+        }
+
+        var canonicalId = CanonicalizeLicenseId(licenseId);
+        return licenses.Any(configured =>
+        {
+            var canonicalConfigured = CanonicalizeLicenseId(configured);
+            return canonicalId.Equals(
+                       canonicalConfigured,
+                       StringComparison.OrdinalIgnoreCase) ||
+                   !canonicalConfigured.Contains('-') &&
+                   canonicalId.StartsWith(
+                       $"{canonicalConfigured}-",
+                       StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    private static string CanonicalizeLicenseId(string licenseId) =>
+        licenseId.Trim()
+            .Replace("-ONLY", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("-OR-LATER", string.Empty, StringComparison.OrdinalIgnoreCase);
 }

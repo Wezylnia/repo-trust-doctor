@@ -477,7 +477,11 @@ public sealed class DependencyRiskAnalyzerTests
         var result = await new DependencyLicenseAnalyzer().AnalyzeAsync(context, CancellationToken.None);
 
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-LIC001");
-        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-LIC002");
+        Assert.Contains(result.Findings, finding =>
+            finding.RuleId == "TRUST-LIC002" &&
+            finding.Tags?.Contains(
+                "license-spdx:GPL-3.0-ONLY",
+                StringComparer.OrdinalIgnoreCase) == true);
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-LIC003");
     }
 

@@ -58,7 +58,6 @@ public sealed class TrustScorer
         completeness ??= ScanCompletenessAssessment.Complete;
         var normalizedProfile = TrustProfileCatalog.Normalize(trustProfile);
         var policy = TrustPolicyPresets.ForProfile(normalizedProfile);
-        var policyEvaluation = new TrustPolicyEvaluator().Evaluate(findings, policy);
 
         var findingsByCategory = findings
             .GroupBy(f => f.Category)
@@ -97,6 +96,12 @@ public sealed class TrustScorer
             categoryScores = [];
             overall = 100;
         }
+
+        var policyEvaluation = new TrustPolicyEvaluator().Evaluate(
+            findings,
+            policy,
+            overall,
+            categoryScores);
 
         // Hard-cap: only when blocking risks exist from policy, or critical/high findings under strict profiles
         var policyHardCap = policyEvaluation.HasBlockingRisks;

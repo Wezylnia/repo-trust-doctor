@@ -18,12 +18,23 @@ CI/CD and container checks are not separate user profiles. GitHub Actions workfl
 
 ## Built-In Policy Presets
 
-Each active profile resolves to a built-in `TrustPolicy` preset. Presets include minimum overall score, category score thresholds, allowed and denied license placeholders, maximum vulnerability severity, SECURITY.md expectations, unpinned external action handling, release checksum requirements, and allowed registry placeholders.
+Each active profile resolves to a built-in `TrustPolicy` preset. Presets include minimum overall score, category score thresholds, allowed and denied license handling, maximum vulnerability severity, `SECURITY.md` expectations, unpinned external action handling, and release checksum requirements. Registry allowlists are kept in the policy model for future structured package-source evaluation, but they are not enforced by the current policy evaluator.
 
 Policy presets are intentionally conservative value objects. They do not make analyzers enforce enterprise decisions; analyzers still produce evidence and policy/scoring layers interpret that evidence. Scoring is profile-aware as of `v0.6.0`.
 
 ## Policy Evaluation
 
-The policy evaluator reads findings and the selected built-in policy, then produces violations, warnings, and blocking risks. Initial evaluation covers known vulnerability findings, unknown or policy-sensitive license findings, missing `SECURITY.md`, unpinned external GitHub Actions, and findings already marked blocking by analyzers.
+The policy evaluator reads findings, category scores, the overall score, and the selected built-in policy, then produces violations, warnings, and blocking risks. Evaluation covers:
+
+- known vulnerability findings that exceed the profile maximum,
+- unknown license findings according to the profile's unknown-license handling,
+- policy-sensitive license findings, with SPDX tags matched against explicit allowed and denied license sets,
+- missing `SECURITY.md` when the profile requires it,
+- unpinned external GitHub Actions according to profile strictness,
+- missing release checksums when the profile requires release checksum evidence,
+- overall score and evaluated category scores below the profile minimums,
+- findings already marked blocking by analyzers.
+
+Only categories that were actually evaluated by completed analyzer modules are compared with category score thresholds. Unevaluated categories do not create synthetic policy failures.
 
 Policy evaluation does not execute repository code and does not change analyzer behavior.
