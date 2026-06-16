@@ -81,6 +81,67 @@ public sealed class PackageMetadataCacheTests
     }
 
     [Fact]
+    public async Task GetMetadataAsync_CoalescesConcurrentRequestsAndCleansKeyLock()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var inner = new StubMetadataClient { Delay = TimeSpan.FromMilliseconds(50) };
+        var client = CreateClient(
+            fixture.Path,
+            inner,
+            new MutableTimeProvider(DateTimeOffset.UtcNow));
+        var package = CreatePackage("left-pad", "1.0.0");
+
+        await Task.WhenAll(Enumerable
+            .Range(0, 20)
+            .Select(_ => client.GetMetadataAsync(package, CancellationToken.None)));
+
+        Assert.Equal(1, inner.RequestCount);
+        Assert.Equal(0, client.ActiveKeyLockCount);
+    }
+
+    [Fact]
+    public async Task GetMetadataAsync_DoesNotRetainKeyLocksForDistinctPackages()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var inner = new StubMetadataClient();
+        var client = CreateClient(
+            fixture.Path,
+            inner,
+            new MutableTimeProvider(DateTimeOffset.UtcNow));
+
+        for (var index = 0; index < 200; index++)
+        {
+            await client.GetMetadataAsync(
+                CreatePackage($"package-{index}", "1.0.0"),
+                CancellationToken.None);
+        }
+
+        Assert.Equal(200, inner.RequestCount);
+        Assert.Equal(0, client.ActiveKeyLockCount);
+    }
+
+    [Fact]
+    public async Task GetMetadataAsync_UsesCaseSensitiveLockKeysForMavenPackages()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        var inner = new StubMetadataClient();
+        var client = CreateClient(
+            fixture.Path,
+            inner,
+            new MutableTimeProvider(DateTimeOffset.UtcNow));
+
+        await client.GetMetadataAsync(
+            CreatePackage("Com.Example:Library", "1.0.0", DependencyEcosystem.Maven),
+            CancellationToken.None);
+        await client.GetMetadataAsync(
+            CreatePackage("com.example:library", "1.0.0", DependencyEcosystem.Maven),
+            CancellationToken.None);
+
+        Assert.Equal(2, inner.RequestCount);
+        Assert.Equal(0, client.ActiveKeyLockCount);
+    }
+
+    [Fact]
     public async Task GetExpiredKeysAsync_PreservesOriginalPackageName()
     {
         using var fixture = TemporaryDirectory.Create();
@@ -315,9 +376,12 @@ public sealed class PackageMetadataCacheTests
             RegistryCacheTtl = TimeSpan.FromHours(24)
         };
 
-    private static DependencyPackageInfo CreatePackage(string name, string version) =>
+    private static DependencyPackageInfo CreatePackage(
+        string name,
+        string version,
+        DependencyEcosystem ecosystem = DependencyEcosystem.Npm) =>
         new(
-            DependencyEcosystem.Npm,
+            ecosystem,
             name,
             version,
             DependencyScope.Production,
@@ -331,7 +395,9 @@ public sealed class PackageMetadataCacheTests
     {
         public DependencyEcosystem Ecosystem => DependencyEcosystem.Npm;
 
-        public int RequestCount { get; private set; }
+        private int requestCount;
+
+        public int RequestCount => requestCount;
 
         public bool ReturnNotFound { get; set; }
 
@@ -339,14 +405,21 @@ public sealed class PackageMetadataCacheTests
 
         public bool ThrowOnRequest { get; set; }
 
+        public TimeSpan Delay { get; set; }
+
         public string? LastPackageName { get; private set; }
 
-        public Task<PackageMetadataLookupResult> GetMetadataAsync(
+        public async Task<PackageMetadataLookupResult> GetMetadataAsync(
             DependencyPackageInfo package,
             CancellationToken cancellationToken)
         {
-            RequestCount++;
+            Interlocked.Increment(ref requestCount);
             LastPackageName = package.Name;
+            if (Delay > TimeSpan.Zero)
+            {
+                await Task.Delay(Delay, cancellationToken);
+            }
+
             if (ThrowOnRequest)
             {
                 throw new HttpRequestException("simulated registry failure");
@@ -354,18 +427,18 @@ public sealed class PackageMetadataCacheTests
 
             if (ReturnTransientFailure)
             {
-                return Task.FromResult(PackageMetadataLookupResult.Failure(
+                return PackageMetadataLookupResult.Failure(
                     PackageMetadataLookupStatus.TransientFailure,
                     SafeLookupErrorKind.Timeout,
-                    "simulated timeout"));
+                    "simulated timeout");
             }
 
             if (ReturnNotFound)
             {
-                return Task.FromResult(PackageMetadataLookupResult.NotFound());
+                return PackageMetadataLookupResult.NotFound();
             }
 
-            return Task.FromResult(PackageMetadataLookupResult.Found(
+            return PackageMetadataLookupResult.Found(
                 new PackageRegistryMetadata(
                     package.Ecosystem,
                     package.Name,
@@ -378,7 +451,7 @@ public sealed class PackageMetadataCacheTests
                     null,
                     "MIT",
                     null,
-                    "registry.test")));
+                    "registry.test"));
         }
     }
 

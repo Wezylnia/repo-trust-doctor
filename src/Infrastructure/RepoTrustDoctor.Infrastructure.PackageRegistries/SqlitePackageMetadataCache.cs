@@ -166,5 +166,5 @@ public sealed class SqlitePackageMetadataCache(LocalIntelligenceDatabase databas
     }
 
     private static string NormalizePackageName(DependencyPackageInfo package) =>
-        package.Name.Trim().ToLowerInvariant();
+        PackageMetadataIdentity.NormalizePackageName(package.Ecosystem, package.Name);
 }

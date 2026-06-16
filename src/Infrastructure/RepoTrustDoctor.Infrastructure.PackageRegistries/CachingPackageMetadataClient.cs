@@ -8,8 +8,8 @@ namespace RepoTrustDoctor.Infrastructure.PackageRegistries;
 
 public sealed class CachingPackageMetadataClient : IPackageMetadataClient
 {
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> keyLocks =
-        new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, KeyedLockEntry> keyLocks =
+        new(StringComparer.Ordinal);
     private readonly IPackageMetadataClient inner;
     private readonly SqlitePackageMetadataCache cache;
     private readonly TimeSpan cacheTtl;
@@ -29,6 +29,8 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
 
     public DependencyEcosystem Ecosystem => inner.Ecosystem;
 
+    internal int ActiveKeyLockCount => keyLocks.Count;
+
     public async Task<PackageMetadataLookupResult> GetMetadataAsync(
         DependencyPackageInfo package,
         CancellationToken cancellationToken)
@@ -40,11 +42,14 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
             return CreateCachedResult(cached, "sqlite", isStale: false);
         }
 
-        var key = $"{package.Ecosystem}:{package.Name}:{package.Version}";
-        var keyLock = keyLocks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
-        await keyLock.WaitAsync(cancellationToken);
+        var key = BuildLockKey(package);
+        var keyLock = AcquireKeyLock(key);
+        var lockTaken = false;
         try
         {
+            await keyLock.Entry.Semaphore.WaitAsync(cancellationToken);
+            lockTaken = true;
+
             now = timeProvider.GetUtcNow();
             cached = await TryGetCachedAsync(package, cancellationToken);
             if (cached?.IsFresh(now) == true)
@@ -97,9 +102,46 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
         }
         finally
         {
-            keyLock.Release();
+            if (lockTaken)
+            {
+                keyLock.Entry.Semaphore.Release();
+            }
+
+            keyLock.Dispose();
         }
     }
+
+    private KeyedLockLease AcquireKeyLock(string key)
+    {
+        while (true)
+        {
+            var entry = keyLocks.GetOrAdd(key, static _ => new KeyedLockEntry());
+            lock (entry.Gate)
+            {
+                if (keyLocks.TryGetValue(key, out var current) &&
+                    ReferenceEquals(current, entry))
+                {
+                    entry.ReferenceCount++;
+                    return new KeyedLockLease(this, key, entry);
+                }
+            }
+        }
+    }
+
+    private void ReleaseKeyLock(string key, KeyedLockEntry entry)
+    {
+        lock (entry.Gate)
+        {
+            entry.ReferenceCount--;
+            if (entry.ReferenceCount == 0)
+            {
+                keyLocks.TryRemove(new KeyValuePair<string, KeyedLockEntry>(key, entry));
+            }
+        }
+    }
+
+    private static string BuildLockKey(DependencyPackageInfo package) =>
+        $"{(int)package.Ecosystem}:{PackageMetadataIdentity.NormalizePackageName(package.Ecosystem, package.Name)}:{package.Version?.Trim() ?? string.Empty}";
 
     private async Task<PackageMetadataCacheEntry?> TryGetCachedAsync(
         DependencyPackageInfo package,
@@ -181,5 +223,24 @@ public sealed class CachingPackageMetadataClient : IPackageMetadataClient
             FetchedAt = fetchedAt,
             IsStale = isStale
         };
+    }
+
+    private sealed class KeyedLockEntry
+    {
+        public object Gate { get; } = new();
+
+        public SemaphoreSlim Semaphore { get; } = new(1, 1);
+
+        public int ReferenceCount { get; set; }
+    }
+
+    private readonly struct KeyedLockLease(
+        CachingPackageMetadataClient owner,
+        string key,
+        KeyedLockEntry entry) : IDisposable
+    {
+        public KeyedLockEntry Entry { get; } = entry;
+
+        public void Dispose() => owner.ReleaseKeyLock(key, Entry);
     }
 }
