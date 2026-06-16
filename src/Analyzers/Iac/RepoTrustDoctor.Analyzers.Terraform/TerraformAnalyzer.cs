@@ -84,12 +84,13 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
     {
         // Strip comments
         content = CommentStripper.StripComments(content);
+        var blocks = TerraformBlockExtractor.Extract(content);
 
         CheckPublicIngress(content, relativePath, findings);
-        CheckWildcardIam(content, relativePath, findings);
+        CheckWildcardIam(content, blocks, relativePath, findings);
         CheckPublicAcl(content, relativePath, findings);
-        CheckS3Encryption(content, relativePath, findings);
-        CheckProviderVersion(content, relativePath, findings);
+        CheckS3Encryption(content, blocks, relativePath, findings);
+        CheckProviderVersion(content, blocks, relativePath, findings);
         CheckBackendEncryption(content, relativePath, findings);
     }
 
@@ -152,19 +153,54 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
 
     // ── TF002: wildcard IAM ───────────────────────────────────────────
 
-    private void CheckWildcardIam(string content, string relativePath, List<Finding> findings)
+    private void CheckWildcardIam(
+        string content,
+        IReadOnlyList<TerraformBlock> blocks,
+        string relativePath,
+        List<Finding> findings)
     {
-        var hasActionStar = IamActionStarPattern().IsMatch(content);
-        var hasResourceStar = IamResourceStarPattern().IsMatch(content);
-
-        if (hasActionStar && hasResourceStar)
+        foreach (var block in blocks.Where(IsIamPolicyBlock))
         {
-            findings.Add(CreateFinding("TRUST-TF002", "Wildcard IAM policy",
-                Severity.High, relativePath,
+            if (!ContainsWildcardActionAndResourceInSameStatement(block.Text))
+            {
+                continue;
+            }
+
+            findings.Add(CreateFinding(
+                "TRUST-TF002",
+                "Wildcard IAM policy",
+                Severity.High,
+                relativePath,
                 "IAM policy grants wildcard actions on wildcard resources.",
-                confidence: Confidence.Medium));
+                block.StartLine,
+                Confidence.Medium));
         }
     }
+
+    private static bool IsIamPolicyBlock(TerraformBlock block) =>
+        block.Header.Contains("aws_iam_policy", StringComparison.OrdinalIgnoreCase) ||
+        block.Header.Contains("aws_iam_role_policy", StringComparison.OrdinalIgnoreCase) ||
+        block.Header.Contains("aws_iam_policy_document", StringComparison.OrdinalIgnoreCase) ||
+        block.Text.Contains("Statement", StringComparison.OrdinalIgnoreCase);
+
+    private static bool ContainsWildcardActionAndResourceInSameStatement(string text)
+    {
+        var statementIndex = text.IndexOf("Statement", StringComparison.OrdinalIgnoreCase);
+        if (statementIndex < 0)
+        {
+            return HasWildcardActionAndResource(text);
+        }
+
+        var statementText = text[statementIndex..];
+        var chunks = TerraformBlockExtractor.ExtractBraceChunks(statementText);
+        return chunks.Count == 0
+            ? HasWildcardActionAndResource(statementText)
+            : chunks.Any(HasWildcardActionAndResource);
+    }
+
+    private static bool HasWildcardActionAndResource(string text) =>
+        IamActionStarPattern().IsMatch(text) &&
+        IamResourceStarPattern().IsMatch(text);
 
     // ── TF003: S3 public ACL ──────────────────────────────────────────
 
@@ -179,45 +215,95 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
 
     // ── TF004: S3 encryption ──────────────────────────────────────────
 
-    private void CheckS3Encryption(string content, string relativePath, List<Finding> findings)
+    private void CheckS3Encryption(
+        string content,
+        IReadOnlyList<TerraformBlock> blocks,
+        string relativePath,
+        List<Finding> findings)
     {
-        if (!S3BucketPattern().IsMatch(content)) return;
+        var buckets = blocks
+            .Where(block => block.Header.Contains("resource \"aws_s3_bucket\"", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (buckets.Length == 0) return;
 
-        // Check if encryption block exists in same file
-        if (S3EncryptionPattern().IsMatch(content)) return;
+        var encryptionBlocks = blocks
+            .Where(block => block.Header.Contains("resource \"aws_s3_bucket_server_side_encryption_configuration\"", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
 
-        findings.Add(CreateFinding("TRUST-TF004", "S3 encryption not visible",
-            Severity.Medium, relativePath,
-            "S3 bucket found but no server_side_encryption_configuration block visible in this file.",
-            confidence: Confidence.Low));
+        foreach (var bucket in buckets)
+        {
+            if (S3EncryptionPattern().IsMatch(bucket.Text) ||
+                encryptionBlocks.Any(encryption => ReferencesBucket(encryption.Text, bucket.Labels.ElementAtOrDefault(1))))
+            {
+                continue;
+            }
+
+            findings.Add(CreateFinding("TRUST-TF004", "S3 encryption not visible",
+                Severity.Medium, relativePath,
+                "S3 bucket found but no matching server_side_encryption_configuration block is visible in this file.",
+                bucket.StartLine,
+                Confidence.Low));
+        }
+    }
+
+    private static bool ReferencesBucket(string text, string? bucketName)
+    {
+        if (string.IsNullOrWhiteSpace(bucketName))
+        {
+            return false;
+        }
+
+        return text.Contains($"aws_s3_bucket.{bucketName}.", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains($"aws_s3_bucket.{bucketName}", StringComparison.OrdinalIgnoreCase) ||
+               Regex.IsMatch(text, $@"(?mi)^\s*bucket\s*=\s*""{Regex.Escape(bucketName)}""\s*$");
     }
 
     // ── TF005: provider version ───────────────────────────────────────
 
-    private void CheckProviderVersion(string content, string relativePath, List<Finding> findings)
+    private void CheckProviderVersion(
+        string content,
+        IReadOnlyList<TerraformBlock> blocks,
+        string relativePath,
+        List<Finding> findings)
     {
         if (!content.Contains("required_providers", StringComparison.OrdinalIgnoreCase))
             return;
 
-        // For each source = "..." line, check if a version line exists in nearby context
-        foreach (Match match in ProviderSourcePattern().Matches(content))
+        foreach (var provider in ExtractProviderEntries(blocks))
         {
-            var source = match.Groups["source"].Value;
-            var matchEnd = match.Index + match.Length;
-
-            // Look ahead up to 200 chars for a version line
-            var ahead = matchEnd + 200 < content.Length ? 200 : content.Length - matchEnd;
-            var following = content.Substring(matchEnd, ahead);
-
-            if (!following.Contains("version", StringComparison.OrdinalIgnoreCase))
+            var sourceMatch = ProviderSourcePattern().Match(provider.Text);
+            if (!sourceMatch.Success || VersionConstraintPattern().IsMatch(provider.Text))
             {
-                findings.Add(CreateFinding("TRUST-TF005", "Provider missing version constraint",
-                    Severity.Medium, relativePath,
-                    $"Provider '{source}' has no version constraint.",
-                    GetLineNumber(content, match.Index),
-                    confidence: Confidence.Medium));
+                continue;
             }
+
+            findings.Add(CreateFinding("TRUST-TF005", "Provider missing version constraint",
+                Severity.Medium, relativePath,
+                $"Provider '{sourceMatch.Groups["source"].Value}' has no version constraint.",
+                provider.StartLine,
+                Confidence.Medium));
         }
+    }
+
+    private static IReadOnlyList<TerraformBlock> ExtractProviderEntries(IReadOnlyList<TerraformBlock> blocks)
+    {
+        var requiredProviderBlocks = blocks
+            .Where(block => block.Header.Contains("required_providers", StringComparison.OrdinalIgnoreCase))
+            .Concat(blocks
+                .Where(block => block.Header.StartsWith("terraform", StringComparison.OrdinalIgnoreCase))
+                .SelectMany(block => TerraformBlockExtractor.Extract(block.Text))
+                .Where(block => block.Header.Contains("required_providers", StringComparison.OrdinalIgnoreCase)))
+            .GroupBy(block => (block.StartLine, block.Text))
+            .Select(group => group.First());
+
+        var providers = requiredProviderBlocks
+            .SelectMany(block => TerraformBlockExtractor.ExtractAssignments(block.Text, block.StartLine))
+            .Where(block => ProviderSourcePattern().IsMatch(block.Text))
+            .GroupBy(block => (block.StartLine, block.Text))
+            .Select(group => group.First())
+            .ToArray();
+
+        return providers;
     }
 
     // ── TF006: backend encryption ─────────────────────────────────────
@@ -301,14 +387,14 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"acl\s*=\s*""public-read(?:-write)?""", RegexOptions.IgnoreCase)]
     private static partial Regex PublicAclPattern();
 
-    [GeneratedRegex(@"resource\s+""aws_s3_bucket""", RegexOptions.IgnoreCase)]
-    private static partial Regex S3BucketPattern();
-
     [GeneratedRegex(@"server_side_encryption_configuration", RegexOptions.IgnoreCase)]
     private static partial Regex S3EncryptionPattern();
 
     [GeneratedRegex(@"(?m)^\s*source\s*=\s*""(?<source>[^""]+)""\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex ProviderSourcePattern();
+
+    [GeneratedRegex(@"(?m)^\s*version\s*=\s*""[^""]+""\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex VersionConstraintPattern();
 
     [GeneratedRegex(@"backend\s+""s3""", RegexOptions.IgnoreCase)]
     private static partial Regex S3BackendPattern();

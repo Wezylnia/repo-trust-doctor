@@ -139,6 +139,33 @@ public sealed class TerraformAnalyzerTests
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-TF002");
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_WildcardsInSeparateIamStatements_NoTF002()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "main.tf"), """
+        resource "aws_iam_policy" "split" {
+          policy = jsonencode({
+            Statement = [
+              {
+                Action   = "*"
+                Resource = "arn:aws:s3:::my-bucket"
+              },
+              {
+                Action   = "s3:GetObject"
+                Resource = "*"
+              }
+            ]
+          })
+        }
+        """);
+
+        var analyzer = new TerraformAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-TF002");
+    }
+
     // ── TF003: S3 public ACL ──────────────────────────────────────────
 
     [Fact]
@@ -214,6 +241,36 @@ public sealed class TerraformAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-TF004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_SeparateEncryptionOnlySuppressesMatchingS3Bucket()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "main.tf"), """
+        resource "aws_s3_bucket" "encrypted" {
+          bucket = "encrypted-bucket"
+        }
+
+        resource "aws_s3_bucket_server_side_encryption_configuration" "encrypted" {
+          bucket = aws_s3_bucket.encrypted.id
+          rule {
+            apply_server_side_encryption_by_default {
+              sse_algorithm = "AES256"
+            }
+          }
+        }
+
+        resource "aws_s3_bucket" "plain" {
+          bucket = "plain-bucket"
+        }
+        """);
+
+        var analyzer = new TerraformAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-TF004");
+        Assert.Equal(13, finding.Evidence[0].LineNumber);
     }
 
     // ── TF005: provider version ───────────────────────────────────────
@@ -326,6 +383,52 @@ public sealed class TerraformAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-TF005");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ProviderVersionBeforeSource_NoTF005()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "main.tf"), """
+        terraform {
+          required_providers {
+            aws = {
+              version = "~> 5.0"
+              source  = "hashicorp/aws"
+            }
+          }
+        }
+        """);
+
+        var analyzer = new TerraformAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-TF005");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_AdjacentProviderVersionDoesNotSatisfyMissingProvider()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "main.tf"), """
+        terraform {
+          required_providers {
+            aws = {
+              source = "hashicorp/aws"
+            }
+            random = {
+              source  = "hashicorp/random"
+              version = "~> 3.0"
+            }
+          }
+        }
+        """);
+
+        var analyzer = new TerraformAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-TF005");
+        Assert.Contains("hashicorp/aws", finding.Evidence[0].Message);
     }
 
     [Fact]
