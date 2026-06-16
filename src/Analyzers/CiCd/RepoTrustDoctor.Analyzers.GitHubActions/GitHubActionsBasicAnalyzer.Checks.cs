@@ -74,12 +74,22 @@ public sealed partial class GitHubActionsBasicAnalyzer
             return;
         }
 
-        if (TestDependencyPattern().IsMatch(content))
+        var jobs = ParseWorkflowJobs(content);
+        var jobsByName = jobs.ToDictionary(job => job.Name, StringComparer.OrdinalIgnoreCase);
+        var unsafePublishJob = jobs
+            .Where(job => ReleasePublishPattern().IsMatch(job.Body))
+            .FirstOrDefault(job => !JobTransitivelyNeedsValidation(job, jobsByName));
+
+        if (jobs.Count > 0 && unsafePublishJob is null)
         {
             return;
         }
 
         var match = ReleasePublishPattern().Match(content);
+        var evidence = unsafePublishJob is null
+            ? "Release or package publishing command was found without a visible test dependency."
+            : $"Release or package publishing command was found in job '{unsafePublishJob.Name}' without a visible test dependency.";
+
         AddFinding(
             findings,
             "TRUST-GHA009",
@@ -87,7 +97,7 @@ public sealed partial class GitHubActionsBasicAnalyzer
             Severity.High,
             "Make release or publish jobs depend on a test or CI job before publishing artifacts or packages.",
             relativePath,
-            "Release or package publishing command was found without a visible test dependency.",
+            evidence,
             GetLineNumber(content, match.Index),
             Confidence.Medium);
     }
@@ -472,7 +482,6 @@ public sealed partial class GitHubActionsBasicAnalyzer
 
         return line;
     }
-
 }
 
 

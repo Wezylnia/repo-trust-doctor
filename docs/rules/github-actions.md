@@ -104,7 +104,7 @@ Recommendation: avoid direct inline shell interpolation of event data. Pass even
 - Default severity: High
 - Default confidence: Medium
 
-Detects workflows that appear to publish packages, Docker images, or GitHub releases without a visible `needs:` dependency on a test or CI job.
+Detects workflows that appear to publish packages, Docker images, or GitHub releases when the publishing job does not directly or transitively depend on a test or CI job. Dependencies from unrelated jobs do not satisfy this rule.
 
 Why it matters: release jobs that do not depend on tests may publish unverified artifacts or packages.
 
@@ -176,7 +176,7 @@ Recommendation: do not execute pull request head code from `pull_request_target`
 - Default severity: Medium
 - Default confidence: Medium
 
-Detects top-level workflow permissions that grant `contents: write`, `packages: write`, or `actions: write`.
+Detects top-level workflow permissions that grant repository-mutating scopes such as `contents: write`, `packages: write`, `actions: write`, `pull-requests: write`, `issues: write`, `checks: write`, or `deployments: write`. `id-token: write` is treated as OIDC identity scope and does not trigger this rule by itself.
 
 Why it matters: workflow-level write scopes apply broadly unless overridden. A compromised job or action may gain repository or package write access it does not need.
 

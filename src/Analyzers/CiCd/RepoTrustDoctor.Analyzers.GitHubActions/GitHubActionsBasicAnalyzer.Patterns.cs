@@ -43,9 +43,6 @@ public sealed partial class GitHubActionsBasicAnalyzer
     [GeneratedRegex(@"(?mi)\b(gh\s+release\s+(?:create|upload)|npm\s+publish|dotnet\s+nuget\s+push|nuget\s+push|twine\s+upload|docker\s+(?:push|buildx\s+build.+--push))\b")]
     private static partial Regex ReleasePublishPattern();
 
-    [GeneratedRegex(@"(?mi)^\s*needs\s*:\s*(?:\[[^\]]*\b(?:test|tests|ci|build-and-test)\b[^\]]*\]|(?:test|tests|ci|build-and-test)\b)")]
-    private static partial Regex TestDependencyPattern();
-
     [GeneratedRegex(@"\buses\s*:\s*actions/upload-artifact@", RegexOptions.IgnoreCase)]
     private static partial Regex UploadArtifactPattern();
 

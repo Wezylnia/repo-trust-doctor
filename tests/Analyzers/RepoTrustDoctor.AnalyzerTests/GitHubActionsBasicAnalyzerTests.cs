@@ -718,6 +718,141 @@ public sealed class GitHubActionsBasicAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_PublishJobNeedsTest_NoGHA009()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "release.yml"), """
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps: []
+          publish:
+            needs: test
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PublishJobTransitivelyNeedsTest_NoGHA009()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "release.yml"), """
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps: []
+          build:
+            needs: test
+            runs-on: ubuntu-latest
+            steps: []
+          publish:
+            needs: build
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PublishJobNeedsBlockList_NoGHA009()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "release.yml"), """
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps: []
+          build:
+            runs-on: ubuntu-latest
+            steps: []
+          publish:
+            needs:
+              - test
+              - build
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_UnrelatedJobNeedsTest_DoesNotSatisfyPublishJob()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "release.yml"), """
+        jobs:
+          lint:
+            needs: test
+            runs-on: ubuntu-latest
+            steps: []
+          publish:
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_OnePublishJobWithoutValidation_StillReportsGHA009()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "release.yml"), """
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps: []
+          package:
+            needs: test
+            runs-on: ubuntu-latest
+            steps:
+              - run: dotnet nuget push package.nupkg
+          publish:
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f =>
+            f.RuleId == "TRUST-GHA009" &&
+            f.Evidence.Any(evidence => evidence.Message.Contains("publish", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_NarrowCachePath_NoGHA017()
     {
         using var fixture = TemporaryRepository.Create();
