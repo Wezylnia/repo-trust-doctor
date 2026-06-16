@@ -59,9 +59,10 @@ internal static class ScanCompletenessEvaluator
             return ScanCompletenessLevel.Incomplete;
         }
 
-        if (module.Status == ModuleStatus.CompletedWithWarnings ||
-            (module.Warnings?.Count ?? 0) > 0 ||
-            HasPartialCoverageMetric(module.Metrics))
+        var warnings = module.Warnings ?? [];
+        if (HasPartialCoverageMetric(module.Metrics) ||
+            HasCoverageAffectingWarning(warnings) ||
+            (module.Status == ModuleStatus.CompletedWithWarnings && warnings.Count == 0))
         {
             return ScanCompletenessLevel.Partial;
         }
@@ -105,9 +106,35 @@ internal static class ScanCompletenessEvaluator
         return false;
     }
 
+    private static bool HasCoverageAffectingWarning(IReadOnlyCollection<string> warnings) =>
+        warnings.Any(IsCoverageAffectingWarning);
+
+    private static bool IsCoverageAffectingWarning(string warning)
+    {
+        var normalized = warning.ToLowerInvariant();
+        return normalized.Contains("truncated", StringComparison.Ordinal) ||
+               normalized.Contains("skipped", StringComparison.Ordinal) ||
+               normalized.Contains("too large", StringComparison.Ordinal) ||
+               normalized.Contains("not readable", StringComparison.Ordinal) ||
+               normalized.Contains("could not read", StringComparison.Ordinal) ||
+               normalized.Contains("could not parse", StringComparison.Ordinal) ||
+               normalized.Contains("could not resolve", StringComparison.Ordinal) ||
+               normalized.Contains("could not load", StringComparison.Ordinal) ||
+               normalized.Contains("failed", StringComparison.Ordinal) ||
+               normalized.Contains("timed out", StringComparison.Ordinal) ||
+               normalized.Contains("timeout", StringComparison.Ordinal) ||
+               normalized.Contains("partial", StringComparison.Ordinal) ||
+               normalized.Contains("incomplete", StringComparison.Ordinal) ||
+               normalized.Contains("inconclusive", StringComparison.Ordinal) ||
+               normalized.Contains("unsupported", StringComparison.Ordinal) ||
+               normalized.Contains("outside the repository", StringComparison.Ordinal) ||
+               normalized.Contains("include limit", StringComparison.Ordinal);
+    }
+
     private static string Describe(ScanModule module, ScanCompletenessLevel level)
     {
         var detail = module.ErrorMessage ??
+                     module.Warnings?.FirstOrDefault(IsCoverageAffectingWarning) ??
                      module.Warnings?.FirstOrDefault() ??
                      (level == ScanCompletenessLevel.Incomplete
                          ? $"module ended with status {module.Status}"

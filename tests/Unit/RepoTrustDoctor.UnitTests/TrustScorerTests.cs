@@ -337,6 +337,43 @@ public sealed class TrustScorerTests
     }
 
     [Fact]
+    public void Score_WithNonCoverageWarning_RemainsComplete()
+    {
+        var modules = new[]
+        {
+            CreateModule(
+                "dependency-vulnerability",
+                AnalysisCategory.Dependencies,
+                ModuleStatus.CompletedWithWarnings,
+                warnings: ["Local OSV database is stale; online fallback returned complete results."])
+        };
+
+        var score = new TrustScorer().ScoreScan([], TrustProfile.ProductionDependency, modules);
+
+        Assert.Equal(100, score.Overall);
+        Assert.Equal(FinalDecisionKind.SafeToTry, score.Decision.Kind);
+    }
+
+    [Fact]
+    public void Score_WithCoverageWarning_RequiresManualReview()
+    {
+        var modules = new[]
+        {
+            CreateModule(
+                "code-criticality",
+                AnalysisCategory.Codebase,
+                ModuleStatus.CompletedWithWarnings,
+                warnings: ["Source analysis was truncated after reaching the file budget."])
+        };
+
+        var score = new TrustScorer().ScoreScan([], TrustProfile.ProductionDependency, modules);
+
+        Assert.Equal(90, Assert.Single(score.Categories).Score);
+        Assert.Equal(FinalDecisionKind.NeedsManualReview, score.Decision.Kind);
+        Assert.Contains(score.Decision.Reasons, reason => reason.Contains("truncated", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Score_StrictProfileHardCapTakesPriorityOverSoftPolicyViolation()
     {
         var findings = new[]
@@ -402,7 +439,8 @@ public sealed class TrustScorerTests
         AnalysisCategory category,
         ModuleStatus status,
         string? error = null,
-        IReadOnlyDictionary<string, string>? metrics = null) =>
+        IReadOnlyDictionary<string, string>? metrics = null,
+        IReadOnlyList<string>? warnings = null) =>
         new(
             id,
             id,
@@ -412,5 +450,6 @@ public sealed class TrustScorerTests
             DateTimeOffset.UtcNow,
             0,
             error,
+            Warnings: warnings,
             Metrics: metrics);
 }
