@@ -32,7 +32,6 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         new("TRUST-GHA008", "Workflow may interpolate GitHub event data in shell", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "The workflow interpolates github.event, github.head_ref, or github.ref_name directly inside a run block.", "Avoid direct inline shell interpolation of event data. Pass event data as environment variables instead."),
         new("TRUST-GHA009", "Release workflow may publish without test dependency", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "The workflow appears to publish or release artifacts without a visible test dependency.", "Make release or publish jobs depend on a test or CI job before publishing artifacts or packages."),
         new("TRUST-GHA010", "Workflow uploads overly broad artifact path", AnalysisCategory.CiCd, Severity.Medium, Confidence.Medium, "The workflow uploads an artifact from an overly broad path such as the repository root.", "Upload only specific build outputs and avoid broad artifact paths that may include source, secrets, or temporary files."),
-        new("TRUST-GHA011", "Workflow does not restrict GITHUB_TOKEN scope", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "The workflow declares permissions but does not restrict GITHUB_TOKEN to read-only or specific scopes.", "Set per-job permissions to restrict GITHUB_TOKEN to the minimum required scope."),
         new("TRUST-GHA013", "Workflow may contain hardcoded secret in step env", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "A step sets an environment variable that contains a secret-like value inline.", "Use GitHub Secrets instead of inline values for credentials and tokens."),
         new("TRUST-GHA014", "Workflow may interpolate matrix values in shell", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "The workflow interpolates a matrix variable directly inside a run block.", "Avoid direct inline shell interpolation of matrix values. Pass matrix values as environment variables instead."),
         new("TRUST-GHA015", "pull_request_target workflow exposes secrets to untrusted code", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "A pull_request_target workflow checks out PR code or uses secrets in a risky context.", "Avoid checking out untrusted PR code in pull_request_target workflows. Use a separate untrusted workflow for PR validation."),
@@ -115,7 +114,6 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
             CheckShellInjection(content, relativePath, findings);
             CheckReleaseWorkflowDependency(content, relativePath, findings);
             CheckArtifactUploadPaths(content, relativePath, findings);
-            CheckTokenScope(content, relativePath, findings);
             CheckHardcodedSecretsInEnv(content, relativePath, findings);
             CheckMatrixInjection(content, relativePath, findings);
             var hasSpecificPrTargetFinding = CheckPrTargetSecretsExposure(content, relativePath, findings);

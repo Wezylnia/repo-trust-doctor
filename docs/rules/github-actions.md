@@ -122,18 +122,6 @@ Why it matters: broad artifact uploads may include source files, generated tempo
 
 Recommendation: upload only specific build outputs and avoid broad artifact paths.
 
-## TRUST-GHA011: Workflow Does Not Restrict GITHUB_TOKEN Scope
-
-- Category: CI/CD
-- Default severity: Medium
-- Default confidence: High
-
-Detects top-level workflow `permissions:` blocks that grant write access to scopes not covered by more specific write-permission rules. `contents`, `packages`, and `actions` workflow-level writes are reported as `TRUST-GHA016`; `permissions: write-all` is reported as `TRUST-GHA002`.
-
-Why it matters: without explicit job-level permission restrictions, the token may carry broader access than needed. If a job is compromised through a supply-chain or injection vector, the token may allow wider repository actions.
-
-Recommendation: keep top-level workflow permissions read-only or empty, then set per-job permissions to the minimum required scope.
-
 ## TRUST-GHA013: Workflow May Contain Hardcoded Secret in Step Env
 
 - Category: CI/CD

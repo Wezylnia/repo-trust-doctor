@@ -630,6 +630,38 @@ public sealed class GitHubActionsBasicAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_MissingPermissionsReportsOnlyGHA001()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "ci.yml"), "jobs:\n  build:\n    runs-on: ubuntu-latest\n    steps: []\n");
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-GHA001");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA011");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA016");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_WriteAllReportsOnlySpecificWriteAllRule()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "ci.yml"), "permissions: write-all\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps: []\n");
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-GHA002");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA011");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA016");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_IssuesWorkflowWriteScope_ReportsGHA016()
     {
         using var fixture = TemporaryRepository.Create();

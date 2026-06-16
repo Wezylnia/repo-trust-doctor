@@ -103,7 +103,6 @@ are deduplicated.
 | TRUST-GHA008 | Workflow interpolates GitHub event data in shell | High | Medium |
 | TRUST-GHA009 | Release workflow may publish without test dependency | High | Medium |
 | TRUST-GHA010 | Workflow uploads overly broad artifact path | Medium | Medium |
-| TRUST-GHA011 | Workflow does not restrict GITHUB_TOKEN scope | Medium | High |
 | TRUST-GHA013 | Workflow may contain hardcoded secret in step env | High | Medium |
 | TRUST-GHA014 | Workflow may interpolate matrix values in shell | High | Medium |
 | TRUST-GHA015 | `pull_request_target` workflow exposes secrets | High | Medium |
