@@ -33,7 +33,8 @@ Diff output includes:
 
 - overall score delta,
 - decision change,
-- category score deltas,
+- category score deltas for comparable categories,
+- newly evaluated or no-longer-evaluated category states when a category exists in only one report,
 - new findings,
 - resolved findings,
 - worsened findings,

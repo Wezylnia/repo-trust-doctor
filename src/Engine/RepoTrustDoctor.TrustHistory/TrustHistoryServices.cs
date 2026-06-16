@@ -108,9 +108,30 @@ public sealed class TrustDiffEngine
             .Order()
             .Select(category =>
             {
-                var beforeScore = beforeByCategory.GetValueOrDefault(category);
-                var afterScore = afterByCategory.GetValueOrDefault(category);
-                return new CategoryScoreDelta(category, beforeScore, afterScore, afterScore - beforeScore);
+                var hasBefore = beforeByCategory.TryGetValue(category, out var beforeScore);
+                var hasAfter = afterByCategory.TryGetValue(category, out var afterScore);
+                return (hasBefore, hasAfter) switch
+                {
+                    (true, true) => new CategoryScoreDelta(
+                        category,
+                        beforeScore,
+                        afterScore,
+                        afterScore - beforeScore,
+                        CategoryScoreComparisonState.Comparable),
+                    (false, true) => new CategoryScoreDelta(
+                        category,
+                        null,
+                        afterScore,
+                        null,
+                        CategoryScoreComparisonState.NewlyEvaluated),
+                    (true, false) => new CategoryScoreDelta(
+                        category,
+                        beforeScore,
+                        null,
+                        null,
+                        CategoryScoreComparisonState.NoLongerEvaluated),
+                    _ => throw new InvalidOperationException("Category union produced an empty category delta.")
+                };
             })
             .ToArray();
     }

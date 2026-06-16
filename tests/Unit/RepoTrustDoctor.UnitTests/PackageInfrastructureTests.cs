@@ -499,6 +499,29 @@ public sealed class PackageInfrastructureTests
         Assert.Equal(expected, client.SupportsEcosystem(ecosystem));
     }
 
+    [Theory]
+    [InlineData("PyPI", "Zope.Interface", "zope-interface")]
+    [InlineData("npm", "Left-Pad", "left-pad")]
+    [InlineData("NuGet", "Newtonsoft.Json", "newtonsoft.json")]
+    public void OsvPackageIdentity_NormalizesCaseInsensitiveEcosystems(
+        string ecosystem,
+        string packageName,
+        string expected)
+    {
+        Assert.Equal(expected, OsvPackageIdentity.NormalizeForLookup(ecosystem, packageName));
+    }
+
+    [Theory]
+    [InlineData("Go", "Example.com/Company/Module")]
+    [InlineData("Maven", "com.Example:Library")]
+    [InlineData("SwiftURL", "github.com/Example/Package")]
+    public void OsvPackageIdentity_PreservesCaseSensitiveEcosystemNames(
+        string ecosystem,
+        string packageName)
+    {
+        Assert.Equal(packageName, OsvPackageIdentity.NormalizeForLookup(ecosystem, packageName));
+    }
+
     private static DependencyPackageInfo CreatePackage(DependencyEcosystem ecosystem, string name, string version) =>
         new(ecosystem, name, version, DependencyScope.Production, "manifest", null, true, true, false);
 

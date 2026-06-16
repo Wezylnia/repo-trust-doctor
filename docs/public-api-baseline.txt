@@ -149,6 +149,7 @@ type ApplicationMarker
 type AzurePipelinesAnalyzer
 type CategoryScore
 type CategoryScoreDelta
+type CategoryScoreComparisonState
 type CategoryScoreSnapshot
 type CentralFileEntry
 type CircleCiAnalyzer

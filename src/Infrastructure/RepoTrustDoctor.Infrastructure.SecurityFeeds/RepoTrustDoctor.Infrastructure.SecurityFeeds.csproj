@@ -4,6 +4,7 @@
     <ProjectReference Include="..\..\Engine\RepoTrustDoctor.Analysis.Abstractions\RepoTrustDoctor.Analysis.Abstractions.csproj" />
     <ProjectReference Include="..\RepoTrustDoctor.Infrastructure.LocalData\RepoTrustDoctor.Infrastructure.LocalData.csproj" />
     <ProjectReference Include="..\RepoTrustDoctor.Infrastructure.PackageRegistries\RepoTrustDoctor.Infrastructure.PackageRegistries.csproj" />
+    <InternalsVisibleTo Include="RepoTrustDoctor.UnitTests" />
   </ItemGroup>
 
   <PropertyGroup>

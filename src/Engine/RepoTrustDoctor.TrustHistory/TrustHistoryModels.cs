@@ -38,7 +38,19 @@ public sealed record TrustDiffResult(
     IReadOnlyList<FindingChange> ImprovedFindings,
     IReadOnlyList<FindingSnapshot> UnchangedFindings);
 
-public sealed record CategoryScoreDelta(AnalysisCategory Category, int BeforeScore, int AfterScore, int Delta);
+public sealed record CategoryScoreDelta(
+    AnalysisCategory Category,
+    int? BeforeScore,
+    int? AfterScore,
+    int? Delta,
+    CategoryScoreComparisonState State);
+
+public enum CategoryScoreComparisonState
+{
+    Comparable,
+    NewlyEvaluated,
+    NoLongerEvaluated
+}
 
 public sealed record FindingChange(FindingSnapshot Before, FindingSnapshot After);
 

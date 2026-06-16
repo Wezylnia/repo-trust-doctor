@@ -20,10 +20,15 @@ internal static class OsvPackageIdentity
 
     public static string NormalizeForLookup(string ecosystem, string packageName)
     {
-        var normalized = packageName.Trim().ToLowerInvariant();
-        return ecosystem.Equals("PyPI", StringComparison.OrdinalIgnoreCase)
-            ? Regex.Replace(normalized, "[-_.]+", "-")
-            : normalized;
+        var trimmed = packageName.Trim();
+        if (ecosystem.Equals("PyPI", StringComparison.OrdinalIgnoreCase))
+        {
+            return Regex.Replace(trimmed.ToLowerInvariant(), "[-_.]+", "-");
+        }
+
+        return IsCaseSensitive(ecosystem)
+            ? trimmed
+            : trimmed.ToLowerInvariant();
     }
 
     private static bool NamesEqual(

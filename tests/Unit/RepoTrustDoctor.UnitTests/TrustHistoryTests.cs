@@ -43,6 +43,66 @@ public sealed class TrustHistoryTests
     }
 
     [Fact]
+    public void TrustDiffEngine_DoesNotTreatUnevaluatedCategoryAsZero()
+    {
+        var before = Snapshot(
+            "repo",
+            90,
+            FinalDecisionKind.SafeToTry,
+            [],
+            [new CategoryScoreSnapshot(AnalysisCategory.Security, 90)]);
+        var after = Snapshot(
+            "repo",
+            88,
+            FinalDecisionKind.SafeToTry,
+            [],
+            [
+                new CategoryScoreSnapshot(AnalysisCategory.Security, 90),
+                new CategoryScoreSnapshot(AnalysisCategory.Codebase, 88)
+            ]);
+
+        var diff = new TrustDiffEngine().Compare(before, after);
+
+        var security = Assert.Single(diff.CategoryDeltas, delta => delta.Category == AnalysisCategory.Security);
+        Assert.Equal(CategoryScoreComparisonState.Comparable, security.State);
+        Assert.Equal(0, security.Delta);
+
+        var codebase = Assert.Single(diff.CategoryDeltas, delta => delta.Category == AnalysisCategory.Codebase);
+        Assert.Equal(CategoryScoreComparisonState.NewlyEvaluated, codebase.State);
+        Assert.Null(codebase.BeforeScore);
+        Assert.Equal(88, codebase.AfterScore);
+        Assert.Null(codebase.Delta);
+    }
+
+    [Fact]
+    public void TrustDiffEngine_MarksCategoryThatIsNoLongerEvaluated()
+    {
+        var before = Snapshot(
+            "repo",
+            88,
+            FinalDecisionKind.SafeToTry,
+            [],
+            [
+                new CategoryScoreSnapshot(AnalysisCategory.Security, 90),
+                new CategoryScoreSnapshot(AnalysisCategory.Codebase, 88)
+            ]);
+        var after = Snapshot(
+            "repo",
+            90,
+            FinalDecisionKind.SafeToTry,
+            [],
+            [new CategoryScoreSnapshot(AnalysisCategory.Security, 90)]);
+
+        var diff = new TrustDiffEngine().Compare(before, after);
+
+        var codebase = Assert.Single(diff.CategoryDeltas, delta => delta.Category == AnalysisCategory.Codebase);
+        Assert.Equal(CategoryScoreComparisonState.NoLongerEvaluated, codebase.State);
+        Assert.Equal(88, codebase.BeforeScore);
+        Assert.Null(codebase.AfterScore);
+        Assert.Null(codebase.Delta);
+    }
+
+    [Fact]
     public void TrustDiffEngine_TracksWorsenedAndImprovedMatchedFindings()
     {
         var before = Snapshot("repo", 80, FinalDecisionKind.UseWithCaution, [
@@ -135,7 +195,12 @@ public sealed class TrustHistoryTests
             [new Evidence("test", "test", filePath, lineNumber)],
             new Recommendation("Fix it."));
 
-    private static ScanSnapshot Snapshot(string target, int score, FinalDecisionKind decision, IReadOnlyList<FindingSnapshot> findings) =>
+    private static ScanSnapshot Snapshot(
+        string target,
+        int score,
+        FinalDecisionKind decision,
+        IReadOnlyList<FindingSnapshot> findings,
+        IReadOnlyList<CategoryScoreSnapshot>? categoryScores = null) =>
         new(
             Guid.NewGuid(),
             target,
@@ -145,7 +210,7 @@ public sealed class TrustHistoryTests
             DateTimeOffset.Parse("2026-06-10T00:00:01Z"),
             score,
             decision,
-            [new CategoryScoreSnapshot(AnalysisCategory.Security, score)],
+            categoryScores ?? [new CategoryScoreSnapshot(AnalysisCategory.Security, score)],
             new FindingSummary(
                 findings.Count,
                 findings.Count(finding => finding.Severity == Severity.Critical),
