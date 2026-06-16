@@ -77,7 +77,7 @@ fixtures, examples, and private packages remain excluded.
 - Default severity: Info
 - Default confidence: High
 
-Detects SBOM files (CycloneDX, SPDX, BOM) in the repository.
+Detects recognized SBOM files in the repository. Positive SBOM evidence is emitted only after CycloneDX or SPDX JSON structure is recognized.
 
 Why it matters: SBOMs help track dependencies. Positive signal, not a risk.
 
@@ -89,7 +89,7 @@ Recommendation: ensure the SBOM is up-to-date and covers all components.
 - Default severity: Info
 - Default confidence: High
 
-Detects provenance or attestation files in the repository.
+Detects parseable provenance or attestation files in the repository. Positive provenance evidence is emitted only after JSON or JSONL content is parsed successfully.
 
 Why it matters: provenance helps verify build integrity. Positive signal, not a risk.
 
@@ -125,7 +125,7 @@ Recommendation: regenerate the SBOM to include all components.
 - Default severity: Medium
 - Default confidence: High
 
-Detects provenance JSON or JSONL files that cannot be parsed.
+Detects provenance JSON or JSONL files that cannot be parsed. Invalid provenance files do not also count as positive provenance evidence.
 
 Why it matters: corrupt provenance evidence cannot verify build integrity.
 

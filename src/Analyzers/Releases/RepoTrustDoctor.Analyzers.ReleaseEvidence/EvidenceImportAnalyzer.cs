@@ -17,7 +17,7 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
 
     public AnalysisDepth MinimumDepth => AnalysisDepth.Standard;
 
-    public IReadOnlyCollection<string> DependsOn => [DependencyInventoryArtifact.ArtifactKey];
+    public IReadOnlyCollection<string> DependsOn => [];
 
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 
@@ -79,14 +79,14 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
                 cancellationToken.ThrowIfCancellationRequested();
                 var relativePath = Path.GetRelativePath(context.RepositoryPath, file).Replace('\\', '/');
 
-                findings.Add(new Finding("TRUST-EVI003", "Provenance evidence found in repository",
-                    AnalysisCategory.Releases, Severity.Info, Confidence.High,
-                    $"Provenance file '{Path.GetFileName(file)}' found.",
-                    [new Evidence("provenance", $"Provenance file '{Path.GetFileName(file)}' detected.", relativePath)],
-                    new Recommendation("Provenance evidence helps verify build integrity. Ensure it covers all release artifacts.")));
-
-                // Validate provenance parseability
-                ValidateProvenance(file, relativePath, findings, cancellationToken);
+                if (ValidateProvenance(file, relativePath, findings, cancellationToken))
+                {
+                    findings.Add(new Finding("TRUST-EVI003", "Provenance evidence found in repository",
+                        AnalysisCategory.Releases, Severity.Info, Confidence.High,
+                        $"Provenance file '{Path.GetFileName(file)}' found.",
+                        [new Evidence("provenance", $"Parseable provenance file '{Path.GetFileName(file)}' detected.", relativePath)],
+                        new Recommendation("Provenance evidence helps verify build integrity. Ensure it covers all release artifacts.")));
+                }
             }
         }
 
@@ -284,10 +284,10 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
         return normalized.Trim('/').ToLowerInvariant();
     }
 
-    private static void ValidateProvenance(string file, string relativePath, List<Finding> findings, CancellationToken ct)
+    private static bool ValidateProvenance(string file, string relativePath, List<Finding> findings, CancellationToken ct)
     {
         if (!RepositoryFileSystem.CanReadAsText(file))
-            return;
+            return false;
 
         ct.ThrowIfCancellationRequested();
 
@@ -313,24 +313,31 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
                     {
                         findings.Add(CreateEviFinding("TRUST-EVI006", "Provenance evidence file is not parseable",
                             Severity.Medium, relativePath, "A line in the provenance JSONL file is not valid JSON."));
-                        return; // Report once per file
+                        return false;
                     }
                 }
+
+                return true;
             }
             else if (file.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
             {
                 using var doc = JsonDocument.Parse(content);
+                return true;
             }
         }
         catch (JsonException)
         {
             findings.Add(CreateEviFinding("TRUST-EVI006", "Provenance evidence file is not parseable",
                 Severity.Medium, relativePath, "Provenance JSON file is not valid JSON."));
+            return false;
         }
         catch (IOException)
         {
             // Skip unreadable files
+            return false;
         }
+
+        return false;
     }
 
     private static Finding CreateEviFinding(string ruleId, string title, Severity severity, string filePath, string evidence, Confidence confidence = Confidence.High)

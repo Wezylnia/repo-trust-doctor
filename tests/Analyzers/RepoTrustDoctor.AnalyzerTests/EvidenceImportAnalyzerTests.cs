@@ -209,6 +209,7 @@ public sealed class EvidenceImportAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
 
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-EVI006");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-EVI003");
     }
 
     [Fact]
@@ -224,6 +225,7 @@ public sealed class EvidenceImportAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
 
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-EVI006");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-EVI003");
     }
 
     [Fact]
@@ -238,5 +240,6 @@ public sealed class EvidenceImportAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard), CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-EVI006");
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-EVI003");
     }
 }
