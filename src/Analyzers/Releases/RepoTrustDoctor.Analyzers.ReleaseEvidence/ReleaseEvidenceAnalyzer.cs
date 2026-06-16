@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml;
@@ -66,6 +67,7 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
         }
 
         findings.AddRange(packageVersionFindings.Take(PackageVersionFindingLimit));
+        var packageVersionSuppressedCount = Math.Max(0, packageVersionFindings.Count - PackageVersionFindingLimit);
 
         foreach (var artifact in EnumerateReleaseArtifacts(context.RepositoryPath))
         {
@@ -100,7 +102,21 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
             }
         }
 
-        return Task.FromResult(AnalyzerResult.Completed(findings));
+        var metrics = new Dictionary<string, string>
+        {
+            ["release.package_version.finding.matched.count"] = packageVersionFindings.Count.ToString(CultureInfo.InvariantCulture),
+            ["release.package_version.finding.reported.count"] = Math.Min(packageVersionFindings.Count, PackageVersionFindingLimit).ToString(CultureInfo.InvariantCulture),
+            ["release.package_version.finding.suppressed.count"] = packageVersionSuppressedCount.ToString(CultureInfo.InvariantCulture),
+            ["release.package_version.finding.truncated"] = (packageVersionSuppressedCount > 0).ToString(CultureInfo.InvariantCulture)
+        };
+        var warnings = packageVersionSuppressedCount > 0
+            ? new[]
+            {
+                $"Release package-version findings were truncated after {PackageVersionFindingLimit.ToString(CultureInfo.InvariantCulture)} of {packageVersionFindings.Count.ToString(CultureInfo.InvariantCulture)} matches."
+            }
+            : [];
+
+        return Task.FromResult(AnalyzerResult.Completed(findings, metrics: metrics, warnings: warnings));
     }
 
     private static IEnumerable<ReleasePackageVersion> ReadPackageVersions(AnalysisContext context)

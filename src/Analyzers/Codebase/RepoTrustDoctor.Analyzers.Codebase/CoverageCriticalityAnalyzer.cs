@@ -62,15 +62,29 @@ public sealed class CoverageCriticalityAnalyzer : IRepositoryAnalyzer
             .Where(group => group.Count() == 1)
             .ToDictionary(group => group.Key, group => group.Single(), StringComparer.OrdinalIgnoreCase);
 
-        var findings = criticality.Files
+        var matchedFindings = criticality.Files
             .Where(file => file.Score >= 50)
             .Select(file => CreateCoverageFinding(file, coverageByPath, uniqueCoverageByFileName))
             .Where(finding => finding is not null)
             .Cast<Finding>()
-            .Take(10)
             .ToArray();
+        var findings = matchedFindings.Take(10).ToArray();
+        var suppressedCount = Math.Max(0, matchedFindings.Length - findings.Length);
+        var metrics = new Dictionary<string, string>
+        {
+            ["code.coverage_criticality.finding.matched.count"] = matchedFindings.Length.ToString(CultureInfo.InvariantCulture),
+            ["code.coverage_criticality.finding.reported.count"] = findings.Length.ToString(CultureInfo.InvariantCulture),
+            ["code.coverage_criticality.finding.suppressed.count"] = suppressedCount.ToString(CultureInfo.InvariantCulture),
+            ["code.coverage_criticality.finding.truncated"] = (suppressedCount > 0).ToString(CultureInfo.InvariantCulture)
+        };
+        var warnings = suppressedCount > 0
+            ? new[]
+            {
+                $"Coverage criticality findings were truncated after {findings.Length.ToString(CultureInfo.InvariantCulture)} of {matchedFindings.Length.ToString(CultureInfo.InvariantCulture)} matches."
+            }
+            : [];
 
-        return Task.FromResult(AnalyzerResult.Completed(findings));
+        return Task.FromResult(AnalyzerResult.Completed(findings, metrics: metrics, warnings: warnings));
     }
 
     private static Finding? CreateCoverageFinding(

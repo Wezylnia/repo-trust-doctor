@@ -61,6 +61,29 @@ public sealed class FrameworkRouteAnalyzerTests
     }
 
     [Fact]
+    public async Task FrameworkRouteAnalyzer_ReportsFindingTruncationMetrics()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var routes = string.Join(
+            Environment.NewLine,
+            Enumerable.Range(0, 22).Select(index => $"app.get('/api/{index}', (req, res) => res.send('ok'));"));
+        File.WriteAllText(Path.Combine(fixture.Path, "routes.js"), routes);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(Assert.Single(result.Artifacts!).Value);
+
+        Assert.Equal(22, routesArtifact.Routes.Count);
+        Assert.Equal("22", result.Metrics!["route.total.count"]);
+        Assert.Equal("15", result.Metrics!["route.unauthenticated.finding.reported.count"]);
+        Assert.Equal("7", result.Metrics!["route.unauthenticated.finding.suppressed.count"]);
+        Assert.Equal("20", result.Metrics!["route.detected.finding.reported.count"]);
+        Assert.Equal("2", result.Metrics!["route.detected.finding.suppressed.count"]);
+        Assert.Equal("True", result.Metrics!["route.finding.truncated"]);
+        Assert.Contains(result.Warnings!, warning => warning.Contains("truncated", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task FrameworkRouteAnalyzer_DoesNotTreatExpressMiddlewareAsEndpoint()
     {
         using var fixture = TemporaryRepository.Create();

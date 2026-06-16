@@ -635,4 +635,38 @@ public sealed class ReleaseArtifactEvidenceAnalyzerTests
             result.Findings,
             finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004");
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsPackageVersionFindingTruncationMetrics()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## v0.0.0
+        """);
+
+        for (var index = 0; index < 6; index++)
+        {
+            var packageDirectory = Path.Combine(fixture.Path, $"pkg{index}");
+            Directory.CreateDirectory(packageDirectory);
+            File.WriteAllText(Path.Combine(packageDirectory, "package.json"), $$"""
+            {
+              "name": "pkg{{index}}",
+              "version": "1.0.{{index}}"
+            }
+            """);
+        }
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.Equal(10, result.Findings.Count(finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004"));
+        Assert.Equal("12", result.Metrics!["release.package_version.finding.matched.count"]);
+        Assert.Equal("10", result.Metrics!["release.package_version.finding.reported.count"]);
+        Assert.Equal("2", result.Metrics!["release.package_version.finding.suppressed.count"]);
+        Assert.Equal("True", result.Metrics!["release.package_version.finding.truncated"]);
+        Assert.Contains(result.Warnings!, warning => warning.Contains("truncated", StringComparison.OrdinalIgnoreCase));
+    }
 }

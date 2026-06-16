@@ -83,6 +83,31 @@ public sealed class CoverageCriticalityAnalyzerTests
         Assert.Empty(result.Findings);
     }
 
+    [Fact]
+    public async Task CoverageCriticalityAnalyzer_ReportsTruncatedFindingMetrics()
+    {
+        var criticalFiles = Enumerable.Range(0, 12)
+            .Select(index => new CodeCriticalityFile(
+                $"src/Auth{index}.cs",
+                75,
+                70,
+                [CodeCriticalityReason.Authentication],
+                7))
+            .ToArray();
+        var context = CreateContext(
+            [new CoverageFileInfo("src/other/Other.cs", 1.0, null, 10, 10, null, null)],
+            criticalFiles);
+
+        var result = await new CoverageCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Equal(10, result.Findings.Count);
+        Assert.Equal("12", result.Metrics!["code.coverage_criticality.finding.matched.count"]);
+        Assert.Equal("10", result.Metrics!["code.coverage_criticality.finding.reported.count"]);
+        Assert.Equal("2", result.Metrics!["code.coverage_criticality.finding.suppressed.count"]);
+        Assert.Equal("True", result.Metrics!["code.coverage_criticality.finding.truncated"]);
+        Assert.Contains(result.Warnings!, warning => warning.Contains("truncated", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static AnalysisContext CreateContext(IReadOnlyList<CoverageFileInfo> coverageFiles, IReadOnlyList<CodeCriticalityFile> criticalFiles)
     {
         var context = new AnalysisContext(".", ".", AnalysisDepth.Deep);
