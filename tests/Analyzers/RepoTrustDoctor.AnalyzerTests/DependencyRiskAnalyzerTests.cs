@@ -609,6 +609,7 @@ public sealed class DependencyRiskAnalyzerTests
         var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);
 
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN005");
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN006");
     }
 
     [Fact]
@@ -626,6 +627,7 @@ public sealed class DependencyRiskAnalyzerTests
         var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN005");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN006");
     }
 
     private static AnalysisContext CreateContextWithInventory(IReadOnlyList<DependencyPackageInfo> packages, string repositoryPath = ".")

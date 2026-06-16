@@ -123,6 +123,13 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
                                      string.Equals(sourceKind, "registry", StringComparison.OrdinalIgnoreCase);
             if (LooksInternal(package.Name) && isRegistryResolved)
             {
+                if (package.Ecosystem == DependencyEcosystem.Npm &&
+                    package.Name.StartsWith("@", StringComparison.Ordinal) &&
+                    NpmScopeRegistryExists(context.RepositoryPath, package.Name))
+                {
+                    continue;
+                }
+
                 findings.Add(CreateFinding("TRUST-ORIGIN006", "Internal-looking package is resolved from a public registry", Severity.Medium, Confidence.Medium, $"Package `{package.Name}` looks internal but appears to use registry resolution.", "package-origin", $"Package `{package.Name}` should be verified against expected registry sources.", "Verify whether the package should come from a private registry."));
             }
         }
