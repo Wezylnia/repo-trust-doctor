@@ -427,6 +427,36 @@ public sealed class KubernetesAnalyzerTests
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S007");
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_ReportsCapabilityAddsOnlyForUnsafeContainer()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: safe
+                image: nginx
+                securityContext:
+                  capabilities:
+                    drop: ["ALL"]
+              - name: unsafe
+                image: nginx
+                securityContext:
+                  capabilities:
+                    add: ["SYS_ADMIN"]
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-K8S007");
+        Assert.Contains("unsafe", Assert.Single(finding.Evidence).Message, StringComparison.Ordinal);
+    }
+
     // ── K8S008: privilege escalation ──────────────────────────────────
 
     [Fact]
@@ -473,6 +503,37 @@ public sealed class KubernetesAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S008");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DetectsEphemeralContainerPrivilegeEscalation()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx
+                securityContext:
+                  runAsNonRoot: true
+                  readOnlyRootFilesystem: true
+                  allowPrivilegeEscalation: false
+              ephemeralContainers:
+              - name: debugger
+                image: busybox
+                securityContext:
+                  allowPrivilegeEscalation: true
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-K8S008");
+        Assert.Contains("debugger", Assert.Single(finding.Evidence).Message, StringComparison.Ordinal);
     }
 
     [Theory]

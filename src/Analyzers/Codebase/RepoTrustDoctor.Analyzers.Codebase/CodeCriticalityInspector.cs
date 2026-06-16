@@ -128,6 +128,18 @@ internal static partial class CodeCriticalityInspector
 
     private static int? FindFirstCommandExecutionLine(string[] lines, IReadOnlyList<string> keywords)
     {
+        var instanceStartIndices = lines
+            .Select((line, index) => new { line, index })
+            .Where(item => ProcessInstanceStartPattern().IsMatch(item.line))
+            .Select(item => item.index)
+            .ToArray();
+        if (instanceStartIndices.Length == 1 &&
+            AllCommandMatchesAreProcessStarts(lines, keywords) &&
+            LooksLikeBoundedProcessFile(lines))
+        {
+            return null;
+        }
+
         for (var index = 0; index < lines.Length; index++)
         {
             if (!keywords.Any(keyword => lines[index].Contains(keyword, StringComparison.OrdinalIgnoreCase)))
@@ -145,6 +157,19 @@ internal static partial class CodeCriticalityInspector
 
         return null;
     }
+
+    private static bool LooksLikeBoundedProcessFile(string[] lines)
+    {
+        var text = string.Join('\n', lines);
+        return text.Contains("processstartinfo", StringComparison.OrdinalIgnoreCase) &&
+               text.Contains("useshellexecute = false", StringComparison.OrdinalIgnoreCase) &&
+               text.Contains("argumentlist.add", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool AllCommandMatchesAreProcessStarts(string[] lines, IReadOnlyList<string> keywords) =>
+        lines
+            .Where(line => keywords.Any(keyword => line.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+            .All(line => ProcessInstanceStartPattern().IsMatch(line));
 
     private static int? FindFirstBroadExceptionLine(string[] lines)
     {
@@ -241,16 +266,45 @@ internal static partial class CodeCriticalityInspector
 
     private static bool IsBoundedProcessStartCall(string[] lines, int lineIndex)
     {
-        if (!ProcessInstanceStartPattern().IsMatch(lines[lineIndex]))
+        var line = lines[lineIndex];
+        var match = ProcessInstanceStartPattern().Match(line);
+        if (!match.Success)
         {
             return false;
         }
 
-        var start = Math.Max(0, lineIndex - 16);
-        var length = Math.Min(lines.Length - start, 24);
-        var localBlock = string.Join('\n', lines.Skip(start).Take(length));
-        return localBlock.Contains("processstartinfo", StringComparison.OrdinalIgnoreCase) &&
-               localBlock.Contains("useshellexecute = false", StringComparison.OrdinalIgnoreCase) &&
+        var receiver = match.Groups["receiver"].Value;
+        if (receiver.Equals("process", StringComparison.OrdinalIgnoreCase) &&
+            line.Contains("process.start(", StringComparison.OrdinalIgnoreCase) &&
+            !line.Contains("process.startinfo", StringComparison.OrdinalIgnoreCase))
+        {
+            // Static Process.Start(...) calls remain risky even if another Process instance in the file is safely configured.
+            return false;
+        }
+
+        var start = Math.Max(0, lineIndex - 20);
+        var endExclusive = Math.Min(lines.Length, lineIndex + 5);
+        var localLines = lines.Skip(start).Take(endExclusive - start).ToArray();
+        var localBlock = string.Join('\n', localLines);
+        var scopedPrefix = receiver + ".startinfo";
+
+        var hasStartInfoAssignment =
+            localBlock.Contains("processstartinfo", StringComparison.OrdinalIgnoreCase) &&
+            localBlock.Contains(scopedPrefix, StringComparison.OrdinalIgnoreCase);
+        var hasUseShellExecuteFalse = localLines.Any(candidate =>
+            candidate.Contains("useshellexecute", StringComparison.OrdinalIgnoreCase) &&
+            candidate.Contains("false", StringComparison.OrdinalIgnoreCase));
+        var hasArgumentList = localLines.Any(candidate =>
+            candidate.Contains(scopedPrefix + ".argumentlist.add", StringComparison.OrdinalIgnoreCase));
+        if (hasStartInfoAssignment && hasUseShellExecuteFalse && hasArgumentList)
+        {
+            return true;
+        }
+
+        var instanceStartCount = lines.Count(candidate => ProcessInstanceStartPattern().IsMatch(candidate));
+        return instanceStartCount == 1 &&
+               localBlock.Contains("processstartinfo", StringComparison.OrdinalIgnoreCase) &&
+               hasUseShellExecuteFalse &&
                localBlock.Contains("argumentlist.add", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -303,7 +357,7 @@ internal static partial class CodeCriticalityInspector
     [GeneratedRegex(@"\b(?:public\s+)?enum\s+CodeCriticalityReason\s*\{[\s\S]*?\}", RegexOptions.IgnoreCase)]
     private static partial Regex CodeCriticalityEnumDeclarationRegex();
 
-    [GeneratedRegex(@"\b[A-Za-z_]\w*\.start\s*\(\s*\)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(?<receiver>[A-Za-z_]\w*)\.start\s*\(\s*\)", RegexOptions.IgnoreCase)]
     private static partial Regex ProcessInstanceStartPattern();
 
     private sealed record KeywordGroup(CodeCriticalityReason Reason, IReadOnlyList<string> Keywords);

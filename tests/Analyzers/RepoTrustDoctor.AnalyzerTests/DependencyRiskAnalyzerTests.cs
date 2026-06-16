@@ -622,10 +622,14 @@ public sealed class DependencyRiskAnalyzerTests
         File.WriteAllText(Path.Combine(fixture.Path, ".npmrc"), """
         @other:registry=https://npm.example.test/
         """);
-        var context = CreateContextWithInventory(
-        [
-            CreatePackage(DependencyEcosystem.Npm, "@internal/widget", "1.0.0")
-        ], fixture.Path);
+        var context = CreateContextWithInventoryAndMetadata(
+            [
+                CreatePackage(DependencyEcosystem.Npm, "@internal/widget", "1.0.0")
+            ],
+            [
+                new PackageRegistryMetadata(DependencyEcosystem.Npm, "@internal/widget", "1.0.0", "1.0.0", null, false, false, null, null, "MIT", null, "https://registry.npmjs.org")
+            ],
+            fixture.Path);
 
         var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);
 
@@ -640,10 +644,14 @@ public sealed class DependencyRiskAnalyzerTests
         File.WriteAllText(Path.Combine(fixture.Path, ".npmrc"), """
         @company:registry=https://npm.example.test/
         """);
-        var context = CreateContextWithInventory(
-        [
-            CreatePackage(DependencyEcosystem.Npm, "@Company/widget", "1.0.0")
-        ], fixture.Path);
+        var context = CreateContextWithInventoryAndMetadata(
+            [
+                CreatePackage(DependencyEcosystem.Npm, "@Company/widget", "1.0.0")
+            ],
+            [
+                new PackageRegistryMetadata(DependencyEcosystem.Npm, "@Company/widget", "1.0.0", "1.0.0", null, false, false, null, null, "MIT", null, "https://registry.npmjs.org")
+            ],
+            fixture.Path);
 
         var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);
 
@@ -658,14 +666,39 @@ public sealed class DependencyRiskAnalyzerTests
         File.WriteAllText(Path.Combine(fixture.Path, ".npmrc"), """
         @internal:registry = https://npm.example.test/
         """);
-        var context = CreateContextWithInventory(
-        [
-            CreatePackage(DependencyEcosystem.Npm, "@internal/widget", "1.0.0")
-        ], fixture.Path);
+        var context = CreateContextWithInventoryAndMetadata(
+            [
+                CreatePackage(DependencyEcosystem.Npm, "@internal/widget", "1.0.0")
+            ],
+            [
+                new PackageRegistryMetadata(DependencyEcosystem.Npm, "@internal/widget", "1.0.0", "1.0.0", null, false, false, null, null, "MIT", null, "https://registry.npmjs.org")
+            ],
+            fixture.Path);
 
         var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN005");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN006");
+    }
+
+    [Fact]
+    public async Task PackageOriginAnalyzer_DoesNotTreatPrivateScopedRegistryAsPublic()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".npmrc"), """
+        @internal:registry=https://packages.company.internal/npm/
+        """);
+        var context = CreateContextWithInventoryAndMetadata(
+            [
+                CreatePackage(DependencyEcosystem.Npm, "@internal/widget", "1.0.0")
+            ],
+            [
+                new PackageRegistryMetadata(DependencyEcosystem.Npm, "@internal/widget", "1.0.0", "1.0.0", null, false, false, null, null, "MIT", null, "https://registry.npmjs.org")
+            ],
+            fixture.Path);
+
+        var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN006");
     }
 
@@ -680,6 +713,16 @@ public sealed class DependencyRiskAnalyzerTests
     {
         var context = new AnalysisContext(".", ".", AnalysisDepth.Standard);
         context.AddArtifact(new AnalyzerArtifact(PackageMetadataArtifact.ArtifactKey, new PackageMetadataArtifact(packages, new Dictionary<string, string>())));
+        return context;
+    }
+
+    private static AnalysisContext CreateContextWithInventoryAndMetadata(
+        IReadOnlyList<DependencyPackageInfo> packages,
+        IReadOnlyList<PackageRegistryMetadata> metadata,
+        string repositoryPath = ".")
+    {
+        var context = CreateContextWithInventory(packages, repositoryPath);
+        context.AddArtifact(new AnalyzerArtifact(PackageMetadataArtifact.ArtifactKey, new PackageMetadataArtifact(metadata, new Dictionary<string, string>())));
         return context;
     }
 

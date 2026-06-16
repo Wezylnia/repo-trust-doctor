@@ -567,6 +567,29 @@ public sealed class ReportWriterTests
             FindingFingerprinter.Compute(second));
     }
 
+    [Fact]
+    public void FindingFingerprint_UsesIdentityKeyToSeparateLogicalEntities()
+    {
+        var first = CreateFinding(
+            "TRUST-LIC003",
+            Severity.Low,
+            AnalysisCategory.Licenses) with
+        {
+            IdentityKey = "license|package:nuget:serilog|version:4.0.0"
+        };
+        var second = CreateFinding(
+            "TRUST-LIC003",
+            Severity.Low,
+            AnalysisCategory.Licenses) with
+        {
+            IdentityKey = "license|package:nuget:nunit|version:4.0.0"
+        };
+
+        Assert.NotEqual(
+            FindingFingerprinter.Compute(first),
+            FindingFingerprinter.Compute(second));
+    }
+
     private static string ExtractFirstFindingFingerprint(string json)
     {
         using var document = JsonDocument.Parse(json);

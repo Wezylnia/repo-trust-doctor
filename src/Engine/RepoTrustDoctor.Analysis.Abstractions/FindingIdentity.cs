@@ -51,6 +51,7 @@ public static class FindingIdentity
         var builder = new StringBuilder();
         AppendPart(builder, Normalize(finding.RuleId));
         AppendPart(builder, finding.Category.ToString().ToLowerInvariant());
+        AppendPart(builder, Normalize(finding.IdentityKey));
         AppendPart(builder, Normalize(finding.Title));
 
         var evidenceParts = finding.Evidence

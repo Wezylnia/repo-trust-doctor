@@ -722,6 +722,45 @@ public sealed class CodeCriticalityAnalyzerTests
     }
 
     [Fact]
+    public async Task CodeCriticalityAnalyzer_DoesNotLetSafeProcessConfigurationHideUnsafeInstanceStart()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var directory = Path.Combine(fixture.Path, "src", "jobs");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "MixedRunner.cs"), """
+        using System.Diagnostics;
+
+        public sealed class MixedRunner
+        {
+            public void Safe(string repositoryUrl, string clonePath)
+            {
+                using var safeProcess = new Process();
+                safeProcess.StartInfo = new ProcessStartInfo
+                {
+                    FileName = "git",
+                    UseShellExecute = false
+                };
+                safeProcess.StartInfo.ArgumentList.Add("clone");
+                safeProcess.StartInfo.ArgumentList.Add(repositoryUrl);
+                safeProcess.StartInfo.ArgumentList.Add(clonePath);
+                safeProcess.Start();
+            }
+
+            public void Unsafe()
+            {
+                using var unsafeProcess = new Process();
+                unsafeProcess.Start();
+            }
+        }
+        """);
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+
+        var result = await new CodeCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-CODE015");
+    }
+
+    [Fact]
     public async Task CodeCriticalityAnalyzer_IgnoresDangerousTermsInsideStringLiterals()
     {
         using var fixture = TemporaryRepository.Create();

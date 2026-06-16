@@ -29,6 +29,8 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
         context.TryGetArtifact<DependencyInventoryArtifact>(DependencyInventoryArtifact.ArtifactKey, out var inventory);
         context.TryGetArtifact<PackageMetadataArtifact>(PackageMetadataArtifact.ArtifactKey, out var metadata);
         var packageScopes = BuildScopeLookup(inventory);
+        var packageLookup = BuildInventoryPackageLookup(inventory);
+        var sourceResolver = new EffectivePackageSourceResolver(context.RepositoryPath);
 
         if (metadata is not null)
         {
@@ -36,27 +38,46 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var shouldReportOriginMetadata = IsProductionOrUnknownScope(package, packageScopes);
+                var inventoryPackage = TryGetInventoryPackage(packageLookup, package);
+                var effectiveSource = sourceResolver.Resolve(
+                    package,
+                    inventoryPackage,
+                    inventory?.PackageSources ?? []);
                 if (string.IsNullOrWhiteSpace(package.RepositoryUrl) && shouldReportOriginMetadata)
                 {
-                    findings.Add(CreateFinding("TRUST-ORIGIN003", "Package origin metadata is incomplete", Severity.Low, Confidence.Medium, $"Package `{package.Name}` metadata does not include a repository URL.", "package-origin", $"Package `{package.Name}` has no repository URL in {package.SourceRegistry}.", "Prefer dependencies with traceable repository metadata."));
+                    findings.Add(CreateFinding("TRUST-ORIGIN003", "Package origin metadata is incomplete", Severity.Low, Confidence.Medium, $"Package `{package.Name}` metadata does not include a repository URL.", "package-origin", $"Package `{package.Name}` has no repository URL in {package.SourceRegistry}.", "Prefer dependencies with traceable repository metadata.", BuildPackageTags(package)));
                 }
                 else if (!string.IsNullOrWhiteSpace(package.RepositoryUrl) &&
                          ShouldCompareRepositoryToTarget(context.Target, package) &&
                          IsRepositoryMismatch(context.Target, package.RepositoryUrl))
                 {
-                    findings.Add(CreateFinding("TRUST-ORIGIN001", "Package repository URL does not match analyzed repository", Severity.Medium, Confidence.Medium, $"Package `{package.Name}` repository metadata points to a different repository.", "package-origin", $"Repository metadata is `{package.RepositoryUrl}`.", "Verify that package metadata points to the expected source repository."));
+                    findings.Add(CreateFinding("TRUST-ORIGIN001", "Package repository URL does not match analyzed repository", Severity.Medium, Confidence.Medium, $"Package `{package.Name}` repository metadata points to a different repository.", "package-origin", $"Repository metadata is `{package.RepositoryUrl}`.", "Verify that package metadata points to the expected source repository.", BuildPackageTags(package)));
                 }
 
                 if (LooksOfficial(package.Name) && string.IsNullOrWhiteSpace(package.RepositoryUrl) && shouldReportOriginMetadata)
                 {
-                    findings.Add(CreateFinding("TRUST-ORIGIN002", "Package has official-looking name from unverified origin", Severity.Low, Confidence.Low, $"Package `{package.Name}` has an official-looking name but incomplete origin metadata.", "package-origin", $"Package `{package.Name}` needs publisher/origin review.", "Manually verify the package publisher and repository before relying on it."));
+                    findings.Add(CreateFinding("TRUST-ORIGIN002", "Package has official-looking name from unverified origin", Severity.Low, Confidence.Low, $"Package `{package.Name}` has an official-looking name but incomplete origin metadata.", "package-origin", $"Package `{package.Name}` needs publisher/origin review.", "Manually verify the package publisher and repository before relying on it.", BuildPackageTags(package)));
+                }
+
+                if (LooksInternal(package.Name) && effectiveSource.IsPublic)
+                {
+                    findings.Add(CreateFinding(
+                        "TRUST-ORIGIN006",
+                        "Internal-looking package is resolved from a public registry",
+                        Severity.Medium,
+                        Confidence.Medium,
+                        $"Package `{package.Name}` looks internal but resolves from public registry `{effectiveSource.RegistryUrl ?? package.SourceRegistry}`.",
+                        "package-origin",
+                        BuildSourceEvidence(package.Name, effectiveSource),
+                        "Verify whether the package should come from a private registry.",
+                        BuildPackageTags(package)));
                 }
             }
         }
 
         if (inventory is not null)
         {
-            AddDependencyConfusionFindings(context, inventory, findings);
+            AddDependencyConfusionFindings(context, inventory, sourceResolver, findings);
         }
 
         return Task.FromResult(AnalyzerResult.Completed(findings));
@@ -73,6 +94,22 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
         foreach (var package in inventory.Packages.Where(package => package.IsDirect))
         {
             lookup[PackageKey(package.Ecosystem, package.Name, package.Version)] = package.Scope;
+        }
+
+        return lookup;
+    }
+
+    private static Dictionary<string, DependencyPackageInfo> BuildInventoryPackageLookup(DependencyInventoryArtifact? inventory)
+    {
+        var lookup = new Dictionary<string, DependencyPackageInfo>(StringComparer.Ordinal);
+        if (inventory is null)
+        {
+            return lookup;
+        }
+
+        foreach (var package in inventory.Packages)
+        {
+            lookup[PackageKey(package.Ecosystem, package.Name, package.Version)] = package;
         }
 
         return lookup;
@@ -99,7 +136,14 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
         return null;
     }
 
-    private static void AddDependencyConfusionFindings(AnalysisContext context, DependencyInventoryArtifact inventory, List<Finding> findings)
+    private static DependencyPackageInfo? TryGetInventoryPackage(
+        IReadOnlyDictionary<string, DependencyPackageInfo> lookup,
+        PackageRegistryMetadata package) =>
+        lookup.TryGetValue(PackageKey(package.Ecosystem, package.Name, package.RequestedVersion), out var inventoryPackage)
+            ? inventoryPackage
+            : null;
+
+    private static void AddDependencyConfusionFindings(AnalysisContext context, DependencyInventoryArtifact inventory, EffectivePackageSourceResolver sourceResolver, List<Finding> findings)
     {
         var hasNuGetPublic = inventory.PackageSources.Any(source => source.Ecosystem == DependencyEcosystem.NuGet && source.Source.Contains("nuget.org", StringComparison.OrdinalIgnoreCase));
         var hasNuGetNonPublic = inventory.PackageSources.Any(source => source.Ecosystem == DependencyEcosystem.NuGet && !source.Source.Contains("nuget.org", StringComparison.OrdinalIgnoreCase));
@@ -112,77 +156,11 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
         {
             if (package.Name.StartsWith("@", StringComparison.Ordinal) &&
                 LooksInternal(package.Name) &&
-                !NpmScopeRegistryExists(context.RepositoryPath, package.Name))
+                !sourceResolver.HasMatchingNpmScopeRegistry(package.Name))
             {
                 findings.Add(CreateFinding("TRUST-ORIGIN005", "npm scope registry configuration appears risky", Severity.Medium, Confidence.Medium, $"Scoped package `{package.Name}` appears internal but no scope registry mapping was found.", "npm-registry", $"Package `{package.Name}` has no matching .npmrc scope registry mapping.", "Add explicit scope registry mapping in .npmrc for private scopes."));
             }
-
-            var sourceKind = string.Empty;
-            var hasSourceKind = package.Metadata?.TryGetValue("sourceKind", out sourceKind) == true;
-            var isRegistryResolved = !hasSourceKind ||
-                                     string.Equals(sourceKind, "registry", StringComparison.OrdinalIgnoreCase);
-            if (LooksInternal(package.Name) && isRegistryResolved)
-            {
-                if (package.Ecosystem == DependencyEcosystem.Npm &&
-                    package.Name.StartsWith("@", StringComparison.Ordinal) &&
-                    NpmScopeRegistryExists(context.RepositoryPath, package.Name))
-                {
-                    continue;
-                }
-
-                findings.Add(CreateFinding("TRUST-ORIGIN006", "Internal-looking package is resolved from a public registry", Severity.Medium, Confidence.Medium, $"Package `{package.Name}` looks internal but appears to use registry resolution.", "package-origin", $"Package `{package.Name}` should be verified against expected registry sources.", "Verify whether the package should come from a private registry."));
-            }
         }
-    }
-
-    private static bool NpmScopeRegistryExists(string repositoryPath, string packageName)
-    {
-        var scope = GetNpmScope(packageName);
-        if (scope is null)
-        {
-            return false;
-        }
-
-        var prefix = scope + ":registry";
-        foreach (var npmrc in RepositoryFileSystem.EnumerateFiles(repositoryPath, ".npmrc"))
-        {
-            if (!TryReadText(npmrc, out var content))
-            {
-                continue;
-            }
-
-            var lines = content.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-            foreach (var line in lines)
-            {
-                var trimmed = line.Trim();
-                if (trimmed.Length == 0 ||
-                    trimmed.StartsWith('#') ||
-                    trimmed.StartsWith(';') ||
-                    !trimmed.StartsWith(prefix, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                var remainder = trimmed[prefix.Length..].TrimStart();
-                if (remainder.StartsWith('='))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private static string? GetNpmScope(string packageName)
-    {
-        if (!packageName.StartsWith('@'))
-        {
-            return null;
-        }
-
-        var slash = packageName.IndexOf('/');
-        return slash > 1 ? packageName[..slash] : null;
     }
 
     private static bool NuGetSourceMappingExists(string repositoryPath)
@@ -254,6 +232,30 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
         name.Contains("private", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("@company/", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("@internal/", StringComparison.OrdinalIgnoreCase);
+
+    private static string BuildSourceEvidence(string packageName, EffectivePackageSource source)
+    {
+        var evidence = source.RegistryUrl is null
+            ? $"Package `{packageName}` resolved registry source could not be determined."
+            : $"Package `{packageName}` resolved from registry `{source.RegistryUrl}`.";
+        return source.EvidencePath is null
+            ? evidence
+            : $"{evidence} Evidence: `{source.EvidencePath}`.";
+    }
+
+    private static string[] BuildPackageTags(PackageRegistryMetadata package)
+    {
+        var tags = new List<string>
+        {
+            $"package:{package.Ecosystem}:{package.Name}"
+        };
+        if (!string.IsNullOrWhiteSpace(package.RequestedVersion))
+        {
+            tags.Add($"version:{package.RequestedVersion}");
+        }
+
+        return tags.ToArray();
+    }
 
     private static bool TryReadText(string path, out string content)
     {

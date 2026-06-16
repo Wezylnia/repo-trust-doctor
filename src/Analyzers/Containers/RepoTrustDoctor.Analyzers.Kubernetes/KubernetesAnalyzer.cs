@@ -75,13 +75,13 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
             if (HasPodTemplateOrContainerSpec(content))
             {
                 var containers = ExtractContainerStates(content);
-                CheckPrivileged(content, relativePath, findings);
+                CheckPrivileged(containers, relativePath, findings);
                 CheckHostNamespace(content, relativePath, findings);
                 CheckRunAsNonRoot(containers, relativePath, findings);
                 CheckReadOnlyRootFs(containers, relativePath, findings);
                 CheckHostPathVolumes(content, relativePath, findings);
-                CheckCapabilityAdds(content, relativePath, findings);
-                CheckPrivilegeEscalation(content, relativePath, findings);
+                CheckCapabilityAdds(containers, relativePath, findings);
+                CheckPrivilegeEscalation(containers, relativePath, findings);
             }
             CheckSecretManifest(content, relativePath, findings);
         }
@@ -89,13 +89,13 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
         return AnalyzerResult.Completed(findings);
     }
 
-    private static void CheckPrivileged(string content, string relativePath, List<Finding> findings)
+    private static void CheckPrivileged(IReadOnlyCollection<ContainerSecurityState> containers, string relativePath, List<Finding> findings)
     {
-        foreach (Match match in PrivilegedPattern().Matches(content))
+        foreach (var container in containers.Where(static container => container.IsPrivileged))
         {
             findings.Add(CreateFinding("TRUST-K8S001", "Kubernetes container runs in privileged mode",
-                Severity.High, relativePath, "securityContext.privileged is set to true.",
-                GetLineNumber(content, match.Index)));
+                Severity.High, relativePath, $"{container.DisplayName} sets securityContext.privileged: true.",
+                container.LineNumber));
         }
     }
 
@@ -155,25 +155,25 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
             GetLineNumber(content, matches[0].Index)));
     }
 
-    private static void CheckCapabilityAdds(string content, string relativePath, List<Finding> findings)
+    private static void CheckCapabilityAdds(IReadOnlyCollection<ContainerSecurityState> containers, string relativePath, List<Finding> findings)
     {
-        foreach (Match match in CapabilityAddPattern().Matches(content))
+        foreach (var container in containers.Where(static container => container.AddedCapabilities.Count > 0))
         {
-            var cap = match.Groups["cap"].Value;
+            var cap = container.AddedCapabilities[0];
             var severity = cap is "SYS_ADMIN" or "ALL" ? Severity.High : Severity.Medium;
             findings.Add(CreateFinding("TRUST-K8S007", "Kubernetes container adds broad capability",
-                severity, relativePath, $"Container adds capability '{cap}'. Drop all capabilities and add only those needed.",
-                GetLineNumber(content, match.Index), severity == Severity.High ? Confidence.High : Confidence.Medium));
+                severity, relativePath, $"{container.DisplayName} adds capability '{cap}'. Drop all capabilities and add only those needed.",
+                container.LineNumber, severity == Severity.High ? Confidence.High : Confidence.Medium));
         }
     }
 
-    private static void CheckPrivilegeEscalation(string content, string relativePath, List<Finding> findings)
+    private static void CheckPrivilegeEscalation(IReadOnlyCollection<ContainerSecurityState> containers, string relativePath, List<Finding> findings)
     {
-        foreach (Match match in AllowPrivilegeEscalationPattern().Matches(content))
+        foreach (var container in containers.Where(static container => container.AllowPrivilegeEscalation))
         {
             findings.Add(CreateFinding("TRUST-K8S008", "Kubernetes container allows privilege escalation",
-                Severity.Medium, relativePath, "allowPrivilegeEscalation is set to true. Set to false unless needed.",
-                GetLineNumber(content, match.Index)));
+                Severity.Medium, relativePath, $"{container.DisplayName} sets allowPrivilegeEscalation: true. Set to false unless needed.",
+                container.LineNumber));
         }
     }
 
@@ -225,7 +225,10 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
                     ExtractContainerName(containerLines),
                     range.Start + 1,
                     podRunAsNonRoot || RunAsNonRootPattern().IsMatch(text),
-                    ReadOnlyRootFsPattern().IsMatch(text));
+                    ReadOnlyRootFsPattern().IsMatch(text),
+                    PrivilegedPattern().IsMatch(text),
+                    AllowPrivilegeEscalationPattern().IsMatch(text),
+                    ReadAddedCapabilities(text));
             }));
         }
 
@@ -258,7 +261,7 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
         for (var i = document.Start; i < document.EndExclusive; i++)
         {
             var trimmed = lines[i].Trim();
-            if (trimmed is not ("containers:" or "initContainers:"))
+            if (trimmed is not ("containers:" or "initContainers:" or "ephemeralContainers:"))
             {
                 continue;
             }
@@ -410,17 +413,17 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"(?mi)^\s*kind\s*:\s*(Deployment|DaemonSet|StatefulSet|Pod|Job|CronJob|ReplicaSet|ReplicationController)\s*$")]
     private static partial Regex WorkloadKindPattern();
 
-    [GeneratedRegex(@"(?mi)^\s*(containers|initContainers)\s*:\s*$")]
+    [GeneratedRegex(@"(?mi)^\s*(containers|initContainers|ephemeralContainers)\s*:\s*$")]
     private static partial Regex ContainerSpecPattern();
 
     [GeneratedRegex(@"(?m)^\s*hostPath\s*:\s*$")]
     private static partial Regex HostPathPattern();
 
-    [GeneratedRegex(@"(?m)add\s*:\s*\[.*?""(?<cap>SYS_ADMIN|NET_ADMIN|ALL)""")]
-    private static partial Regex CapabilityAddPattern();
-
     [GeneratedRegex(@"allowPrivilegeEscalation\s*:\s*true", RegexOptions.IgnoreCase)]
     private static partial Regex AllowPrivilegeEscalationPattern();
+
+    [GeneratedRegex(@"""(?<cap>SYS_ADMIN|NET_ADMIN|ALL)""", RegexOptions.IgnoreCase)]
+    private static partial Regex CapabilityNamePattern();
 
     [GeneratedRegex(@"^\s*(?:-\s*)?name\s*:\s*(?<name>[^#\s]+)", RegexOptions.IgnoreCase)]
     private static partial Regex ContainerNamePattern();
@@ -437,5 +440,23 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
         string DisplayName,
         int LineNumber,
         bool RunAsNonRoot,
-        bool ReadOnlyRootFilesystem);
+        bool ReadOnlyRootFilesystem,
+        bool IsPrivileged,
+        bool AllowPrivilegeEscalation,
+        IReadOnlyList<string> AddedCapabilities);
+
+    private static string[] ReadAddedCapabilities(string text)
+    {
+        if (!text.Contains("capabilities", StringComparison.OrdinalIgnoreCase) ||
+            !text.Contains("add", StringComparison.OrdinalIgnoreCase))
+        {
+            return [];
+        }
+
+        return CapabilityNamePattern()
+            .Matches(text)
+            .Select(match => match.Groups["cap"].Value.ToUpperInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
 }

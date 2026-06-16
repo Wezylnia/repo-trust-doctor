@@ -348,7 +348,8 @@ internal static class FindingFactory
             message,
             [new Evidence(evidenceKind, evidence)],
             new Recommendation(recommendation),
-            Tags: BuildIdentityTags(tags, message, evidence));
+            Tags: BuildIdentityTags(tags, message, evidence),
+            IdentityKey: BuildIdentityKey(ruleId, tags, message, evidence));
 
     private static IReadOnlyList<string>? BuildIdentityTags(
         IReadOnlyList<string>? tags,
@@ -359,6 +360,44 @@ internal static class FindingFactory
         AddPackageIdentityTag(identityTags, message);
         AddPackageIdentityTag(identityTags, evidence);
         return identityTags.Count == 0 ? null : identityTags.ToArray();
+    }
+
+    private static string? BuildIdentityKey(
+        string ruleId,
+        IReadOnlyList<string>? tags,
+        string message,
+        string evidence)
+    {
+        var identityTags = BuildIdentityTags(tags, message, evidence);
+        if (identityTags is null)
+        {
+            return null;
+        }
+
+        var package = identityTags.FirstOrDefault(tag => tag.StartsWith("package:", StringComparison.OrdinalIgnoreCase));
+        if (package is null)
+        {
+            return null;
+        }
+
+        var segments = new List<string> { NormalizeIdentitySegment(ruleId), NormalizeIdentitySegment(package) };
+        var version = identityTags.FirstOrDefault(tag => tag.StartsWith("version:", StringComparison.OrdinalIgnoreCase));
+        if (version is not null)
+        {
+            segments.Add(NormalizeIdentitySegment(version));
+        }
+
+        foreach (var extra in identityTags
+                     .Where(tag =>
+                         !tag.StartsWith("package:", StringComparison.OrdinalIgnoreCase) &&
+                         !tag.StartsWith("version:", StringComparison.OrdinalIgnoreCase) &&
+                         !string.Equals(tag, "vulnerability", StringComparison.OrdinalIgnoreCase))
+                     .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase))
+        {
+            segments.Add(NormalizeIdentitySegment(extra));
+        }
+
+        return string.Join("|", segments);
     }
 
     private static void AddPackageIdentityTag(HashSet<string> tags, string text)
@@ -383,4 +422,7 @@ internal static class FindingFactory
             tags.Add($"package:{packageName}");
         }
     }
+
+    private static string NormalizeIdentitySegment(string value) =>
+        value.Trim().ToLowerInvariant();
 }
