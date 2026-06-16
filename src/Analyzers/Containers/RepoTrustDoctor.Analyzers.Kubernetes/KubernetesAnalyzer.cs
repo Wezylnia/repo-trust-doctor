@@ -74,10 +74,11 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
 
             if (HasPodTemplateOrContainerSpec(content))
             {
+                var containers = ExtractContainerStates(content);
                 CheckPrivileged(content, relativePath, findings);
                 CheckHostNamespace(content, relativePath, findings);
-                CheckRunAsNonRoot(content, relativePath, findings);
-                CheckReadOnlyRootFs(content, relativePath, findings);
+                CheckRunAsNonRoot(containers, relativePath, findings);
+                CheckReadOnlyRootFs(containers, relativePath, findings);
                 CheckHostPathVolumes(content, relativePath, findings);
                 CheckCapabilityAdds(content, relativePath, findings);
                 CheckPrivilegeEscalation(content, relativePath, findings);
@@ -108,21 +109,23 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
         }
     }
 
-    private static void CheckRunAsNonRoot(string content, string relativePath, List<Finding> findings)
+    private static void CheckRunAsNonRoot(IReadOnlyCollection<ContainerSecurityState> containers, string relativePath, List<Finding> findings)
     {
-        if (!RunAsNonRootPattern().IsMatch(content))
+        foreach (var container in containers.Where(static container => !container.RunAsNonRoot))
         {
             findings.Add(CreateFinding("TRUST-K8S003", "Kubernetes container may run as root",
-                Severity.Medium, relativePath, "runAsNonRoot is not explicitly set to true."));
+                Severity.Medium, relativePath, $"{container.DisplayName} does not explicitly set runAsNonRoot: true.",
+                container.LineNumber));
         }
     }
 
-    private static void CheckReadOnlyRootFs(string content, string relativePath, List<Finding> findings)
+    private static void CheckReadOnlyRootFs(IReadOnlyCollection<ContainerSecurityState> containers, string relativePath, List<Finding> findings)
     {
-        if (!ReadOnlyRootFsPattern().IsMatch(content))
+        foreach (var container in containers.Where(static container => !container.ReadOnlyRootFilesystem))
         {
             findings.Add(CreateFinding("TRUST-K8S004", "Kubernetes container has writable root filesystem",
-                Severity.Low, relativePath, "readOnlyRootFilesystem is not set to true."));
+                Severity.Low, relativePath, $"{container.DisplayName} does not set readOnlyRootFilesystem: true.",
+                container.LineNumber));
         }
     }
 
@@ -205,6 +208,173 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
         ContainerSpecPattern().IsMatch(content) &&
         WorkloadKindPattern().IsMatch(content);
 
+    private static IReadOnlyList<ContainerSecurityState> ExtractContainerStates(string content)
+    {
+        var lines = content.Replace("\r\n", "\n").Split('\n');
+        var states = new List<ContainerSecurityState>();
+
+        foreach (var document in ExtractDocumentRanges(lines))
+        {
+            var ranges = ExtractContainerRanges(lines, document);
+            var podRunAsNonRoot = HasPodRunAsNonRoot(lines, ranges, document);
+            states.AddRange(ranges.Select(range =>
+            {
+                var containerLines = lines.Skip(range.Start).Take(range.EndExclusive - range.Start).ToArray();
+                var text = string.Join('\n', containerLines);
+                return new ContainerSecurityState(
+                    ExtractContainerName(containerLines),
+                    range.Start + 1,
+                    podRunAsNonRoot || RunAsNonRootPattern().IsMatch(text),
+                    ReadOnlyRootFsPattern().IsMatch(text));
+            }));
+        }
+
+        return states;
+    }
+
+    private static IReadOnlyList<LineRange> ExtractDocumentRanges(string[] lines)
+    {
+        var ranges = new List<LineRange>();
+        var start = 0;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (!DocumentSeparatorPattern().IsMatch(lines[i]))
+            {
+                continue;
+            }
+
+            ranges.Add(new LineRange(start, i));
+            start = i + 1;
+        }
+
+        ranges.Add(new LineRange(start, lines.Length));
+        return ranges;
+    }
+
+    private static IReadOnlyList<LineRange> ExtractContainerRanges(string[] lines, LineRange document)
+    {
+        var ranges = new List<LineRange>();
+
+        for (var i = document.Start; i < document.EndExclusive; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (trimmed is not ("containers:" or "initContainers:"))
+            {
+                continue;
+            }
+
+            var blockIndent = CountIndent(lines[i]);
+            var blockEnd = FindContainerBlockEnd(lines, i + 1, blockIndent, document.EndExclusive);
+            var itemIndent = FindFirstListItemIndent(lines, i + 1, blockEnd, blockIndent);
+            if (itemIndent is null)
+            {
+                continue;
+            }
+
+            for (var cursor = i + 1; cursor < blockEnd; cursor++)
+            {
+                if (!IsListItem(lines[cursor], itemIndent.Value))
+                {
+                    continue;
+                }
+
+                var itemEnd = FindContainerItemEnd(lines, cursor + 1, blockEnd, itemIndent.Value);
+                ranges.Add(new LineRange(cursor, itemEnd));
+                cursor = itemEnd - 1;
+            }
+        }
+
+        return ranges;
+    }
+
+    private static int? FindFirstListItemIndent(string[] lines, int start, int blockEnd, int blockIndent)
+    {
+        for (var i = start; i < blockEnd; i++)
+        {
+            if (CountIndent(lines[i]) >= blockIndent && lines[i].TrimStart().StartsWith("- ", StringComparison.Ordinal))
+            {
+                return CountIndent(lines[i]);
+            }
+        }
+
+        return null;
+    }
+
+    private static int FindContainerBlockEnd(string[] lines, int start, int blockIndent, int documentEnd)
+    {
+        for (var i = start; i < documentEnd; i++)
+        {
+            if (string.IsNullOrWhiteSpace(lines[i]))
+            {
+                continue;
+            }
+
+            var indent = CountIndent(lines[i]);
+            if (indent <= blockIndent && !lines[i].TrimStart().StartsWith("- ", StringComparison.Ordinal))
+            {
+                return i;
+            }
+        }
+
+        return documentEnd;
+    }
+
+    private static int FindContainerItemEnd(string[] lines, int start, int blockEnd, int itemIndent)
+    {
+        for (var i = start; i < blockEnd; i++)
+        {
+            if (IsListItem(lines[i], itemIndent))
+            {
+                return i;
+            }
+        }
+
+        return blockEnd;
+    }
+
+    private static bool HasPodRunAsNonRoot(string[] lines, IReadOnlyList<LineRange> containerRanges, LineRange document)
+    {
+        for (var i = document.Start; i < document.EndExclusive; i++)
+        {
+            if (!RunAsNonRootPattern().IsMatch(lines[i]) || containerRanges.Any(range => range.Contains(i)))
+            {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string ExtractContainerName(string[] containerLines)
+    {
+        foreach (var line in containerLines)
+        {
+            var match = ContainerNamePattern().Match(line);
+            if (match.Success)
+            {
+                return $"Container '{match.Groups["name"].Value.Trim('"', '\'')}'";
+            }
+        }
+
+        return "Container";
+    }
+
+    private static bool IsListItem(string line, int indent) =>
+        CountIndent(line) == indent && line.TrimStart().StartsWith("- ", StringComparison.Ordinal);
+
+    private static int CountIndent(string line)
+    {
+        var count = 0;
+        while (count < line.Length && line[count] == ' ')
+        {
+            count++;
+        }
+
+        return count;
+    }
+
     private static bool IsExampleFixturePath(string relativePath) =>
         RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath) ||
         IsKubernetesApiFixturePath(relativePath);
@@ -242,6 +412,7 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?mi)^\s*(containers|initContainers)\s*:\s*$")]
     private static partial Regex ContainerSpecPattern();
+
     [GeneratedRegex(@"(?m)^\s*hostPath\s*:\s*$")]
     private static partial Regex HostPathPattern();
 
@@ -249,4 +420,22 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
     private static partial Regex CapabilityAddPattern();
 
     [GeneratedRegex(@"allowPrivilegeEscalation\s*:\s*true", RegexOptions.IgnoreCase)]
-    private static partial Regex AllowPrivilegeEscalationPattern();}
+    private static partial Regex AllowPrivilegeEscalationPattern();
+
+    [GeneratedRegex(@"^\s*(?:-\s*)?name\s*:\s*(?<name>[^#\s]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex ContainerNamePattern();
+
+    [GeneratedRegex(@"^\s*---\s*(?:#.*)?$")]
+    private static partial Regex DocumentSeparatorPattern();
+
+    private sealed record LineRange(int Start, int EndExclusive)
+    {
+        public bool Contains(int lineIndex) => lineIndex >= Start && lineIndex < EndExclusive;
+    }
+
+    private sealed record ContainerSecurityState(
+        string DisplayName,
+        int LineNumber,
+        bool RunAsNonRoot,
+        bool ReadOnlyRootFilesystem);
+}

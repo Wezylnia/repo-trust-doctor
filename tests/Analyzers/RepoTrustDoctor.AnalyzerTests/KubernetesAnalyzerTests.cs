@@ -194,6 +194,94 @@ public sealed class KubernetesAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_MixedContainerSecurity_ReportsOnlyUnsafeContainers()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deployment.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: safe
+                securityContext:
+                  runAsNonRoot: true
+                  readOnlyRootFilesystem: true
+              - name: unsafe
+                image: nginx
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var runAsNonRoot = Assert.Single(result.Findings, f => f.RuleId == "TRUST-K8S003");
+        var rootFilesystem = Assert.Single(result.Findings, f => f.RuleId == "TRUST-K8S004");
+        Assert.Contains("unsafe", Assert.Single(runAsNonRoot.Evidence).Message, StringComparison.Ordinal);
+        Assert.Contains("unsafe", Assert.Single(rootFilesystem.Evidence).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PodRunAsNonRoot_AppliesToContainers()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deployment.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              securityContext:
+                runAsNonRoot: true
+              containers:
+              - name: app
+                securityContext:
+                  readOnlyRootFilesystem: true
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S003");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_MultiDocumentPodSecurity_DoesNotApplyAcrossDocuments()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deployment.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              securityContext:
+                runAsNonRoot: true
+              containers:
+              - name: safe
+                securityContext:
+                  readOnlyRootFilesystem: true
+        ---
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: unsafe
+                securityContext:
+                  readOnlyRootFilesystem: true
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-K8S003");
+        Assert.Contains("unsafe", Assert.Single(finding.Evidence).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ConfigMap_NoSecretFinding()
     {
         using var fixture = TemporaryRepository.Create();
