@@ -33,7 +33,7 @@ Current scans are static-only by default. The tool does not execute repository c
 | `v1.7.x` | Deeper static code intelligence | Language-specific API extractors, static import/dependency graphs, conservative reachability hints |
 | `v1.8.x` | Analyzer SDK and plugins | Stable analyzer packaging, rule metadata validation, external analyzer test harness |
 | `v1.9.x` | Hosted hardening | Tenant-safe queues, storage controls, rate limits, private repository credential isolation |
-| `v2.0.0` | Extensible trust platform | Stable plugin-ready platform with broad ecosystem coverage and durable operational workflows |
+| `v2.0.0` | Extensible trust platform | Stable plugin-ready platform with broad ecosystem coverage, policy facts, trust graph correlation, and durable operational workflows |
 
 ## v0.1.x: Foundation Alpha
 
@@ -644,7 +644,9 @@ Planned work:
 - per-project dependency summaries,
 - workspace-local dependency edge recording,
 - duplicated package/version drift detection,
-- generated/vendor directory handling tuned per ecosystem.
+- generated/vendor directory handling tuned per ecosystem,
+- stable `ProjectId` attachment for dependency records, findings, release evidence, and public API symbols,
+- path-aware monorepo trust diff so newly evaluated projects are not presented as score regressions or improvements.
 
 Success criteria:
 
@@ -721,7 +723,9 @@ Candidate work:
 - static import/dependency graphs for central file detection,
 - framework route/controller detection for common stacks,
 - security-sensitive API usage heuristics for auth, crypto, file IO, network IO, and deserialization,
-- coverage matching improvements for monorepos.
+- coverage matching improvements for monorepos,
+- public API symbol records with project IDs, fully qualified names, signatures, file paths, and line numbers,
+- import graph blast-radius correlation that can explain which projects or entry points depend on a risky file or package.
 
 Out of scope:
 
@@ -778,6 +782,11 @@ Expected shape:
 - stable analyzer SDK,
 - plugin-ready analyzer boundaries,
 - evidence import and correlation,
+- policy fact engine that evaluates structured artifacts directly instead of relying only on generated findings,
+- trust graph connecting workspaces, packages, advisories, SBOM/provenance evidence, source files, workflows, releases, and findings,
+- suppression/waiver model with owner, reason, expiry, evidence fingerprint, and active/suppressed counts in reports,
+- VEX and provenance verification so vulnerability findings can be annotated by trusted affected/not-affected evidence without being silently removed,
+- deterministic remediation patch providers for narrow mechanical fixes such as `persist-credentials: false`, Docker `USER`, or Kubernetes security-context additions,
 - clear safety model for local, hosted, and future sandboxed deep scans.
 
 Success criteria:
