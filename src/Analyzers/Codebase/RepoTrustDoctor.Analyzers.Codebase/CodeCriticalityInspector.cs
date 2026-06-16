@@ -34,9 +34,17 @@ internal static partial class CodeCriticalityInspector
 
         foreach (var group in KeywordGroups)
         {
-            if (group.Reason == CodeCriticalityReason.CommandExecution &&
-                HasBoundedProcessInvocation(lower))
+            if (group.Reason == CodeCriticalityReason.CommandExecution)
             {
+                var commandLine = FindFirstCommandExecutionLine(lines, group.Keywords);
+                if (commandLine is null)
+                {
+                    continue;
+                }
+
+                reasons.Add(group.Reason);
+                relevantLines[group.Reason] = commandLine.Value;
+                firstRelevantLine ??= commandLine;
                 continue;
             }
 
@@ -113,6 +121,26 @@ internal static partial class CodeCriticalityInspector
             {
                 return index + 1;
             }
+        }
+
+        return null;
+    }
+
+    private static int? FindFirstCommandExecutionLine(string[] lines, IReadOnlyList<string> keywords)
+    {
+        for (var index = 0; index < lines.Length; index++)
+        {
+            if (!keywords.Any(keyword => lines[index].Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            if (IsBoundedProcessStartCall(lines, index))
+            {
+                continue;
+            }
+
+            return index + 1;
         }
 
         return null;
@@ -211,10 +239,20 @@ internal static partial class CodeCriticalityInspector
             }),
             string.Empty);
 
-    private static bool HasBoundedProcessInvocation(string searchableText) =>
-        searchableText.Contains("processstartinfo", StringComparison.OrdinalIgnoreCase) &&
-        searchableText.Contains("useshellexecute = false", StringComparison.OrdinalIgnoreCase) &&
-        searchableText.Contains("argumentlist.add", StringComparison.OrdinalIgnoreCase);
+    private static bool IsBoundedProcessStartCall(string[] lines, int lineIndex)
+    {
+        if (!ProcessInstanceStartPattern().IsMatch(lines[lineIndex]))
+        {
+            return false;
+        }
+
+        var start = Math.Max(0, lineIndex - 16);
+        var length = Math.Min(lines.Length - start, 24);
+        var localBlock = string.Join('\n', lines.Skip(start).Take(length));
+        return localBlock.Contains("processstartinfo", StringComparison.OrdinalIgnoreCase) &&
+               localBlock.Contains("useshellexecute = false", StringComparison.OrdinalIgnoreCase) &&
+               localBlock.Contains("argumentlist.add", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool IsBroadExceptionLine(string line) =>
         BroadExceptionRegex().IsMatch(line) &&
@@ -264,6 +302,9 @@ internal static partial class CodeCriticalityInspector
 
     [GeneratedRegex(@"\b(?:public\s+)?enum\s+CodeCriticalityReason\s*\{[\s\S]*?\}", RegexOptions.IgnoreCase)]
     private static partial Regex CodeCriticalityEnumDeclarationRegex();
+
+    [GeneratedRegex(@"\b[A-Za-z_]\w*\.start\s*\(\s*\)", RegexOptions.IgnoreCase)]
+    private static partial Regex ProcessInstanceStartPattern();
 
     private sealed record KeywordGroup(CodeCriticalityReason Reason, IReadOnlyList<string> Keywords);
 }
