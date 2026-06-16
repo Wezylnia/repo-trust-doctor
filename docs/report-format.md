@@ -118,7 +118,7 @@ Diff JSON includes:
 
 Markdown and console diff output summarize the same model for human review.
 
-Finding fingerprints are assigned before scoring and policy evaluation, then reused by every report format and trust history. They are lowercase SHA-256 hex strings. The stable identity uses the rule ID, category, normalized title/message, and redacted evidence kind, file path, and message. Evidence line numbers are excluded from the base identity so inserting lines above a finding does not turn it into a resolved-plus-new pair. If two findings in the same report remain structurally identical, location and occurrence order are used only to disambiguate that collision. Raw evidence values and secret-like content are never fingerprint inputs.
+Finding fingerprints are assigned before scoring and policy evaluation, then reused by every report format and trust history. They are lowercase SHA-256 hex strings. The stable identity uses the rule ID, category, normalized title, evidence kind, evidence file path, and structured tags. Finding messages and evidence messages are excluded because they often contain aggregate counts or explanatory wording that can change without changing the underlying risk. Evidence line numbers are also excluded from the base identity so inserting lines above a finding does not turn it into a resolved-plus-new pair. If two findings in the same report remain structurally identical, location and occurrence order are used only to disambiguate that collision. Raw evidence values and secret-like content are never fingerprint inputs.
 
 ## CLI Export
 

@@ -52,24 +52,31 @@ public static class FindingIdentity
         AppendPart(builder, Normalize(finding.RuleId));
         AppendPart(builder, finding.Category.ToString().ToLowerInvariant());
         AppendPart(builder, Normalize(finding.Title));
-        AppendPart(builder, Normalize(finding.Message));
 
         var evidenceParts = finding.Evidence
             .Select(evidence => new
             {
                 Kind = Normalize(evidence.Kind),
-                FilePath = NormalizePath(evidence.FilePath),
-                Message = Normalize(evidence.Message)
+                FilePath = NormalizePath(evidence.FilePath)
             })
             .OrderBy(evidence => evidence.Kind, StringComparer.Ordinal)
-            .ThenBy(evidence => evidence.FilePath, StringComparer.Ordinal)
-            .ThenBy(evidence => evidence.Message, StringComparer.Ordinal);
+            .ThenBy(evidence => evidence.FilePath, StringComparer.Ordinal);
 
         foreach (var evidence in evidenceParts)
         {
             AppendPart(builder, evidence.Kind);
             AppendPart(builder, evidence.FilePath);
-            AppendPart(builder, evidence.Message);
+        }
+
+        var identityTags = finding.Tags?
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Select(Normalize)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray() ?? [];
+        foreach (var tag in identityTags)
+        {
+            AppendPart(builder, tag);
         }
 
         return builder.ToString();

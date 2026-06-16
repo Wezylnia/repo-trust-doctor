@@ -473,7 +473,7 @@ public sealed class ReportWriterTests
     }
 
     [Fact]
-    public void FindingFingerprint_SeparatesDifferentEntitiesWithoutLocations()
+    public void FindingFingerprint_SeparatesDifferentTaggedEntitiesWithoutLocations()
     {
         var first = CreateFinding(
             "TRUST-VULN001",
@@ -481,14 +481,16 @@ public sealed class ReportWriterTests
             AnalysisCategory.Dependencies,
             evidenceKind: "vulnerability-advisory",
             message: "Package alpha matches advisory CVE-2026-0001.",
-            evidenceMessage: "alpha@1.0.0 matches CVE-2026-0001.");
+            evidenceMessage: "alpha@1.0.0 matches CVE-2026-0001.",
+            tags: ["advisory:CVE-2026-0001"]);
         var second = CreateFinding(
             "TRUST-VULN001",
             Severity.High,
             AnalysisCategory.Dependencies,
             evidenceKind: "vulnerability-advisory",
             message: "Package beta matches advisory CVE-2026-0002.",
-            evidenceMessage: "beta@2.0.0 matches CVE-2026-0002.");
+            evidenceMessage: "beta@2.0.0 matches CVE-2026-0002.",
+            tags: ["advisory:CVE-2026-0002"]);
 
         Assert.NotEqual(FindingFingerprinter.Compute(first), FindingFingerprinter.Compute(second));
     }
@@ -540,6 +542,31 @@ public sealed class ReportWriterTests
         Assert.Equal(FindingFingerprinter.Compute(first), FindingFingerprinter.Compute(second));
     }
 
+    [Fact]
+    public void FindingFingerprint_DoesNotChangeWhenFindingTextChanges()
+    {
+        var first = CreateFinding(
+            "TRUST-GHA001",
+            Severity.Medium,
+            AnalysisCategory.CiCd,
+            evidenceKind: "workflow-action",
+            filePath: ".github/workflows/ci.yml",
+            message: "Action was used 3 times.",
+            evidenceMessage: "actions/cache@v4 was used 3 times.");
+        var second = CreateFinding(
+            "TRUST-GHA001",
+            Severity.Medium,
+            AnalysisCategory.CiCd,
+            evidenceKind: "workflow-action",
+            filePath: ".github/workflows/ci.yml",
+            message: "Action was used 4 times.",
+            evidenceMessage: "actions/cache@v4 was used 4 times.");
+
+        Assert.Equal(
+            FindingFingerprinter.Compute(first),
+            FindingFingerprinter.Compute(second));
+    }
+
     private static string ExtractFirstFindingFingerprint(string json)
     {
         using var document = JsonDocument.Parse(json);
@@ -577,7 +604,8 @@ public sealed class ReportWriterTests
         string? title = null,
         string? message = null,
         string? evidenceMessage = null,
-        string? recommendation = null)
+        string? recommendation = null,
+        IReadOnlyList<string>? tags = null)
     {
         return new Finding(
             ruleId,
@@ -588,6 +616,7 @@ public sealed class ReportWriterTests
             message ?? $"Message for {ruleId}",
             [new Evidence(evidenceKind, evidenceMessage ?? "test evidence", filePath, lineNumber, evidenceValue)],
             new Recommendation(recommendation ?? "Fix it."),
-            isBlocking);
+            isBlocking,
+            Tags: tags);
     }
 }
