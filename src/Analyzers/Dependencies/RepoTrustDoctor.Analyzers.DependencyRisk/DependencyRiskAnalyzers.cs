@@ -196,7 +196,7 @@ public sealed class DependencyVulnerabilityAnalyzer : IRepositoryAnalyzer
                     "vulnerability-advisory",
                     $"Advisory `{advisory.Id}`: {advisory.Summary}",
                     "Review the advisory and update the dependency to a fixed version when available.",
-                    tags: BuildVulnerabilityTags(advisory)));
+                    tags: BuildVulnerabilityTags(advisory, package)));
 
                 if (advisory.FixedVersions.Count > 0)
                 {
@@ -209,7 +209,7 @@ public sealed class DependencyVulnerabilityAnalyzer : IRepositoryAnalyzer
                         "vulnerability-advisory",
                         $"Fixed versions include `{string.Join(", ", advisory.FixedVersions.Take(3))}`.",
                         $"Upgrade `{package.Name}` to a fixed version listed by advisory `{advisory.Id}`.",
-                        tags: BuildVulnerabilityTags(advisory)));
+                        tags: BuildVulnerabilityTags(advisory, package)));
                 }
             }
         }
@@ -259,9 +259,12 @@ public sealed class DependencyVulnerabilityAnalyzer : IRepositoryAnalyzer
     };
 
     private static IReadOnlyList<string> BuildVulnerabilityTags(
-        VulnerabilityAdvisory advisory) =>
+        VulnerabilityAdvisory advisory,
+        DependencyPackageInfo package) =>
         advisory.Aliases
             .Prepend(advisory.Id)
+            .Prepend($"version:{package.Version}")
+            .Prepend($"package:{package.Ecosystem}:{package.Name}")
             .Prepend("vulnerability")
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -345,6 +348,39 @@ internal static class FindingFactory
             message,
             [new Evidence(evidenceKind, evidence)],
             new Recommendation(recommendation),
-            Tags: tags);
-}
+            Tags: BuildIdentityTags(tags, message, evidence));
 
+    private static IReadOnlyList<string>? BuildIdentityTags(
+        IReadOnlyList<string>? tags,
+        string message,
+        string evidence)
+    {
+        var identityTags = new HashSet<string>(tags ?? [], StringComparer.OrdinalIgnoreCase);
+        AddPackageIdentityTag(identityTags, message);
+        AddPackageIdentityTag(identityTags, evidence);
+        return identityTags.Count == 0 ? null : identityTags.ToArray();
+    }
+
+    private static void AddPackageIdentityTag(HashSet<string> tags, string text)
+    {
+        const string marker = "package `";
+        var markerIndex = text.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0)
+        {
+            return;
+        }
+
+        var packageStart = markerIndex + marker.Length;
+        var packageEnd = text.IndexOf('`', packageStart);
+        if (packageEnd <= packageStart)
+        {
+            return;
+        }
+
+        var packageName = text[packageStart..packageEnd].Trim();
+        if (packageName.Length > 0)
+        {
+            tags.Add($"package:{packageName}");
+        }
+    }
+}

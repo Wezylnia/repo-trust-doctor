@@ -395,6 +395,27 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
+    public async Task DependencyVulnerabilityAnalyzer_FingerprintsIncludePackageIdentity()
+    {
+        var context = CreateContextWithInventory([
+            CreatePackage(DependencyEcosystem.Npm, "alpha-lib", "1.0.0", manifestPath: "alpha/package.json"),
+            CreatePackage(DependencyEcosystem.Npm, "beta-lib", "1.0.0", manifestPath: "beta/package.json")
+        ]);
+        var analyzer = new DependencyVulnerabilityAnalyzer(new FakeOsvClient([
+            new VulnerabilityAdvisory("GHSA-shared", [], "shared advisory", Severity.High, [], null, null)
+        ]));
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+        var directFindings = result.Findings
+            .Where(finding => finding.RuleId == "TRUST-VULN001")
+            .ToArray();
+
+        Assert.Equal(2, directFindings.Length);
+        Assert.Equal(2, directFindings.Select(FindingIdentity.Compute).Distinct().Count());
+        Assert.All(directFindings, finding => Assert.Contains(finding.Tags!, tag => tag.StartsWith("package:npm:", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
     public async Task DependencyVulnerabilityAnalyzer_QueriesAllSupportedPackagesBeyondPreviousLimit()
     {
         var packages = Enumerable.Range(0, 175)
@@ -604,6 +625,24 @@ public sealed class DependencyRiskAnalyzerTests
         var context = CreateContextWithInventory(
         [
             CreatePackage(DependencyEcosystem.Npm, "@internal/widget", "1.0.0")
+        ], fixture.Path);
+
+        var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN005");
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN006");
+    }
+
+    [Fact]
+    public async Task PackageOriginAnalyzer_RequiresCaseExactNpmScopeRegistry()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".npmrc"), """
+        @company:registry=https://npm.example.test/
+        """);
+        var context = CreateContextWithInventory(
+        [
+            CreatePackage(DependencyEcosystem.Npm, "@Company/widget", "1.0.0")
         ], fixture.Path);
 
         var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);

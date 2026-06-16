@@ -64,7 +64,7 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
 
     private static Dictionary<string, DependencyScope> BuildScopeLookup(DependencyInventoryArtifact? inventory)
     {
-        var lookup = new Dictionary<string, DependencyScope>(StringComparer.OrdinalIgnoreCase);
+        var lookup = new Dictionary<string, DependencyScope>(StringComparer.Ordinal);
         if (inventory is null)
         {
             return lookup;
@@ -158,7 +158,7 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
                 if (trimmed.Length == 0 ||
                     trimmed.StartsWith('#') ||
                     trimmed.StartsWith(';') ||
-                    !trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    !trimmed.StartsWith(prefix, StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -236,7 +236,12 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
     }
 
     private static string PackageKey(DependencyEcosystem ecosystem, string name, string? version) =>
-        $"{ecosystem}:{name}:{version ?? string.Empty}";
+        $"{ecosystem}:{NormalizePackageIdentityName(ecosystem, name)}:{version ?? string.Empty}";
+
+    private static string NormalizePackageIdentityName(DependencyEcosystem ecosystem, string name) =>
+        ecosystem is DependencyEcosystem.Npm or DependencyEcosystem.Cargo or DependencyEcosystem.Go
+            ? name
+            : name.ToLowerInvariant();
 
     private static bool LooksOfficial(string name) =>
         name.Contains("microsoft", StringComparison.OrdinalIgnoreCase) ||
