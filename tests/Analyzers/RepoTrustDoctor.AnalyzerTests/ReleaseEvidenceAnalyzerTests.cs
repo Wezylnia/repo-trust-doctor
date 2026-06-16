@@ -373,6 +373,86 @@ public sealed class ReleaseEvidenceAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_DoesNotTreatPackageReferenceVersionAsProjectVersion()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## v2.0.0
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "Library.csproj"), """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <ItemGroup>
+            <PackageReference Include="Newtonsoft.Json">
+              <Version>13.0.3</Version>
+            </PackageReference>
+          </ItemGroup>
+        </Project>
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_UsesProjectPackageVersionFromPropertyGroup()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## v2.0.0
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "Library.csproj"), """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <PackageId>Example.Library</PackageId>
+            <PackageVersion>1.0.0</PackageVersion>
+          </PropertyGroup>
+          <ItemGroup>
+            <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+          </ItemGroup>
+        </Project>
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-REL001");
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-REL004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_SkipsExplicitlyUnpackableProjects()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "CHANGELOG.md"), """
+        # Changelog
+
+        ## v2.0.0
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "Tool.csproj"), """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <Version>1.0.0</Version>
+            <IsPackable>false</IsPackable>
+          </PropertyGroup>
+        </Project>
+        """);
+
+        var result = await new ReleaseEvidenceAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_UsesNestedChangelogForNestedPackage()
     {
         using var fixture = TemporaryRepository.Create();

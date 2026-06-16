@@ -115,14 +115,12 @@ public sealed class TrustScorer
 
         var policySoftCap = policyEvaluation.Violations.Count > 0 && !policyHardCap;
 
-        // For soft-cap: clamp only if score is unexpectedly high given violations, but don't push below 70
+        // Soft policy violations affect the final decision only. They must not
+        // lower the numeric trust score because that can make better raw scores
+        // produce worse final scores around the threshold.
         if (policyHardCap)
         {
             overall = Math.Min(overall, 60);
-        }
-        else if (policySoftCap && overall > 85)
-        {
-            overall = Math.Max(70, overall - 10);
         }
 
         var blockers = findings.Where(f => f.IsBlocking).ToArray();

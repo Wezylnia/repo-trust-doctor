@@ -237,6 +237,39 @@ public sealed class PackageInfrastructureTests
     }
 
     [Fact]
+    public void PackageMetadataParser_DoesNotUseLatestNuGetMetadataWhenRequestedVersionIsMissing()
+    {
+        var package = CreatePackage(DependencyEcosystem.NuGet, "Example.Package", "1.0.0");
+        var metadata = PackageMetadataParser.ParseNuGet(package, """
+        {
+          "items": [
+            {
+              "items": [
+                {
+                  "catalogEntry": {
+                    "version": "2.0.0",
+                    "published": "2026-01-01T00:00:00Z",
+                    "licenseExpression": "MIT",
+                    "repositoryUrl": "https://github.com/example/latest",
+                    "deprecation": { "message": "deprecated latest" }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+        """);
+
+        Assert.NotNull(metadata);
+        Assert.Equal("2.0.0", metadata!.LatestVersion);
+        Assert.Null(metadata.PublishedAt);
+        Assert.False(metadata.IsDeprecated);
+        Assert.Null(metadata.RepositoryUrl);
+        Assert.Null(metadata.LicenseExpression);
+        Assert.Equal("False", metadata.Metadata!["requestedVersionMatched"]);
+    }
+
+    [Fact]
     public void OsvAdvisoryClient_ParsesAdvisoryFixture()
     {
         var advisories = OsvAdvisoryClient.Parse("""

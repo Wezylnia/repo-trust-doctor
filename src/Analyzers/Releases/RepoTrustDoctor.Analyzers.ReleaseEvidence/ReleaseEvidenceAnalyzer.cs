@@ -135,13 +135,15 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
 
             if (TryLoadXml(project, out var document))
             {
-                var version = document.Descendants().FirstOrDefault(element => element.Name.LocalName is "Version" or "PackageVersion")?.Value;
+                if (IsExplicitlyNotPackable(document))
+                {
+                    continue;
+                }
+
+                var version = ReadProjectPackageVersion(document);
                 if (!string.IsNullOrWhiteSpace(version))
                 {
-                    var packageName = document.Descendants()
-                        .FirstOrDefault(element => element.Name.LocalName is "PackageId" or "AssemblyName")
-                        ?.Value
-                        ?.Trim();
+                    var packageName = ReadProjectPackageName(document);
                     yield return new ReleasePackageVersion(
                         relativePath,
                         string.IsNullOrWhiteSpace(packageName)
@@ -177,6 +179,42 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
             }
         }
     }
+
+    private static string? ReadProjectPackageVersion(XDocument document) =>
+        ReadPropertyGroupValue(document, "PackageVersion") ??
+        ReadPropertyGroupValue(document, "Version") ??
+        ReadProjectVersionPrefix(document);
+
+    private static string? ReadProjectVersionPrefix(XDocument document)
+    {
+        var prefix = ReadPropertyGroupValue(document, "VersionPrefix");
+        if (string.IsNullOrWhiteSpace(prefix))
+        {
+            return null;
+        }
+
+        var suffix = ReadPropertyGroupValue(document, "VersionSuffix");
+        return string.IsNullOrWhiteSpace(suffix) ? prefix : $"{prefix}-{suffix}";
+    }
+
+    private static string? ReadProjectPackageName(XDocument document) =>
+        ReadPropertyGroupValue(document, "PackageId") ??
+        ReadPropertyGroupValue(document, "AssemblyName");
+
+    private static bool IsExplicitlyNotPackable(XDocument document) =>
+        string.Equals(
+            ReadPropertyGroupValue(document, "IsPackable"),
+            "false",
+            StringComparison.OrdinalIgnoreCase);
+
+    private static string? ReadPropertyGroupValue(XDocument document, string localName) =>
+        document.Root?
+            .Elements()
+            .Where(element => element.Name.LocalName.Equals("PropertyGroup", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(group => group.Elements())
+            .Where(element => element.Name.LocalName.Equals(localName, StringComparison.OrdinalIgnoreCase))
+            .Select(element => element.Value.Trim())
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     private static IEnumerable<string> EnumerateReleaseArtifacts(string repositoryPath)
     {

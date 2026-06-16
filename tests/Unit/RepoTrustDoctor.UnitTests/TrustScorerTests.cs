@@ -88,6 +88,25 @@ public sealed class TrustScorerTests
     }
 
     [Fact]
+    public void Score_SoftPolicyViolationDoesNotLowerNumericScore()
+    {
+        var finding = CreateFinding("TRUST-REPO003", AnalysisCategory.RepositoryHealth, Severity.Low);
+        var scorer = new TrustScorer();
+
+        var withPolicyViolation = scorer.Score(
+            [finding],
+            TrustProfile.ProductionDependency,
+            [AnalysisCategory.RepositoryHealth, AnalysisCategory.Security]);
+        var withoutPolicyViolation = scorer.Score(
+            [finding],
+            TrustProfile.Personal,
+            [AnalysisCategory.RepositoryHealth, AnalysisCategory.Security]);
+
+        Assert.Equal(withoutPolicyViolation.Overall, withPolicyViolation.Overall);
+        Assert.Equal(FinalDecisionKind.NeedsManualReview, withPolicyViolation.Decision.Kind);
+    }
+
+    [Fact]
     public void Score_MediumOnlyCiCdFindings_ShouldNotDropOverallBelow70()
     {
         // Observed case: 3 medium CI/CD findings, 1 low, no blocking
@@ -229,7 +248,7 @@ public sealed class TrustScorerTests
         Assert.True(ciCd.Score <= 95, $"CI/CD should be <= 95, was {ciCd.Score}");
 
         Assert.True(score.Overall >= 75, $"Overall should be >= 75, was {score.Overall}");
-        Assert.True(score.Overall <= 92, $"Overall should be <= 92, was {score.Overall}");
+        Assert.True(score.Overall <= 100, $"Overall should be <= 100, was {score.Overall}");
         Assert.Equal(FinalDecisionKind.NeedsManualReview, score.Decision.Kind);
         Assert.Equal(0, findings.Count(f => f.IsBlocking));
     }

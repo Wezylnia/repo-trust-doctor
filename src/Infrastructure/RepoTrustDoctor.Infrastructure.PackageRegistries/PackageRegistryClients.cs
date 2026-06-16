@@ -214,7 +214,8 @@ public static class PackageMetadataParser
 
         var requested = versions.FirstOrDefault(entry =>
             string.Equals(ReadString(entry, "version"), package.Version, StringComparison.OrdinalIgnoreCase));
-        var selected = requested.ValueKind == JsonValueKind.Undefined ? latest.Entry : requested;
+        var requestedVersionMatched = requested.ValueKind == JsonValueKind.Object;
+        var selected = requestedVersionMatched ? requested : default;
 
         return new PackageRegistryMetadata(
             package.Ecosystem,
@@ -222,14 +223,15 @@ public static class PackageMetadataParser
             package.Version,
             latest.Version,
             ReadDate(selected, "published"),
-            selected.TryGetProperty("deprecation", out _),
+            selected.ValueKind == JsonValueKind.Object &&
+                selected.TryGetProperty("deprecation", out _),
             false,
             ReadString(selected, "repositoryUrl"),
             ReadString(selected, "projectUrl"),
             ReadString(selected, "licenseExpression") ?? ReadString(selected, "licenseUrl"),
             null,
             "nuget.org",
-            BuildPackageMetadata(package));
+            BuildPackageMetadata(package, requestedVersionMatched));
     }
 
     public static PackageRegistryMetadata? ParseNpm(DependencyPackageInfo package, string json)
