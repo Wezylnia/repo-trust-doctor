@@ -73,6 +73,67 @@ public sealed class DockerBasicAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_ReportsMissingUserWhenOnlyBuilderStageDeclaresUser()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+        USER builder
+        RUN dotnet publish -o /out
+
+        FROM mcr.microsoft.com/dotnet/aspnet:10.0
+        COPY --from=build /out /app
+        EXPOSE 8080
+        HEALTHCHECK NONE
+        ENTRYPOINT ["dotnet", "/app/App.dll"]
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DOCKER003");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportMissingUserWhenFinalStageDeclaresUser()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM golang:1.23 AS build
+        RUN go build -o /out/app ./cmd/app
+
+        FROM alpine:3.20
+        COPY --from=build /out/app /app
+        EXPOSE 8080
+        USER app
+        HEALTHCHECK NONE
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DOCKER003");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsImplicitLatestOnFinalStage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM ubuntu
+        USER app
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DOCKER002");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_DoesNotCountCommentedFrom()
     {
         using var fixture = TemporaryRepository.Create();

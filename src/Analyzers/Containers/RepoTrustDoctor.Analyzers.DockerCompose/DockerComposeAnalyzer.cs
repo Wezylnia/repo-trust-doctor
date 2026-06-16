@@ -102,6 +102,23 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
                 Severity.Medium, relativePath, $"Mounts host path '{path}'.",
                 GetLineNumber(content, match.Index), Confidence.Medium));
         }
+
+        foreach (var mount in EnumerateLongBindMounts(content))
+        {
+            if (IsDockerSocketPath(mount.Source) || IsDockerSocketPath(mount.Target))
+            {
+                continue;
+            }
+
+            findings.Add(CreateFinding(
+                "TRUST-COMP003",
+                "Docker Compose mounts host directory",
+                mount.ReadOnly ? Severity.Low : Severity.Medium,
+                relativePath,
+                $"Mounts host path '{mount.Source}' using long bind syntax.",
+                mount.LineNumber,
+                mount.ReadOnly ? Confidence.Low : Confidence.Medium));
+        }
     }
 
     private static void CheckBroadPorts(string content, string relativePath, List<Finding> findings)
@@ -124,6 +141,12 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
         foreach (Match match in SecretEnvPattern().Matches(content))
         {
             var key = match.Groups["key"].Value;
+            var value = match.Groups["value"].Value.Trim();
+            if (IsSafeEnvironmentValue(value))
+            {
+                continue;
+            }
+
             findings.Add(CreateFinding("TRUST-COMP005", "Docker Compose may define secrets in environment",
                 Severity.High, relativePath, $"Secret-like environment variable '{key}' defined.",
                 GetLineNumber(content, match.Index), Confidence.Medium));
@@ -139,6 +162,88 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
                 Severity.Critical, relativePath, $"Mounts Docker socket '{socketPath}'. This grants high privilege over the host Docker daemon.",
                 GetLineNumber(content, match.Index), isBlocking: true));
         }
+
+        foreach (var mount in EnumerateLongBindMounts(content))
+        {
+            if (!IsDockerSocketPath(mount.Source) && !IsDockerSocketPath(mount.Target))
+            {
+                continue;
+            }
+
+            findings.Add(CreateFinding("TRUST-COMP006", "Docker Compose mounts Docker socket",
+                Severity.Critical, relativePath, $"Mounts Docker socket '{mount.Source}' using long bind syntax.",
+                mount.LineNumber, isBlocking: true));
+        }
+    }
+
+    private static IEnumerable<LongBindMount> EnumerateLongBindMounts(string content)
+    {
+        var lines = content.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        for (var index = 0; index < lines.Length; index++)
+        {
+            if (!LongVolumeTypeBindPattern().IsMatch(lines[index]))
+            {
+                continue;
+            }
+
+            var baseIndent = CountIndent(lines[index]);
+            string? source = null;
+            string? target = null;
+            var readOnly = false;
+
+            for (var cursor = index + 1; cursor < lines.Length; cursor++)
+            {
+                var line = lines[cursor];
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                if (CountIndent(line) <= baseIndent)
+                {
+                    break;
+                }
+
+                source ??= ReadYamlScalar(line, "source");
+                source ??= ReadYamlScalar(line, "src");
+                target ??= ReadYamlScalar(line, "target");
+                target ??= ReadYamlScalar(line, "dst");
+                target ??= ReadYamlScalar(line, "destination");
+
+                var readOnlyValue = ReadYamlScalar(line, "read_only") ?? ReadYamlScalar(line, "readonly");
+                if (string.Equals(readOnlyValue, "true", StringComparison.OrdinalIgnoreCase))
+                {
+                    readOnly = true;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(source))
+            {
+                yield return new LongBindMount(source, target ?? string.Empty, readOnly, index + 1);
+            }
+        }
+    }
+
+    private static string? ReadYamlScalar(string line, string key)
+    {
+        var match = Regex.Match(line, $"^\\s*{Regex.Escape(key)}\\s*:\\s*(?<value>.+?)\\s*$", RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups["value"].Value.Trim().Trim('"', '\'') : null;
+    }
+
+    private static bool IsSafeEnvironmentValue(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        var trimmed = value.Trim('"', '\'');
+        return trimmed.StartsWith("${", StringComparison.Ordinal) ||
+               trimmed.StartsWith("$", StringComparison.Ordinal) ||
+               trimmed.Equals("example", StringComparison.OrdinalIgnoreCase) ||
+               trimmed.Equals("placeholder", StringComparison.OrdinalIgnoreCase) ||
+               trimmed.Equals("changeme", StringComparison.OrdinalIgnoreCase) ||
+               trimmed.Equals("replace-me", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void CheckEnvFileLoading(string content, string relativePath, List<Finding> findings)
@@ -276,7 +381,7 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"(?m)^\s*-\s*['""]?(?:(?:0\.0\.0\.0|\*)\s*:\s*)?\d+(?:-\d+)?\s*:\s*\d+(?:-\d+)?(?:/\w+)?['""]?\s*$")]
     private static partial Regex BroadPortPattern();
 
-    [GeneratedRegex(@"(?mi)^\s*(?:-\s+)?(?<key>PASSWORD|TOKEN|SECRET|API_KEY)\s*[=:]\s*\S+")]
+    [GeneratedRegex(@"(?mi)^\s*(?:-\s+)?(?<key>PASSWORD|TOKEN|SECRET|API_KEY)\s*[=:]\s*(?<value>\S*)")]
     private static partial Regex SecretEnvPattern();
 
     [GeneratedRegex(@"(?m)-\s*['""]?(?<socket>/var/run/docker\.sock|/run/docker\.sock)\s*:")]
@@ -287,4 +392,9 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"^\s*-\s*(?<file>[^#]+)")]
     private static partial Regex EnvFileItemPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*-\s*type\s*:\s*bind\s*$")]
+    private static partial Regex LongVolumeTypeBindPattern();
+
+    private sealed record LongBindMount(string Source, string Target, bool ReadOnly, int LineNumber);
 }

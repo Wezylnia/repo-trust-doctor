@@ -630,7 +630,7 @@ public sealed class GitHubActionsBasicAnalyzerTests
     }
 
     [Fact]
-    public async Task AnalyzeAsync_OtherWorkflowWriteScope_ReportsGHA011()
+    public async Task AnalyzeAsync_IssuesWorkflowWriteScope_ReportsGHA016()
     {
         using var fixture = TemporaryRepository.Create();
         var dir = Path.Combine(fixture.Path, ".github", "workflows");
@@ -640,8 +640,8 @@ public sealed class GitHubActionsBasicAnalyzerTests
         var analyzer = new GitHubActionsBasicAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
-        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-GHA011");
-        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA016");
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-GHA016");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA011");
     }
 
     [Fact]
@@ -677,6 +677,29 @@ public sealed class GitHubActionsBasicAnalyzerTests
         var analyzer = new GitHubActionsBasicAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA016");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_IdTokenWriteWithReadContents_NoWorkflowWriteFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "deploy.yml"), """
+        permissions:
+          id-token: write
+          contents: read
+        jobs:
+          deploy:
+            runs-on: ubuntu-latest
+            steps: []
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA011");
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA016");
     }
 

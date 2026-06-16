@@ -58,10 +58,10 @@ public sealed partial class GitHubActionsBasicAnalyzer
     [GeneratedRegex(@"\$\{\{\s*matrix\.", RegexOptions.IgnoreCase)]
     private static partial Regex MatrixInjectionPattern();
 
-    [GeneratedRegex(@"(?mi)^\s*[a-z0-9_-]+\s*:\s*write\s*$")]
+    [GeneratedRegex(@"(?mi)^\s*(?<scope>[a-z0-9_-]+)\s*:\s*write\s*$")]
     private static partial Regex PermissionWriteValuePattern();
 
-    [GeneratedRegex(@"(?mi)^\s*(?:contents|packages|actions|id-token)\s*:\s*write\s*$")]
+    [GeneratedRegex(@"(?mi)^\s*(?:contents|packages|actions|pull-requests|issues|checks|deployments)\s*:\s*write\s*$")]
     private static partial Regex WorkflowWritePermPattern();
 
     [GeneratedRegex(@"\buses\s*:\s*actions/cache@[\s\S]{0,200}path\s*:\s*(?<path>\S+)", RegexOptions.IgnoreCase)]

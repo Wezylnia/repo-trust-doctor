@@ -194,7 +194,9 @@ public sealed partial class GitHubActionsBasicAnalyzer
                         break;
                     }
 
-                    if (PermissionWriteValuePattern().IsMatch(child))
+                    var writeMatch = PermissionWriteValuePattern().Match(child);
+                    if (writeMatch.Success &&
+                        IsRepositoryMutatingPermissionScope(writeMatch.Groups["scope"].Value))
                     {
                         return true;
                     }
@@ -208,6 +210,15 @@ public sealed partial class GitHubActionsBasicAnalyzer
 
         return false;
     }
+
+    private static bool IsRepositoryMutatingPermissionScope(string scope) =>
+        scope.Equals("contents", StringComparison.OrdinalIgnoreCase) ||
+        scope.Equals("packages", StringComparison.OrdinalIgnoreCase) ||
+        scope.Equals("actions", StringComparison.OrdinalIgnoreCase) ||
+        scope.Equals("pull-requests", StringComparison.OrdinalIgnoreCase) ||
+        scope.Equals("issues", StringComparison.OrdinalIgnoreCase) ||
+        scope.Equals("checks", StringComparison.OrdinalIgnoreCase) ||
+        scope.Equals("deployments", StringComparison.OrdinalIgnoreCase);
 
     private static void CheckHardcodedSecretsInEnv(string content, string relativePath, List<Finding> findings)
     {
@@ -307,7 +318,7 @@ public sealed partial class GitHubActionsBasicAnalyzer
         {
             AddFinding(findings, "TRUST-GHA016", "Broad workflow write permissions",
                 Severity.Medium, "Reduce permissions to least privilege per job.",
-                relativePath, "Top-level permissions grant contents:write, packages:write, or actions:write.",
+                relativePath, "Top-level permissions grant repository-mutating write scope.",
                 confidence: Confidence.Medium);
         }
     }

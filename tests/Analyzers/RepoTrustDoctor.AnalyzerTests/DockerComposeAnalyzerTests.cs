@@ -171,6 +171,25 @@ public sealed class DockerComposeAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_InterpolatedSecretEnvironment_NoCOMP005()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "docker-compose.yml"), """
+        services:
+          app:
+            image: nginx
+            environment:
+              PASSWORD: ${PASSWORD}
+              TOKEN: $TOKEN
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP005");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_NoComposeFile_NoFindings()
     {
         using var fixture = TemporaryRepository.Create();
@@ -225,6 +244,49 @@ public sealed class DockerComposeAnalyzerTests
 
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-COMP006" && f.IsBlocking);
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP003");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DetectsLongSyntaxDockerSocketMount()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "docker-compose.yml"), """
+        services:
+          app:
+            image: nginx
+            volumes:
+              - type: bind
+                source: /var/run/docker.sock
+                target: /var/run/docker.sock
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-COMP006" && f.IsBlocking);
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-COMP003");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_LongSyntaxReadOnlyBindMountIsLowSeverity()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "docker-compose.yml"), """
+        services:
+          app:
+            image: nginx
+            volumes:
+              - type: bind
+                source: /var/log/app
+                target: /logs
+                read_only: true
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-COMP003");
+        Assert.Equal(Severity.Low, finding.Severity);
     }
 
     [Fact]

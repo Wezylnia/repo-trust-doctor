@@ -68,14 +68,15 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
             var isBuildSupport = dockerfile.IsBuildSupport ||
                                  IsNestedBuildOnlyDockerfile(relativePath, content);
 
-            if (LatestImagePattern().IsMatch(content))
+            var finalStage = GetFinalStage(content);
+            if (finalStage is not null && IsMutableBaseImage(finalStage.BaseImage))
             {
-                findings.Add(CreateFinding("TRUST-DOCKER002", "Docker base image uses latest tag", Severity.Medium, relativePath, "A FROM instruction uses the latest tag."));
+                findings.Add(CreateFinding("TRUST-DOCKER002", "Docker base image uses latest tag", Severity.Medium, relativePath, $"Final FROM image `{finalStage.BaseImage}` uses latest or no tag."));
             }
 
             if (!isBuildSupport)
             {
-                CheckRuntimeHardening(content, relativePath, findings);
+                CheckRuntimeHardening(finalStage?.Content ?? content, content, relativePath, findings);
                 CheckCopyBeforeRestore(content, relativePath, findings);
             }
 
@@ -104,21 +105,21 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         return AnalyzerResult.Completed(findings);
     }
 
-    private static void CheckRuntimeHardening(string content, string relativePath, List<Finding> findings)
+    private static void CheckRuntimeHardening(string runtimeContent, string fullContent, string relativePath, List<Finding> findings)
     {
-        if (!UserPattern().IsMatch(content))
+        if (!UserPattern().IsMatch(runtimeContent))
         {
             findings.Add(CreateFinding("TRUST-DOCKER003", "Dockerfile does not declare a non-root USER", Severity.Medium, relativePath, "No USER instruction was found."));
         }
 
-        if (ExposeInstructionPattern().IsMatch(content) &&
-            !HealthcheckPattern().IsMatch(content))
+        if (ExposeInstructionPattern().IsMatch(runtimeContent) &&
+            !HealthcheckPattern().IsMatch(runtimeContent))
         {
             findings.Add(CreateFinding("TRUST-DOCKER004", "Dockerfile does not declare HEALTHCHECK", Severity.Low, relativePath, "No HEALTHCHECK instruction was found."));
         }
 
-        var fromCount = FromInstructionPattern().Matches(content).Count;
-        if (fromCount == 1 && BuildInstructionPattern().IsMatch(content))
+        var fromCount = FromInstructionPattern().Matches(fullContent).Count;
+        if (fromCount == 1 && BuildInstructionPattern().IsMatch(fullContent))
         {
             findings.Add(CreateFinding(
                 "TRUST-DOCKER006",
@@ -129,6 +130,41 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
                 Confidence.Medium,
                 "Use multi-stage builds to reduce image size and improve security by separating build dependencies from the runtime image."));
         }
+    }
+
+    private static DockerfileStage? GetFinalStage(string content)
+    {
+        var matches = FromInstructionPattern().Matches(content);
+        if (matches.Count == 0)
+        {
+            return null;
+        }
+
+        var match = matches[^1];
+        var nextFrom = matches
+            .Cast<Match>()
+            .FirstOrDefault(candidate => candidate.Index > match.Index);
+        var stageEnd = nextFrom?.Index ?? content.Length;
+        var baseImage = match.Groups["image"].Value.Trim();
+        return new DockerfileStage(baseImage, content[match.Index..stageEnd]);
+    }
+
+    private static bool IsMutableBaseImage(string image)
+    {
+        if (string.IsNullOrWhiteSpace(image) ||
+            image.Contains("@sha256:", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var lastSlash = image.LastIndexOf('/');
+        var lastColon = image.LastIndexOf(':');
+        if (lastColon <= lastSlash)
+        {
+            return true;
+        }
+
+        return image[(lastColon + 1)..].Equals("latest", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, Confidence confidence = Confidence.High, string recommendationText = "Review the Dockerfile for reproducibility and runtime hardening.")
@@ -264,9 +300,6 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         }
     }
 
-    [GeneratedRegex(@"(?mi)^\s*FROM\s+\S+:latest\b")]
-    private static partial Regex LatestImagePattern();
-
     [GeneratedRegex(@"(?mi)^\s*USER\s+\S+")]
     private static partial Regex UserPattern();
 
@@ -285,7 +318,7 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"(?mi)^\s*HEALTHCHECK\b")]
     private static partial Regex HealthcheckPattern();
 
-    [GeneratedRegex(@"(?mi)^\s*FROM\s+\S+")]
+    [GeneratedRegex(@"(?mi)^\s*FROM\s+(?<image>\S+)")]
     private static partial Regex FromInstructionPattern();
 
     [GeneratedRegex(@"(?mi)^\s*ENV\s+(?<key>PASSWORD|TOKEN|SECRET|API_KEY)\b\s*(?:=\s*|\s+)(?<value>\S+)", RegexOptions.IgnoreCase)]
@@ -386,4 +419,6 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
     private static partial Regex ExposePortRangePattern();
 
     private sealed record DockerfileCandidate(string FullPath, string RelativePath, bool IsBuildSupport);
+
+    private sealed record DockerfileStage(string BaseImage, string Content);
 }
