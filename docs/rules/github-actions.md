@@ -106,6 +106,8 @@ Recommendation: avoid direct inline shell interpolation of event data. Pass even
 
 Detects workflows that appear to publish packages, Docker images, or GitHub releases when the publishing job does not directly or transitively depend on a test or CI job. Dependencies from unrelated jobs do not satisfy this rule.
 
+Validation jobs with `continue-on-error: true` do not satisfy this rule, because failed validation can still allow publishing. Publish jobs with `if: always()` are also reported, because they can run even when a needed validation job failed.
+
 Why it matters: release jobs that do not depend on tests may publish unverified artifacts or packages.
 
 Recommendation: make release or publish jobs depend on a test or CI job before publishing artifacts or packages.
