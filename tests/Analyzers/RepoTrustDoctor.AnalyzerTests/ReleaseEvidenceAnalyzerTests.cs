@@ -650,6 +650,11 @@ public sealed class ReleaseArtifactEvidenceAnalyzerTests
         {
             var packageDirectory = Path.Combine(fixture.Path, $"pkg{index}");
             Directory.CreateDirectory(packageDirectory);
+            File.WriteAllText(Path.Combine(packageDirectory, "CHANGELOG.md"), """
+            # Changelog
+
+            ## v0.0.0
+            """);
             File.WriteAllText(Path.Combine(packageDirectory, "package.json"), $$"""
             {
               "name": "pkg{{index}}",
