@@ -28,7 +28,7 @@ namespace RepoTrustDoctor.Infrastructure.Scanning;
 
 public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
 {
-    private readonly LocalIntelligenceOptions localOptions;
+    private readonly IReadOnlyList<IRepositoryAnalyzer> analyzers;
 
     public DefaultRepositoryScanRunner()
         : this(LocalIntelligenceOptions.CreateDefault())
@@ -36,15 +36,20 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
     }
 
     public DefaultRepositoryScanRunner(LocalIntelligenceOptions localOptions)
+        : this(CreateAnalyzers(localOptions))
     {
-        this.localOptions = localOptions;
+    }
+
+    internal DefaultRepositoryScanRunner(IReadOnlyList<IRepositoryAnalyzer> analyzers)
+    {
+        this.analyzers = analyzers;
     }
 
     public async Task<RepositoryScan> RunAsync(ScanRequestOptions options, CancellationToken cancellationToken)
     {
         using var workspace = await PrepareWorkspaceAsync(options.Target, cancellationToken);
         var orchestrator = new ScanOrchestrator(
-            CreateAnalyzers(localOptions),
+            analyzers,
             new AnalyzerExecutor(),
             new TrustScorer());
         return await orchestrator.RunAsync(options.Target, workspace.Path, options.Depth, options.TrustProfile, cancellationToken);
