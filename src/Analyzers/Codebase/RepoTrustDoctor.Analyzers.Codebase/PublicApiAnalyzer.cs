@@ -220,6 +220,8 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
     {
         var symbols = new SortedSet<string>(StringComparer.Ordinal);
         var currentType = default(string);
+        var currentTypeBraceDepth = 0;
+        var awaitingTypeBrace = false;
 
         foreach (var rawLine in source.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
         {
@@ -229,11 +231,23 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
+            if (currentType is not null && !awaitingTypeBrace && currentTypeBraceDepth <= 0)
+            {
+                currentType = null;
+            }
+
             var typeMatch = TypeRegex().Match(line);
             if (typeMatch.Success)
             {
                 currentType = typeMatch.Groups["name"].Value;
                 symbols.Add($"type {currentType}");
+                currentTypeBraceDepth = CountBraceDelta(line);
+                awaitingTypeBrace = !line.Contains('{', StringComparison.Ordinal);
+                if (!awaitingTypeBrace && currentTypeBraceDepth <= 0)
+                {
+                    currentType = null;
+                }
+
                 continue;
             }
 
@@ -242,22 +256,48 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
+            if (awaitingTypeBrace)
+            {
+                if (line.Contains('{', StringComparison.Ordinal))
+                {
+                    awaitingTypeBrace = false;
+                    currentTypeBraceDepth += CountBraceDelta(line);
+                    if (currentTypeBraceDepth <= 0)
+                    {
+                        currentType = null;
+                    }
+                }
+
+                continue;
+            }
+
             var methodMatch = MethodRegex().Match(line);
             if (methodMatch.Success)
             {
                 symbols.Add($"member {currentType}.{methodMatch.Groups["name"].Value}()");
-                continue;
+            }
+            else
+            {
+                var propertyMatch = PropertyRegex().Match(line);
+                if (propertyMatch.Success)
+                {
+                    symbols.Add($"member {currentType}.{propertyMatch.Groups["name"].Value}");
+                }
             }
 
-            var propertyMatch = PropertyRegex().Match(line);
-            if (propertyMatch.Success)
+            currentTypeBraceDepth += CountBraceDelta(line);
+            if (currentTypeBraceDepth <= 0)
             {
-                symbols.Add($"member {currentType}.{propertyMatch.Groups["name"].Value}");
+                currentType = null;
             }
         }
 
         return symbols.ToArray();
     }
+
+    private static int CountBraceDelta(string line) =>
+        line.Count(static character => character == '{') -
+        line.Count(static character => character == '}');
 
     private static bool IsLowSignalSource(string root, string filePath)
     {

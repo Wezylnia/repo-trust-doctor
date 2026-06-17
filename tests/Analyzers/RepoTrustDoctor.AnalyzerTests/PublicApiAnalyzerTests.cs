@@ -26,6 +26,26 @@ public sealed class PublicApiAnalyzerTests
     }
 
     [Fact]
+    public void ExtractSymbols_DoesNotLeakPublicTypeScopeIntoInternalTypes()
+    {
+        var symbols = PublicApiAnalyzer.ExtractSymbols("""
+        public class PublicApi
+        {
+            public void A() {}
+        }
+
+        internal class InternalHelper
+        {
+            public void B() {}
+        }
+        """);
+
+        Assert.Contains("member PublicApi.A()", symbols);
+        Assert.DoesNotContain("member PublicApi.B()", symbols);
+        Assert.DoesNotContain("member InternalHelper.B()", symbols);
+    }
+
+    [Fact]
     public async Task PublicApiAnalyzer_ReportsMissingBaselineWhenApiExists()
     {
         using var fixture = TemporaryRepository.Create();
