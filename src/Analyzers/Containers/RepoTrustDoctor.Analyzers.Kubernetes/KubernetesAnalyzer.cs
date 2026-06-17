@@ -68,15 +68,17 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
-            var probe = await ReadManifestProbeAsync(file, cancellationToken);
+            var rawProbe = await ReadManifestProbeAsync(file, cancellationToken);
+            var probe = StripYamlComments(rawProbe);
             if (!LooksLikeKubernetesManifest(probe))
             {
                 continue;
             }
 
-            var content = new FileInfo(file).Length <= ManifestProbeBytes
-                ? probe
+            var rawContent = new FileInfo(file).Length <= ManifestProbeBytes
+                ? rawProbe
                 : await File.ReadAllTextAsync(file, cancellationToken);
+            var content = StripYamlComments(rawContent);
 
             if (HasPodTemplateOrContainerSpec(content))
             {
@@ -168,10 +170,12 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
     {
         foreach (var container in containers.Where(static container => container.AddedCapabilities.Count > 0))
         {
-            var cap = container.AddedCapabilities[0];
-            var severity = cap is "SYS_ADMIN" or "ALL" ? Severity.High : Severity.Medium;
+            var severity = container.AddedCapabilities.Any(static cap => cap is "SYS_ADMIN" or "ALL")
+                ? Severity.High
+                : Severity.Medium;
+            var capabilities = string.Join(", ", container.AddedCapabilities);
             findings.Add(CreateFinding("TRUST-K8S007", "Kubernetes container adds broad capability",
-                severity, relativePath, $"{container.DisplayName} adds capability '{cap}'. Drop all capabilities and add only those needed.",
+                severity, relativePath, $"{container.DisplayName} adds broad capability '{capabilities}'. Drop all capabilities and add only those needed.",
                 container.LineNumber, severity == Severity.High ? Confidence.High : Confidence.Medium));
         }
     }
@@ -287,10 +291,11 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
             {
                 var containerLines = lines.Skip(range.Start).Take(range.EndExclusive - range.Start).ToArray();
                 var text = string.Join('\n', containerLines);
+                var containerRunAsNonRoot = ReadRunAsNonRootSetting(text);
                 return new ContainerSecurityState(
                     ExtractContainerName(containerLines),
                     range.Start + 1,
-                    podRunAsNonRoot || RunAsNonRootPattern().IsMatch(text),
+                    containerRunAsNonRoot ?? podRunAsNonRoot,
                     ReadOnlyRootFsPattern().IsMatch(text),
                     PrivilegedPattern().IsMatch(text),
                     AllowPrivilegeEscalationPattern().IsMatch(text),
@@ -405,15 +410,30 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
     {
         for (var i = document.Start; i < document.EndExclusive; i++)
         {
-            if (!RunAsNonRootPattern().IsMatch(lines[i]) || containerRanges.Any(range => range.Contains(i)))
+            if (containerRanges.Any(range => range.Contains(i)))
             {
                 continue;
             }
 
-            return true;
+            var value = ReadRunAsNonRootSetting(lines[i]);
+            if (value is true)
+            {
+                return true;
+            }
         }
 
         return false;
+    }
+
+    private static bool? ReadRunAsNonRootSetting(string text)
+    {
+        var match = RunAsNonRootPattern().Match(text);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        return match.Groups["value"].Value.Equals("true", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ExtractContainerName(string[] containerLines)
@@ -444,6 +464,60 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
         return count;
     }
 
+    private static string StripYamlComments(string content)
+    {
+        var builder = new StringBuilder(content.Length);
+        var inSingleQuote = false;
+        var inDoubleQuote = false;
+        var inComment = false;
+        var escaped = false;
+
+        foreach (var character in content)
+        {
+            if (character is '\r' or '\n')
+            {
+                inSingleQuote = false;
+                inDoubleQuote = false;
+                inComment = false;
+                escaped = false;
+                builder.Append(character);
+                continue;
+            }
+
+            if (inComment)
+            {
+                builder.Append(' ');
+                continue;
+            }
+
+            if (!inSingleQuote && character == '"' && !escaped)
+            {
+                inDoubleQuote = !inDoubleQuote;
+            }
+            else if (!inDoubleQuote && character == '\'')
+            {
+                inSingleQuote = !inSingleQuote;
+            }
+
+            if (!inSingleQuote && !inDoubleQuote && character == '#')
+            {
+                inComment = true;
+                builder.Append(' ');
+                escaped = false;
+                continue;
+            }
+
+            builder.Append(character);
+            escaped = inDoubleQuote && character == '\\' && !escaped;
+            if (character != '\\')
+            {
+                escaped = false;
+            }
+        }
+
+        return builder.ToString();
+    }
+
     private static bool IsExampleFixturePath(string relativePath) =>
         RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath) ||
         IsKubernetesApiFixturePath(relativePath);
@@ -455,19 +529,19 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
                normalized.Contains("/pkg/endpoints/handlers/fieldmanager/", StringComparison.OrdinalIgnoreCase);
     }
 
-    [GeneratedRegex(@"privileged\s*:\s*true", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?mi)^\s*privileged\s*:\s*true\s*$")]
     private static partial Regex PrivilegedPattern();
 
-    [GeneratedRegex(@"(hostNetwork|hostPID|hostIPC)\s*:\s*true", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?mi)^\s*(hostNetwork|hostPID|hostIPC)\s*:\s*true\s*$")]
     private static partial Regex HostNamespacePattern();
 
-    [GeneratedRegex(@"runAsNonRoot\s*:\s*true", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?mi)^\s*runAsNonRoot\s*:\s*(?<value>true|false)\s*$")]
     private static partial Regex RunAsNonRootPattern();
 
-    [GeneratedRegex(@"readOnlyRootFilesystem\s*:\s*true", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?mi)^\s*readOnlyRootFilesystem\s*:\s*true\s*$")]
     private static partial Regex ReadOnlyRootFsPattern();
 
-    [GeneratedRegex(@"kind\s*:\s*Secret", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?mi)^\s*kind\s*:\s*Secret\s*$")]
     private static partial Regex SecretKindPattern();
 
     [GeneratedRegex(@"(?mi)^\s*apiVersion\s*:\s*\S+")]
@@ -485,7 +559,7 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"(?m)^\s*hostPath\s*:\s*$")]
     private static partial Regex HostPathPattern();
 
-    [GeneratedRegex(@"allowPrivilegeEscalation\s*:\s*true", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?mi)^\s*allowPrivilegeEscalation\s*:\s*true\s*$")]
     private static partial Regex AllowPrivilegeEscalationPattern();
 
     [GeneratedRegex(@"(?mi)^\s*automountServiceAccountToken\s*:\s*true\s*(?:#.*)?$")]
@@ -497,7 +571,7 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"(?mi)^\s*hostPort\s*:\s*(?<port>\d+)\s*(?:#.*)?$")]
     private static partial Regex HostPortPattern();
 
-    [GeneratedRegex(@"""(?<cap>SYS_ADMIN|NET_ADMIN|ALL)""", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<![A-Za-z0-9_])(?<cap>SYS_ADMIN|NET_ADMIN|ALL)(?![A-Za-z0-9_])", RegexOptions.IgnoreCase)]
     private static partial Regex CapabilityNamePattern();
 
     [GeneratedRegex(@"^\s*(?:-\s*)?name\s*:\s*(?<name>[^#\s]+)", RegexOptions.IgnoreCase)]
@@ -522,16 +596,85 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
 
     private static string[] ReadAddedCapabilities(string text)
     {
-        if (!text.Contains("capabilities", StringComparison.OrdinalIgnoreCase) ||
-            !text.Contains("add", StringComparison.OrdinalIgnoreCase))
+        if (!text.Contains("capabilities", StringComparison.OrdinalIgnoreCase))
         {
             return [];
         }
 
-        return CapabilityNamePattern()
-            .Matches(text)
-            .Select(match => match.Groups["cap"].Value.ToUpperInvariant())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        var capabilities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (!CapabilityBlockLinePattern().IsMatch(lines[i]))
+            {
+                continue;
+            }
+
+            var blockIndent = CountIndent(lines[i]);
+            var blockEnd = FindYamlBlockEnd(lines, i + 1, blockIndent);
+            for (var cursor = i + 1; cursor < blockEnd; cursor++)
+            {
+                var match = CapabilityAddLinePattern().Match(lines[cursor]);
+                if (!match.Success)
+                {
+                    continue;
+                }
+
+                CollectCapabilities(match.Groups["value"].Value, capabilities);
+                var addIndent = CountIndent(lines[cursor]);
+                for (var itemCursor = cursor + 1; itemCursor < blockEnd; itemCursor++)
+                {
+                    var line = lines[itemCursor];
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        continue;
+                    }
+
+                    if (CountIndent(line) <= addIndent)
+                    {
+                        break;
+                    }
+
+                    CollectCapabilities(line, capabilities);
+                }
+            }
+        }
+
+        return capabilities
+            .Order(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
+
+    private static void CollectCapabilities(string value, ISet<string> capabilities)
+    {
+        foreach (Match match in CapabilityNamePattern().Matches(value))
+        {
+            capabilities.Add(match.Groups["cap"].Value.ToUpperInvariant());
+        }
+    }
+
+    private static int FindYamlBlockEnd(string[] lines, int start, int blockIndent)
+    {
+        for (var i = start; i < lines.Length; i++)
+        {
+            if (string.IsNullOrWhiteSpace(lines[i]))
+            {
+                continue;
+            }
+
+            if (CountIndent(lines[i]) <= blockIndent)
+            {
+                return i;
+            }
+        }
+
+        return lines.Length;
+    }
+
+    [GeneratedRegex(@"(?mi)^\s*capabilities\s*:\s*$")]
+    private static partial Regex CapabilityBlockLinePattern();
+
+    [GeneratedRegex(@"(?mi)^\s*add\s*:\s*(?<value>.*)$")]
+    private static partial Regex CapabilityAddLinePattern();
 }

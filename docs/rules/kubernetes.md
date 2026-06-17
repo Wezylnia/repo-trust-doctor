@@ -32,7 +32,7 @@ Recommendation: avoid sharing host namespaces unless absolutely necessary.
 - Default severity: Medium
 - Default confidence: High
 
-Detects missing `runAsNonRoot: true`.
+Detects containers that do not effectively set `runAsNonRoot: true`. Pod-level `securityContext.runAsNonRoot: true` applies to containers unless a container explicitly overrides it with `runAsNonRoot: false`.
 
 Why it matters: containers running as root have full privileges inside the container and can escalate more easily.
 
@@ -80,7 +80,7 @@ Recommendation: avoid hostPath volumes. Prefer PVCs or projected volumes.
 - Default severity: High (SYS_ADMIN, ALL) / Medium (NET_ADMIN)
 - Default confidence: High
 
-Detects `capabilities.add` entries with `SYS_ADMIN`, `NET_ADMIN`, or `ALL`.
+Detects `capabilities.add` entries with `SYS_ADMIN`, `NET_ADMIN`, or `ALL`, including inline lists and block lists. Only capabilities under the container `securityContext.capabilities.add` block are considered; `capabilities.drop` and unrelated `add` keys are ignored.
 
 Why it matters: adding broad capabilities increases the attack surface and potential impact of a compromised container.
 

@@ -50,6 +50,32 @@ public sealed class KubernetesAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_IgnoresCommentedYamlSecurityKeys()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deployment.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        # kind: Secret
+        spec:
+          template:
+            spec:
+              # hostNetwork: true
+              # runAsNonRoot: true
+              containers:
+              - name: app
+                image: nginx
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S002");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S005");
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-K8S003");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_DetectsMissingRunAsNonRoot()
     {
         using var fixture = TemporaryRepository.Create();
@@ -247,6 +273,57 @@ public sealed class KubernetesAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_ContainerRunAsNonRootFalse_OverridesPodDefault()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deployment.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              securityContext:
+                runAsNonRoot: true
+              containers:
+              - name: app
+                image: nginx
+                securityContext:
+                  runAsNonRoot: false
+                  readOnlyRootFilesystem: true
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-K8S003");
+        Assert.Contains("app", Assert.Single(finding.Evidence).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ContainerRunAsNonRootTrue_OverridesMissingPodDefault()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deployment.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx
+                securityContext:
+                  runAsNonRoot: true
+                  readOnlyRootFilesystem: true
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S003");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_MultiDocumentPodSecurity_DoesNotApplyAcrossDocuments()
     {
         using var fixture = TemporaryRepository.Create();
@@ -404,6 +481,62 @@ public sealed class KubernetesAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_DetectsBlockListCapabilityAdd()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx
+                securityContext:
+                  capabilities:
+                    add:
+                    - SYS_ADMIN
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-K8S007");
+        Assert.Equal(Severity.High, finding.Severity);
+        Assert.Contains("SYS_ADMIN", Assert.Single(finding.Evidence).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CapabilitySeverityUsesWorstAddedCapability()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx
+                securityContext:
+                  capabilities:
+                    add:
+                    - NET_ADMIN
+                    - SYS_ADMIN
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-K8S007");
+        Assert.Equal(Severity.High, finding.Severity);
+        Assert.Contains("NET_ADMIN", Assert.Single(finding.Evidence).Message, StringComparison.Ordinal);
+        Assert.Contains("SYS_ADMIN", Assert.Single(finding.Evidence).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_CapabilityDropOnly_NoK8S007()
     {
         using var fixture = TemporaryRepository.Create();
@@ -416,6 +549,58 @@ public sealed class KubernetesAnalyzerTests
               containers:
               - name: app
                 image: nginx
+                securityContext:
+                  capabilities:
+                    drop: ["ALL"]
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S007");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CapabilityDropAllWithSafeAdd_NoK8S007()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx
+                securityContext:
+                  capabilities:
+                    drop: ["ALL"]
+                    add: ["NET_RAW"]
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S007");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_AddKeyOutsideCapabilities_NoK8S007()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx
+                metadata:
+                  add:
+                  - SYS_ADMIN
                 securityContext:
                   capabilities:
                     drop: ["ALL"]
