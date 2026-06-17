@@ -101,6 +101,8 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
             }
 
             var ext = Path.GetExtension(file).ToLowerInvariant();
+            var relativePath = Path.GetRelativePath(context.RepositoryPath, file).Replace('\\', '/');
+            var language = GetLanguageName(ext);
 
             IReadOnlyList<string> fileSymbols = ext switch
             {
@@ -115,7 +117,7 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
 
             foreach (var symbol in fileSymbols)
             {
-                symbols.Add(symbol);
+                symbols.Add(QualifySymbol(language, relativePath, symbol));
             }
         }
 
@@ -144,8 +146,11 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
         }
         else if (diffComparable)
         {
-            added = symbols.Except(baseline!.Symbols, StringComparer.Ordinal).ToArray();
-            removed = baseline.Symbols.Except(symbols, StringComparer.Ordinal).ToArray();
+            var comparisonSymbols = baseline!.IsLegacyFormat
+                ? symbols.Select(UnqualifySymbol).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray()
+                : symbols.ToArray();
+            added = comparisonSymbols.Except(baseline.Symbols, StringComparer.Ordinal).ToArray();
+            removed = baseline.Symbols.Except(comparisonSymbols, StringComparer.Ordinal).ToArray();
             if (added.Length > 0 || removed.Length > 0)
             {
                 findings.Add(new Finding(
@@ -180,6 +185,9 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
                 ["code.public_api.removed.count"] = removed.Length.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.baseline.present"] = baselineRead.Exists.ToString(CultureInfo.InvariantCulture),
                 ["code.public_api.baseline.readable"] = (baseline is not null).ToString(CultureInfo.InvariantCulture),
+                ["code.public_api.baseline.format"] = baseline is null
+                    ? "none"
+                    : baseline.IsLegacyFormat ? "legacy" : "qualified",
                 ["code.public_api.diff.comparable"] = diffComparable.ToString(CultureInfo.InvariantCulture)
             });
 
@@ -257,6 +265,34 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
         return RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath);
     }
 
+    private static string GetLanguageName(string extension) =>
+        extension switch
+        {
+            ".cs" => "csharp",
+            ".ts" or ".tsx" => "typescript",
+            ".js" or ".jsx" => "javascript",
+            ".py" => "python",
+            ".java" => "java",
+            ".go" => "go",
+            ".rs" => "rust",
+            _ => "unknown"
+        };
+
+    private static string QualifySymbol(string language, string relativePath, string symbol) =>
+        $"{language}:{relativePath}:{symbol}";
+
+    private static string UnqualifySymbol(string symbol)
+    {
+        var first = symbol.IndexOf(':');
+        if (first < 0)
+        {
+            return symbol;
+        }
+
+        var second = symbol.IndexOf(':', first + 1);
+        return second < 0 ? symbol : symbol[(second + 1)..];
+    }
+
     private static async Task<BaselineReadResult> ReadBaselineAsync(
         string repositoryPath,
         CancellationToken cancellationToken)
@@ -286,9 +322,10 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
                     .Distinct(StringComparer.Ordinal)
                     .Order(StringComparer.Ordinal)
                     .ToArray();
+                var isLegacyFormat = symbols.Any() && symbols.All(static symbol => !IsQualifiedSymbol(symbol));
                 return new BaselineReadResult(
                     normalizedPath,
-                    new ApiBaseline(normalizedPath, symbols),
+                    new ApiBaseline(normalizedPath, symbols, isLegacyFormat),
                     null);
             }
             catch (IOException)
@@ -316,6 +353,18 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
         return commentIndex < 0 ? line : line[..commentIndex];
     }
 
+    private static bool IsQualifiedSymbol(string symbol)
+    {
+        var first = symbol.IndexOf(':');
+        if (first <= 0)
+        {
+            return false;
+        }
+
+        var second = symbol.IndexOf(':', first + 1);
+        return second > first + 1 && second < symbol.Length - 1;
+    }
+
     [GeneratedRegex(@"\bpublic\s+(?:sealed\s+|abstract\s+|static\s+|partial\s+)*(?:class|interface|record|struct)\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\b")]
     private static partial Regex TypeRegex();
 
@@ -325,7 +374,7 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"\bpublic\s+(?:static\s+|virtual\s+|override\s+|abstract\s+)*(?:[A-Za-z_][A-Za-z0-9_<>,\[\]\?\.]*\s+)+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\{\s*(?:get|init|set)\b")]
     private static partial Regex PropertyRegex();
 
-    private sealed record ApiBaseline(string RelativePath, IReadOnlyList<string> Symbols);
+    private sealed record ApiBaseline(string RelativePath, IReadOnlyList<string> Symbols, bool IsLegacyFormat);
 
     private sealed record BaselineReadResult(
         string? RelativePath,

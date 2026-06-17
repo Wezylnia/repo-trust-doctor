@@ -73,6 +73,7 @@ public sealed class PublicApiAnalyzerTests
         Assert.Contains("member WidgetClient.Create()", artifact.AddedSymbols);
         Assert.Contains("member WidgetClient.Delete()", artifact.RemovedSymbols);
         Assert.Equal("True", artifact.Metrics["code.public_api.diff.comparable"]);
+        Assert.Equal("legacy", artifact.Metrics["code.public_api.baseline.format"]);
     }
 
     [Fact]
@@ -98,6 +99,7 @@ public sealed class PublicApiAnalyzerTests
         Assert.Empty(result.Findings);
         var artifact = Assert.IsType<CodePublicApiArtifact>(Assert.Single(result.Artifacts!).Value);
         Assert.Equal("docs/public-api-baseline.txt", artifact.BaselinePath);
+        Assert.Equal("legacy", artifact.Metrics["code.public_api.baseline.format"]);
     }
 
     [Fact]
@@ -154,12 +156,35 @@ public sealed class PublicApiAnalyzerTests
 
         var artifact = Assert.IsType<CodePublicApiArtifact>(Assert.Single(result.Artifacts!).Value);
         
-        Assert.Contains("export class User", artifact.Symbols);
-        Assert.Contains("export function getUser", artifact.Symbols);
-        Assert.Contains("class Account", artifact.Symbols);
-        Assert.Contains("def transfer", artifact.Symbols);
-        Assert.Contains("func main.RunProcess", artifact.Symbols);
-        Assert.Contains("type main.DataModel", artifact.Symbols);
+        Assert.Contains("typescript:index.ts:export class User", artifact.Symbols);
+        Assert.Contains("typescript:index.ts:export function getUser", artifact.Symbols);
+        Assert.Contains("python:main.py:class Account", artifact.Symbols);
+        Assert.Contains("python:main.py:def transfer", artifact.Symbols);
+        Assert.Contains("go:main.go:func main.RunProcess", artifact.Symbols);
+        Assert.Contains("go:main.go:type main.DataModel", artifact.Symbols);
+    }
+
+    [Fact]
+    public async Task PublicApiAnalyzer_UsesFileQualifiedSymbolsForBaselineDiff()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var baselineDirectory = Path.Combine(fixture.Path, ".repo-trust");
+        Directory.CreateDirectory(baselineDirectory);
+        File.WriteAllText(Path.Combine(baselineDirectory, "public-api-baseline.txt"), """
+        python:a.py:def create
+        python:b.py:def create
+        """);
+        File.WriteAllText(Path.Combine(fixture.Path, "a.py"), """
+        def create():
+            pass
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new PublicApiAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        var artifact = Assert.IsType<CodePublicApiArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Contains("python:b.py:def create", artifact.RemovedSymbols);
+        Assert.Equal("qualified", artifact.Metrics["code.public_api.baseline.format"]);
     }
 
     [Fact]
