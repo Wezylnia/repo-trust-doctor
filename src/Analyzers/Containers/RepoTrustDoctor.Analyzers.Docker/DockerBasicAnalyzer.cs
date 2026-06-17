@@ -91,6 +91,12 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
             foreach (Match match in SecretEnvPattern().Matches(content))
             {
                 var key = match.Groups["key"].Value;
+                var value = match.Groups["value"].Value;
+                if (IsSafeEnvironmentReference(value))
+                {
+                    continue;
+                }
+
                 var redactedLine = $"ENV {key}=[redacted]";
                 var evidenceText = $"Dockerfile defines secret-like ENV variable '{key}' with value redacted.";
                 findings.Add(new Finding(
@@ -110,9 +116,24 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
     private static void CheckRuntimeHardening(string runtimeContent, string fullContent, string relativePath, List<Finding> findings)
     {
-        if (!UserPattern().IsMatch(runtimeContent))
+        var effectiveUser = GetEffectiveUser(runtimeContent);
+        if (effectiveUser is null)
         {
             findings.Add(CreateFinding("TRUST-DOCKER003", "Dockerfile does not declare a non-root USER", Severity.Medium, relativePath, "No USER instruction was found."));
+        }
+        else if (IsRootUser(effectiveUser))
+        {
+            findings.Add(CreateFinding("TRUST-DOCKER003", "Dockerfile does not declare a non-root USER", Severity.Medium, relativePath, $"Final effective USER is `{effectiveUser}`."));
+        }
+        else if (IsVariableUser(effectiveUser))
+        {
+            findings.Add(CreateFinding(
+                "TRUST-DOCKER003",
+                "Dockerfile does not declare a non-root USER",
+                Severity.Medium,
+                relativePath,
+                $"Final effective USER `{effectiveUser}` is variable-based and cannot be verified statically.",
+                Confidence.Medium));
         }
 
         if (ExposeInstructionPattern().IsMatch(runtimeContent) &&
@@ -145,6 +166,52 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
                 Confidence.Medium,
                 "Use multi-stage builds to reduce image size and improve security by separating build dependencies from the runtime image."));
         }
+    }
+
+    private static string? GetEffectiveUser(string runtimeContent)
+    {
+        var matches = UserPattern().Matches(runtimeContent);
+        if (matches.Count == 0)
+        {
+            return null;
+        }
+
+        return matches[^1].Groups["user"].Value.Trim();
+    }
+
+    private static bool IsRootUser(string user)
+    {
+        var normalized = user.Trim().Trim('"', '\'');
+        var primary = normalized.Split(':', 2)[0];
+        return primary.Equals("root", StringComparison.OrdinalIgnoreCase) ||
+               primary.Equals("0", StringComparison.Ordinal);
+    }
+
+    private static bool IsVariableUser(string user) =>
+        user.Contains('$', StringComparison.Ordinal) ||
+        user.Contains('{', StringComparison.Ordinal) ||
+        user.Contains('}', StringComparison.Ordinal);
+
+    private static bool IsSafeEnvironmentReference(string value)
+    {
+        var normalized = value.Trim().Trim('"', '\'').Trim();
+        if (normalized.Length == 0)
+        {
+            return true;
+        }
+
+        if (VariableReferencePattern().IsMatch(normalized))
+        {
+            return true;
+        }
+
+        return normalized.Equals("placeholder", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("example", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("changeme", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("change-me", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("replace-me", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("redacted", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("<redacted>", StringComparison.OrdinalIgnoreCase);
     }
 
     private static DockerfileStage? GetFinalStage(string content)
@@ -315,8 +382,11 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         }
     }
 
-    [GeneratedRegex(@"(?mi)^\s*USER\s+\S+")]
+    [GeneratedRegex(@"(?mi)^\s*USER\s+(?<user>\S+)")]
     private static partial Regex UserPattern();
+
+    [GeneratedRegex(@"^\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\})$")]
+    private static partial Regex VariableReferencePattern();
 
     [GeneratedRegex(@"(?mi)^\s*EXPOSE\s+\S+")]
     private static partial Regex ExposeInstructionPattern();

@@ -117,6 +117,43 @@ public sealed class DockerBasicAnalyzerTests
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DOCKER003");
     }
 
+    [Theory]
+    [InlineData("root")]
+    [InlineData("0")]
+    [InlineData("0:0")]
+    public async Task AnalyzeAsync_ReportsRootUserAsMissingNonRootUser(string user)
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), $$"""
+        FROM alpine:3.18
+        USER {{user}}
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DOCKER003");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_UsesLastEffectiveUserInFinalStage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM alpine:3.18
+        USER root
+        RUN apk add --no-cache curl
+        USER app
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DOCKER003");
+    }
+
     [Fact]
     public async Task AnalyzeAsync_ReportsImplicitLatestOnFinalStage()
     {
@@ -152,6 +189,28 @@ public sealed class DockerBasicAnalyzerTests
 
         // Should report TRUST-DOCKER006 because only one active FROM is counted (alpine)
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-DOCKER006");
+    }
+
+    [Theory]
+    [InlineData("${TOKEN}")]
+    [InlineData("$TOKEN")]
+    [InlineData("placeholder")]
+    [InlineData("changeme")]
+    [InlineData("replace-me")]
+    public async Task AnalyzeAsync_DoesNotReportSafeSecretEnvReferences(string value)
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), $$"""
+        FROM alpine:3.18
+        ENV TOKEN={{value}}
+        USER appuser
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DOCKER005");
     }
 
     [Fact]
