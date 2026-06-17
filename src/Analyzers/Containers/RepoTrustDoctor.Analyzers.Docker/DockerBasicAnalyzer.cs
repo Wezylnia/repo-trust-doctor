@@ -66,11 +66,13 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
             }
 
             var content = await File.ReadAllTextAsync(dockerfile.FullPath, cancellationToken);
+            var logicalContent = NormalizeLogicalInstructions(content);
             var relativePath = dockerfile.RelativePath;
             var isBuildSupport = dockerfile.IsBuildSupport ||
-                                 IsNestedBuildOnlyDockerfile(relativePath, content);
+                                 IsNestedBuildOnlyDockerfile(relativePath, logicalContent);
+            var stages = ExtractStages(logicalContent);
 
-            var finalStage = GetFinalStage(content);
+            var finalStage = stages.LastOrDefault();
             if (finalStage is not null && IsMutableBaseImage(finalStage.BaseImage))
             {
                 findings.Add(CreateFinding("TRUST-DOCKER002", "Docker base image uses latest tag", Severity.Medium, relativePath, $"Final FROM image `{finalStage.BaseImage}` uses latest or no tag."));
@@ -78,17 +80,24 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
             if (!isBuildSupport)
             {
-                CheckRuntimeHardening(finalStage?.Content ?? content, content, relativePath, findings);
-                CheckCopyBeforeRestore(content, relativePath, findings);
+                CheckRuntimeHardening(finalStage?.Content ?? logicalContent, logicalContent, relativePath, findings);
+                foreach (var stage in stages.Length == 0 ? [new DockerfileStage(string.Empty, logicalContent)] : stages)
+                {
+                    CheckCopyBeforeRestore(stage.Content, relativePath, findings);
+                }
             }
 
-            CheckAptGetLayering(content, relativePath, findings);
-            CheckAddVsCopy(content, relativePath, findings);
-            CheckSudoUsage(content, relativePath, findings);
-            CheckExposePortRange(content, relativePath, findings);
-            CheckRemoteInstallerPipe(content, relativePath, findings);
+            foreach (var stage in stages.Length == 0 ? [new DockerfileStage(string.Empty, logicalContent)] : stages)
+            {
+                CheckAptGetLayering(stage.Content, relativePath, findings);
+                CheckRemoteInstallerPipe(stage.Content, relativePath, findings);
+            }
 
-            foreach (Match match in SecretEnvPattern().Matches(content))
+            CheckAddVsCopy(logicalContent, relativePath, findings);
+            CheckSudoUsage(logicalContent, relativePath, findings);
+            CheckExposePortRange(logicalContent, relativePath, findings);
+
+            foreach (Match match in SecretEnvPattern().Matches(logicalContent))
             {
                 var key = match.Groups["key"].Value;
                 var value = match.Groups["value"].Value;
@@ -214,21 +223,31 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
                normalized.Equals("<redacted>", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static DockerfileStage? GetFinalStage(string content)
+    private static DockerfileStage[] ExtractStages(string content)
     {
         var matches = FromInstructionPattern().Matches(content);
         if (matches.Count == 0)
         {
-            return null;
+            return [];
         }
 
-        var match = matches[^1];
-        var nextFrom = matches
+        return matches
             .Cast<Match>()
-            .FirstOrDefault(candidate => candidate.Index > match.Index);
-        var stageEnd = nextFrom?.Index ?? content.Length;
-        var baseImage = match.Groups["image"].Value.Trim();
-        return new DockerfileStage(baseImage, content[match.Index..stageEnd]);
+            .Select((match, index) =>
+            {
+                var stageEnd = index + 1 < matches.Count
+                    ? matches[index + 1].Index
+                    : content.Length;
+                return new DockerfileStage(
+                    match.Groups["image"].Value.Trim(),
+                    content[match.Index..stageEnd]);
+            })
+            .ToArray();
+    }
+
+    private static string NormalizeLogicalInstructions(string content)
+    {
+        return DockerLineContinuationPattern().Replace(content, " ");
     }
 
     private static bool IsMutableBaseImage(string image)
@@ -408,6 +427,9 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?mi)^\s*FROM\s+(?<image>\S+)")]
     private static partial Regex FromInstructionPattern();
+
+    [GeneratedRegex(@"\\\s*\r?\n\s*")]
+    private static partial Regex DockerLineContinuationPattern();
 
     [GeneratedRegex(@"(?mi)^\s*ENV\s+(?<key>PASSWORD|TOKEN|SECRET|API_KEY)\b\s*(?:=\s*|\s+)(?<value>\S+)", RegexOptions.IgnoreCase)]
     private static partial Regex SecretEnvPattern();

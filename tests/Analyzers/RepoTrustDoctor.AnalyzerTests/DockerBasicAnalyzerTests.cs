@@ -255,6 +255,28 @@ public sealed class DockerBasicAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_DoesNotCorrelateCopyAndRestoreAcrossStages()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM node:22 AS frontend
+        COPY . .
+
+        FROM mcr.microsoft.com/dotnet/sdk:10.0 AS backend
+        RUN dotnet restore
+
+        FROM alpine:3.20
+        USER app
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DOCKER007");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ReportsAptGetUpdateInstallInSeparateLayers()
     {
         using var fixture = TemporaryRepository.Create();
@@ -283,6 +305,44 @@ public sealed class DockerBasicAnalyzerTests
         RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
         USER appuser
         HEALTHCHECK NONE
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DOCKER008");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotCorrelateAptUpdateAndInstallAcrossStages()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM ubuntu:24.04 AS update
+        RUN apt-get update
+
+        FROM ubuntu:24.04 AS install
+        RUN apt-get install -y curl
+        USER appuser
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-DOCKER008");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportAptGetUpdateInstallInMultilineSameLayer()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM ubuntu:24.04
+        RUN apt-get update && \
+            apt-get install -y curl
+        USER appuser
         """);
 
         var analyzer = new DockerBasicAnalyzer();
@@ -398,6 +458,24 @@ public sealed class DockerBasicAnalyzerTests
         var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DOCKER012");
         Assert.Equal(Severity.High, finding.Severity);
         Assert.Equal(Confidence.High, finding.Confidence);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsMultilineRemoteInstallerPipedToShell()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM alpine:3.18
+        RUN curl -fsSL https://example.com/install.sh \
+            | sh
+        USER appuser
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DOCKER012");
     }
 
     [Fact]
