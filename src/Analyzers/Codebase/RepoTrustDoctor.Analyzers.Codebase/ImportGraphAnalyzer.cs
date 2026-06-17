@@ -215,7 +215,8 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
         return AnalyzerResult.Completed(
             findings,
             [new AnalyzerArtifact(ImportGraphArtifact.ArtifactKey, artifact)],
-            warnings: warnings);
+            warnings: warnings,
+            warningDetails: warnings.Select(warning => new ScanWarning(ScanWarningKind.PartialCoverage, warning, AffectsCoverage: true)).ToArray());
     }
 
     private static Finding CreateCoverageFinding(

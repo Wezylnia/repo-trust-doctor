@@ -100,12 +100,12 @@ public sealed class CoverageCriticalityAnalyzerTests
 
         var result = await new CoverageCriticalityAnalyzer().AnalyzeAsync(context, CancellationToken.None);
 
-        Assert.Equal(10, result.Findings.Count);
+        Assert.Equal(12, result.Findings.Count);
         Assert.Equal("12", result.Metrics!["code.coverage_criticality.finding.matched.count"]);
-        Assert.Equal("10", result.Metrics!["code.coverage_criticality.finding.reported.count"]);
-        Assert.Equal("2", result.Metrics!["code.coverage_criticality.finding.suppressed.count"]);
-        Assert.Equal("True", result.Metrics!["code.coverage_criticality.finding.truncated"]);
-        Assert.Contains(result.Warnings!, warning => warning.Contains("truncated", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("12", result.Metrics!["code.coverage_criticality.finding.reported.count"]);
+        Assert.Equal("0", result.Metrics!["code.coverage_criticality.finding.suppressed.count"]);
+        Assert.Equal("False", result.Metrics!["code.coverage_criticality.finding.truncated"]);
+        Assert.Empty(result.Warnings ?? []);
     }
 
     private static AnalysisContext CreateContext(IReadOnlyList<CoverageFileInfo> coverageFiles, IReadOnlyList<CodeCriticalityFile> criticalFiles)

@@ -7,8 +7,6 @@ namespace RepoTrustDoctor.Analyzers.Codebase;
 public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 {
     private const int LargeFileLineThreshold = 400;
-    private const int FindingLimit = 12;
-    private const int JavaSerializationHookFindingLimit = 6;
     private const int MaxAnalyzedSourceFiles = 6000;
 
     private static readonly string[] SourceExtensions = [".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".java", ".kt", ".rs"];
@@ -149,7 +147,6 @@ public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
 
         var findings = new List<Finding>();
         findings.AddRange(code004Matches
-            .Take(FindingLimit)
             .Select(file => CreateCriticalityFinding(
                 "TRUST-CODE004",
                 Severity.Medium,
@@ -159,7 +156,6 @@ public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 file)));
 
         findings.AddRange(code005Matches
-            .Take(FindingLimit)
             .Select(file => CreateCriticalityFinding(
                 "TRUST-CODE005",
                 Severity.Low,
@@ -169,7 +165,6 @@ public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 file)));
 
         findings.AddRange(code006Matches
-            .Take(FindingLimit)
             .Select(file => CreateCriticalityFinding(
                 "TRUST-CODE006",
                 Severity.Medium,
@@ -179,7 +174,6 @@ public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 file)));
 
         findings.AddRange(code014Matches
-            .Take(FindingLimit)
             .Select(file => CreateCriticalityFinding(
                 "TRUST-CODE014",
                 Severity.High,
@@ -190,11 +184,9 @@ public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 "Use safe deserialization methods, avoid BinaryFormatter, restrict allowed types, and validate deserialized input.")));
 
         findings.AddRange(code015Matches
-            .Take(FindingLimit)
             .Select(file => CreateCommandExecutionFinding(context.RepositoryPath, file)));
 
         findings.AddRange(code016Matches
-            .Take(FindingLimit)
             .Select(file => CreateCriticalityFinding(
                 "TRUST-CODE016",
                 Severity.Medium,
@@ -205,7 +197,6 @@ public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 "Avoid eval-style APIs for untrusted input and keep dynamic module loading tightly bounded.")));
 
         findings.AddRange(code017Matches
-            .Take(JavaSerializationHookFindingLimit)
             .Select(file => CreateCriticalityFinding(
                 "TRUST-CODE017",
                 Severity.Medium,
@@ -234,8 +225,8 @@ public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
                 ["code.criticality.java_serialization_hook.count"] = ordered.Count(file => file.Reasons.Contains(CodeCriticalityReason.JavaSerializationHook)).ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.finding.matched.count"] = CountCriticalityFindingMatches(code004Matches, code005Matches, code006Matches, code014Matches, code015Matches, code016Matches, code017Matches).ToString(CultureInfo.InvariantCulture),
                 ["code.criticality.finding.reported.count"] = findings.Count.ToString(CultureInfo.InvariantCulture),
-                ["code.criticality.finding.suppressed.count"] = CountSuppressedCriticalityFindings(code004Matches, code005Matches, code006Matches, code014Matches, code015Matches, code016Matches, code017Matches).ToString(CultureInfo.InvariantCulture),
-                ["code.criticality.finding.truncated"] = (CountSuppressedCriticalityFindings(code004Matches, code005Matches, code006Matches, code014Matches, code015Matches, code016Matches, code017Matches) > 0).ToString(CultureInfo.InvariantCulture)
+                ["code.criticality.finding.suppressed.count"] = "0",
+                ["code.criticality.finding.truncated"] = bool.FalseString
             });
 
         var warnings = new List<string>();
@@ -244,35 +235,15 @@ public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
             warnings.Add($"Code criticality analyzed {analyzedFiles.Count.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} source files, balanced across {selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture)} of {selection.EligiblePartitionCount.ToString(CultureInfo.InvariantCulture)} repository partitions.");
         }
 
-        var suppressedFindings = CountSuppressedCriticalityFindings(code004Matches, code005Matches, code006Matches, code014Matches, code015Matches, code016Matches, code017Matches);
-        if (suppressedFindings > 0)
-        {
-            warnings.Add($"Code criticality findings were truncated after reporting {findings.Count.ToString(CultureInfo.InvariantCulture)} of {CountCriticalityFindingMatches(code004Matches, code005Matches, code006Matches, code014Matches, code015Matches, code016Matches, code017Matches).ToString(CultureInfo.InvariantCulture)} matches.");
-        }
-
-        return AnalyzerResult.Completed(findings, [new AnalyzerArtifact(CodeCriticalityArtifact.ArtifactKey, artifact)], warnings: warnings);
+        return AnalyzerResult.Completed(
+            findings,
+            [new AnalyzerArtifact(CodeCriticalityArtifact.ArtifactKey, artifact)],
+            warnings: warnings,
+            warningDetails: warnings.Select(warning => new ScanWarning(ScanWarningKind.PartialCoverage, warning, AffectsCoverage: true)).ToArray());
     }
 
     private static int CountCriticalityFindingMatches(params CodeCriticalityFile[][] groups) =>
         groups.Sum(group => group.Length);
-
-    private static int CountSuppressedCriticalityFindings(
-        CodeCriticalityFile[] code004Matches,
-        CodeCriticalityFile[] code005Matches,
-        CodeCriticalityFile[] code006Matches,
-        CodeCriticalityFile[] code014Matches,
-        CodeCriticalityFile[] code015Matches,
-        CodeCriticalityFile[] code016Matches,
-        CodeCriticalityFile[] code017Matches) =>
-        CountSuppressed(code004Matches.Length, FindingLimit) +
-        CountSuppressed(code005Matches.Length, FindingLimit) +
-        CountSuppressed(code006Matches.Length, FindingLimit) +
-        CountSuppressed(code014Matches.Length, FindingLimit) +
-        CountSuppressed(code015Matches.Length, FindingLimit) +
-        CountSuppressed(code016Matches.Length, FindingLimit) +
-        CountSuppressed(code017Matches.Length, JavaSerializationHookFindingLimit);
-
-    private static int CountSuppressed(int matched, int limit) => Math.Max(0, matched - limit);
 
     private static IEnumerable<string> EnumerateSourceFiles(string root) =>
         RepositoryFileSystem.EnumerateFiles(root, "*", SearchOption.AllDirectories)

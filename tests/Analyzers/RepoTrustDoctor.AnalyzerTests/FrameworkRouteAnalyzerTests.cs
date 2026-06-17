@@ -75,12 +75,12 @@ public sealed class FrameworkRouteAnalyzerTests
 
         Assert.Equal(22, routesArtifact.Routes.Count);
         Assert.Equal("22", result.Metrics!["route.total.count"]);
-        Assert.Equal("15", result.Metrics!["route.unauthenticated.finding.reported.count"]);
-        Assert.Equal("7", result.Metrics!["route.unauthenticated.finding.suppressed.count"]);
-        Assert.Equal("20", result.Metrics!["route.detected.finding.reported.count"]);
-        Assert.Equal("2", result.Metrics!["route.detected.finding.suppressed.count"]);
-        Assert.Equal("True", result.Metrics!["route.finding.truncated"]);
-        Assert.Contains(result.Warnings!, warning => warning.Contains("truncated", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("22", result.Metrics!["route.unauthenticated.finding.reported.count"]);
+        Assert.Equal("0", result.Metrics!["route.unauthenticated.finding.suppressed.count"]);
+        Assert.Equal("22", result.Metrics!["route.detected.finding.reported.count"]);
+        Assert.Equal("0", result.Metrics!["route.detected.finding.suppressed.count"]);
+        Assert.Equal("False", result.Metrics!["route.finding.truncated"]);
+        Assert.Empty(result.Warnings ?? []);
     }
 
     [Fact]

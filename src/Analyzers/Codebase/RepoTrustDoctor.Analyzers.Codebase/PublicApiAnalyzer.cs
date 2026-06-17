@@ -201,7 +201,11 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
             warnings.Add(baselineRead.Warning);
         }
 
-        return AnalyzerResult.Completed(findings, [new AnalyzerArtifact(CodePublicApiArtifact.ArtifactKey, artifact)], warnings: warnings);
+        return AnalyzerResult.Completed(
+            findings,
+            [new AnalyzerArtifact(CodePublicApiArtifact.ArtifactKey, artifact)],
+            warnings: warnings,
+            warningDetails: warnings.Select(warning => new ScanWarning(ScanWarningKind.PartialCoverage, warning, AffectsCoverage: true)).ToArray());
     }
 
     public static IReadOnlyList<string> ExtractSymbols(string source)

@@ -667,11 +667,11 @@ public sealed class ReleaseArtifactEvidenceAnalyzerTests
             new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard),
             CancellationToken.None);
 
-        Assert.Equal(10, result.Findings.Count(finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004"));
+        Assert.Equal(12, result.Findings.Count(finding => finding.RuleId is "TRUST-REL001" or "TRUST-REL004"));
         Assert.Equal("12", result.Metrics!["release.package_version.finding.matched.count"]);
-        Assert.Equal("10", result.Metrics!["release.package_version.finding.reported.count"]);
-        Assert.Equal("2", result.Metrics!["release.package_version.finding.suppressed.count"]);
-        Assert.Equal("True", result.Metrics!["release.package_version.finding.truncated"]);
-        Assert.Contains(result.Warnings!, warning => warning.Contains("truncated", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("12", result.Metrics!["release.package_version.finding.reported.count"]);
+        Assert.Equal("0", result.Metrics!["release.package_version.finding.suppressed.count"]);
+        Assert.Equal("False", result.Metrics!["release.package_version.finding.truncated"]);
+        Assert.Empty(result.Warnings ?? []);
     }
 }

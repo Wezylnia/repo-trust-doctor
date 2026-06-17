@@ -10,8 +10,6 @@ namespace RepoTrustDoctor.Analyzers.ReleaseEvidence;
 
 public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
 {
-    private const int PackageVersionFindingLimit = 10;
-
     private static readonly string[] ArtifactExtensions = [".zip", ".tar", ".gz", ".tgz", ".nupkg", ".whl", ".exe", ".dll"];
     private static readonly string[] ArtifactRoots = ["dist", "release", "releases", "artifacts"];
 
@@ -66,8 +64,7 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
             }
         }
 
-        findings.AddRange(packageVersionFindings.Take(PackageVersionFindingLimit));
-        var packageVersionSuppressedCount = Math.Max(0, packageVersionFindings.Count - PackageVersionFindingLimit);
+        findings.AddRange(packageVersionFindings);
 
         foreach (var artifact in EnumerateReleaseArtifacts(context.RepositoryPath))
         {
@@ -105,18 +102,12 @@ public sealed partial class ReleaseEvidenceAnalyzer : IRepositoryAnalyzer
         var metrics = new Dictionary<string, string>
         {
             ["release.package_version.finding.matched.count"] = packageVersionFindings.Count.ToString(CultureInfo.InvariantCulture),
-            ["release.package_version.finding.reported.count"] = Math.Min(packageVersionFindings.Count, PackageVersionFindingLimit).ToString(CultureInfo.InvariantCulture),
-            ["release.package_version.finding.suppressed.count"] = packageVersionSuppressedCount.ToString(CultureInfo.InvariantCulture),
-            ["release.package_version.finding.truncated"] = (packageVersionSuppressedCount > 0).ToString(CultureInfo.InvariantCulture)
+            ["release.package_version.finding.reported.count"] = packageVersionFindings.Count.ToString(CultureInfo.InvariantCulture),
+            ["release.package_version.finding.suppressed.count"] = "0",
+            ["release.package_version.finding.truncated"] = bool.FalseString
         };
-        var warnings = packageVersionSuppressedCount > 0
-            ? new[]
-            {
-                $"Release package-version findings were truncated after {PackageVersionFindingLimit.ToString(CultureInfo.InvariantCulture)} of {packageVersionFindings.Count.ToString(CultureInfo.InvariantCulture)} matches."
-            }
-            : [];
 
-        return Task.FromResult(AnalyzerResult.Completed(findings, metrics: metrics, warnings: warnings));
+        return Task.FromResult(AnalyzerResult.Completed(findings, metrics: metrics));
     }
 
     private static IEnumerable<ReleasePackageVersion> ReadPackageVersions(AnalysisContext context)

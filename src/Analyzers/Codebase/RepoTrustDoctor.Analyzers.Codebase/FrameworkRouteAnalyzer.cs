@@ -7,8 +7,6 @@ namespace RepoTrustDoctor.Analyzers.Codebase;
 
 public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 {
-    private const int UnauthFindingLimit = 15;
-    private const int RouteFindingLimit = 20;
     private const int MaxAnalyzedSourceFiles = 6000;
 
     private static readonly IReadOnlyList<FrameworkDefinition> Frameworks =
@@ -160,7 +158,6 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 
         // TRUST-CODE012: unauthenticated endpoints
         findings.AddRange(unauthRoutes
-            .Take(UnauthFindingLimit)
             .Select(route => new Finding(
                 "TRUST-CODE012",
                 "HTTP endpoint without authentication annotation",
@@ -179,7 +176,6 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 
         // TRUST-CODE013: informational route detection
         findings.AddRange(ordered
-            .Take(RouteFindingLimit)
             .Select(route => new Finding(
                 "TRUST-CODE013",
                 "Framework route detected",
@@ -197,8 +193,6 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
                 Tags: ["codebase", "routes"])));
 
         var unauthCount = unauthRoutes.Length;
-        var unauthSuppressedCount = Math.Max(0, unauthCount - UnauthFindingLimit);
-        var routeSuppressedCount = Math.Max(0, ordered.Length - RouteFindingLimit);
         var frameworkCounts = ordered
             .GroupBy(route => route.Framework, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
@@ -212,11 +206,11 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
             ["route.selected_partition.count"] = selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture),
             ["route.total.count"] = ordered.Length.ToString(CultureInfo.InvariantCulture),
             ["route.unauthenticated.count"] = unauthCount.ToString(CultureInfo.InvariantCulture),
-            ["route.unauthenticated.finding.reported.count"] = Math.Min(unauthCount, UnauthFindingLimit).ToString(CultureInfo.InvariantCulture),
-            ["route.unauthenticated.finding.suppressed.count"] = unauthSuppressedCount.ToString(CultureInfo.InvariantCulture),
-            ["route.detected.finding.reported.count"] = Math.Min(ordered.Length, RouteFindingLimit).ToString(CultureInfo.InvariantCulture),
-            ["route.detected.finding.suppressed.count"] = routeSuppressedCount.ToString(CultureInfo.InvariantCulture),
-            ["route.finding.truncated"] = (unauthSuppressedCount > 0 || routeSuppressedCount > 0).ToString(CultureInfo.InvariantCulture),
+            ["route.unauthenticated.finding.reported.count"] = unauthCount.ToString(CultureInfo.InvariantCulture),
+            ["route.unauthenticated.finding.suppressed.count"] = "0",
+            ["route.detected.finding.reported.count"] = ordered.Length.ToString(CultureInfo.InvariantCulture),
+            ["route.detected.finding.suppressed.count"] = "0",
+            ["route.finding.truncated"] = bool.FalseString,
             ["route.frameworks"] = string.Join(", ", frameworkCounts.Select(
                 kvp => $"{kvp.Key}={kvp.Value.ToString(CultureInfo.InvariantCulture)}"))
         };
@@ -239,16 +233,12 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
             warnings.Add($"Framework route detection analyzed {analyzedFiles.Count.ToString(CultureInfo.InvariantCulture)} of {sourceFiles.Length.ToString(CultureInfo.InvariantCulture)} candidate files, balanced across {selection.SelectedPartitionCount.ToString(CultureInfo.InvariantCulture)} of {selection.EligiblePartitionCount.ToString(CultureInfo.InvariantCulture)} repository partitions.");
         }
 
-        if (unauthSuppressedCount > 0 || routeSuppressedCount > 0)
-        {
-            warnings.Add($"Framework route findings were truncated after reporting {findings.Count.ToString(CultureInfo.InvariantCulture)} of {(ordered.Length + unauthCount).ToString(CultureInfo.InvariantCulture)} matches.");
-        }
-
         return AnalyzerResult.Completed(
             findings,
             [new AnalyzerArtifact(FrameworkRouteArtifact.ArtifactKey, artifact)],
             metrics,
-            warnings);
+            warnings,
+            warnings.Select(warning => new ScanWarning(ScanWarningKind.PartialCoverage, warning, AffectsCoverage: true)).ToArray());
     }
 
     private static IEnumerable<string> EnumerateSourceFiles(string root) =>

@@ -122,7 +122,11 @@ public sealed class CoverageImportAnalyzer : IRepositoryAnalyzer
                 ["coverage.average.line_rate"] = AverageRate(reports.Select(report => report.LineRate))
             });
 
-        return AnalyzerResult.Completed(findings, [new AnalyzerArtifact(CoverageArtifact.ArtifactKey, artifact)], warnings: warnings);
+        return AnalyzerResult.Completed(
+            findings,
+            [new AnalyzerArtifact(CoverageArtifact.ArtifactKey, artifact)],
+            warnings: warnings,
+            warningDetails: warnings.Select(warning => new ScanWarning(ScanWarningKind.UnsupportedInput, warning, AffectsCoverage: true)).ToArray());
     }
 
     private static IEnumerable<string> FindCoverageReports(string root)

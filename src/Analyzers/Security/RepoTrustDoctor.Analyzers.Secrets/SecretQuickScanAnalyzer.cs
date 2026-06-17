@@ -212,7 +212,11 @@ public sealed class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             configurationContentScanned,
             configurationContentSkipped);
 
-        return AnalyzerResult.Completed(findings, metrics: metrics, warnings: warnings);
+        return AnalyzerResult.Completed(
+            findings,
+            metrics: metrics,
+            warnings: warnings,
+            warningDetails: warnings?.Select(warning => new ScanWarning(ScanWarningKind.PartialCoverage, warning, AffectsCoverage: true)).ToArray());
     }
 
     private (int Source, int Configuration) GetContentBudgets(AnalysisDepth depth)
