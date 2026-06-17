@@ -750,6 +750,7 @@ public sealed class SecretQuickScanAnalyzerTests
         Assert.Equal(Confidence.Low, finding.Confidence);
         var evidence = Assert.Single(finding.Evidence);
         Assert.Contains("[redacted]", evidence.Value);
+        Assert.DoesNotContain("api_key", evidence.Value, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -760,12 +761,55 @@ public sealed class SecretQuickScanAnalyzerTests
         api_key=your-api-key-here-12345
         api_secret=changeme1234567890
         apikey=placeholder-abcdefghij
+        api_key=test-token
         """);
 
         var analyzer = new SecretQuickScanAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-SECRET012");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GenericApiKeyPlaceholderCheckDoesNotSuppressEmbeddedTestSubstring()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), """
+        api_key=AbcdefTest1234567890XYZ
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-SECRET012");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GenericApiKeyStrengthUsesOnlyAssignedValue()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), """
+        api_secret=Abcdefghij123456789
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-SECRET012");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_GenericApiKeyReportsTwentyCharacterStrongValue()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), """
+        api_secret=Abcdefghij1234567890
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-SECRET012");
     }
 
     [Fact]

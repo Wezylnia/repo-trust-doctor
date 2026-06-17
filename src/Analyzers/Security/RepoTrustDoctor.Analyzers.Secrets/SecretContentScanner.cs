@@ -213,19 +213,22 @@ internal static partial class SecretContentScanner
                 redactedValue: SecretEvidenceRedactor.Redact(registryMatch.Value)));
         }
 
-        if (GenericApiKeyPattern().Match(content) is { Success: true } apiKeyMatch &&
-            !IsPlaceholderValue(apiKeyMatch.Value) &&
-            IsGenericApiKeyStrength(apiKeyMatch.Value))
+        if (GenericApiKeyPattern().Match(content) is { Success: true } apiKeyMatch)
         {
-            findings.Add(CreateFinding(
-                "TRUST-SECRET012",
-                "Possible generic API key found",
-                Severity.Medium,
-                Confidence.Low,
-                relativePath,
-                "A value matching a generic API key pattern was found and redacted.",
-                GetLineNumber(content, apiKeyMatch.Index),
-                redactedValue: SecretEvidenceRedactor.Redact(apiKeyMatch.Value)));
+            var apiKeyValue = apiKeyMatch.Groups["value"].Value;
+            if (!IsPlaceholderValue(apiKeyValue) &&
+                IsGenericApiKeyStrength(apiKeyValue))
+            {
+                findings.Add(CreateFinding(
+                    "TRUST-SECRET012",
+                    "Possible generic API key found",
+                    Severity.Medium,
+                    Confidence.Low,
+                    relativePath,
+                    "A value matching a generic API key pattern was found and redacted.",
+                    GetLineNumber(content, apiKeyMatch.Index),
+                    redactedValue: SecretEvidenceRedactor.Redact(apiKeyValue)));
+            }
         }
 
         return findings;
@@ -328,30 +331,39 @@ internal static partial class SecretContentScanner
 
     private static bool IsPlaceholderValue(string value)
     {
-        var lower = value.ToLowerInvariant();
+        var lower = value.Trim().Trim('"', '\'', '`').ToLowerInvariant();
         if (lower.Contains("${{", StringComparison.Ordinal) ||
             lower.Contains("${", StringComparison.Ordinal) ||
-            lower.Contains("%", StringComparison.Ordinal))
+            lower.StartsWith('$') ||
+            (lower.StartsWith('%') && lower.EndsWith('%')))
         {
             return true;
         }
 
-        return lower.Contains("your-api-key", StringComparison.Ordinal) ||
-               lower.Contains("example-token", StringComparison.Ordinal) ||
-               lower.Contains("example", StringComparison.Ordinal) ||
-               lower.Contains("test-token", StringComparison.Ordinal) ||
-               lower.Contains("dummy-secret", StringComparison.Ordinal) ||
-               lower.Contains("dummy", StringComparison.Ordinal) ||
-               lower.Contains("changeme", StringComparison.Ordinal) ||
-               lower.Contains("placeholder", StringComparison.Ordinal) ||
-               lower.Contains("replace", StringComparison.Ordinal) ||
-               lower.Contains("sample", StringComparison.Ordinal) ||
-               lower.Contains("xxxx", StringComparison.Ordinal) ||
-               lower.Contains("abc123", StringComparison.Ordinal) ||
-               lower.Contains("sample-key", StringComparison.Ordinal) ||
-               lower.Contains("your-secret", StringComparison.Ordinal) ||
-               lower.Contains("replace-me", StringComparison.Ordinal) ||
-               lower.Contains("test", StringComparison.Ordinal);
+        var normalized = PlaceholderSeparatorPattern().Replace(lower, "-").Trim('-');
+        return normalized is "your-api-key" or
+               "your-api-key-here" or
+               "example" or
+               "example-token" or
+               "test-token" or
+               "dummy" or
+               "dummy-secret" or
+               "changeme" or
+               "placeholder" or
+               "replace" or
+               "replace-me" or
+               "sample" or
+               "sample-key" or
+               "your-secret" or
+               "abc123" ||
+               normalized.StartsWith("your-api-key-", StringComparison.Ordinal) ||
+               normalized.StartsWith("changeme", StringComparison.Ordinal) ||
+               normalized.StartsWith("dummy-", StringComparison.Ordinal) ||
+               normalized.StartsWith("example-token-", StringComparison.Ordinal) ||
+               normalized.StartsWith("placeholder-", StringComparison.Ordinal) ||
+               normalized.StartsWith("replace-me-", StringComparison.Ordinal) ||
+               normalized.StartsWith("sample-key-", StringComparison.Ordinal) ||
+               normalized.Contains("xxxx", StringComparison.Ordinal);
     }
 
     private static bool IsGenericApiKeyStrength(string value)
@@ -418,6 +430,9 @@ internal static partial class SecretContentScanner
     [GeneratedRegex(@"(?i)(npm_[A-Za-z0-9]{36}|pypi-[A-Za-z0-9_.-]{32,})")]
     private static partial Regex RegistryTokenPattern();
 
-    [GeneratedRegex(@"(?i)(api[_-]?key|api[_-]?secret|apikey)\s*[:=]\s*['""]?[A-Za-z0-9_\-]{16,}['""]?")]
+    [GeneratedRegex(@"(?i)(?<key>api[_-]?key|api[_-]?secret|apikey)\s*[:=]\s*['""]?(?<value>[A-Za-z0-9_\-]{16,})['""]?")]
     private static partial Regex GenericApiKeyPattern();
+
+    [GeneratedRegex(@"[^a-z0-9]+")]
+    private static partial Regex PlaceholderSeparatorPattern();
 }
