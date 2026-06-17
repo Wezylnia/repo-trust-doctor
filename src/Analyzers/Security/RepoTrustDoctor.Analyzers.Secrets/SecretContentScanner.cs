@@ -121,7 +121,7 @@ internal static partial class SecretContentScanner
                 redactedValue: SecretEvidenceRedactor.Redact(awsAccessKeyMatch.Value)));
         }
 
-        if (ConnectionStringPattern().Match(content) is { Success: true } connectionStringMatch)
+        if (TryFindConnectionString(content, out var connectionStringMatch))
         {
             findings.Add(CreateFinding(
                 "TRUST-SECRET005",
@@ -280,10 +280,7 @@ internal static partial class SecretContentScanner
         content.Contains("password", StringComparison.OrdinalIgnoreCase) &&
         (content.Contains("server", StringComparison.OrdinalIgnoreCase) ||
          content.Contains("host", StringComparison.OrdinalIgnoreCase) ||
-         content.Contains("data source", StringComparison.OrdinalIgnoreCase) ||
-         content.Contains("user id", StringComparison.OrdinalIgnoreCase) ||
-         content.Contains("username", StringComparison.OrdinalIgnoreCase) ||
-         content.Contains("uid", StringComparison.OrdinalIgnoreCase));
+         content.Contains("data source", StringComparison.OrdinalIgnoreCase));
 
     private static bool HasGenericApiKeySignal(string content) =>
         content.Contains("api_key", StringComparison.OrdinalIgnoreCase) ||
@@ -327,6 +324,79 @@ internal static partial class SecretContentScanner
 
         matchIndex = -1;
         return false;
+    }
+
+    private static bool TryFindConnectionString(string content, out ConnectionStringCandidate candidate)
+    {
+        var lineStart = 0;
+        while (lineStart < content.Length)
+        {
+            var lineEnd = content.IndexOf('\n', lineStart);
+            if (lineEnd < 0)
+            {
+                lineEnd = content.Length;
+            }
+
+            var line = content[lineStart..lineEnd].TrimEnd('\r');
+            var keyMatch = ConnectionStringKeyPattern().Match(line);
+            if (keyMatch.Success)
+            {
+                var raw = line[keyMatch.Index..];
+                var fields = ParseConnectionStringFields(raw);
+                if (IsSecretConnectionString(fields))
+                {
+                    candidate = new ConnectionStringCandidate(raw, lineStart + keyMatch.Index);
+                    return true;
+                }
+            }
+
+            lineStart = lineEnd + 1;
+        }
+
+        candidate = default;
+        return false;
+    }
+
+    private static Dictionary<string, string> ParseConnectionStringFields(string raw)
+    {
+        var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var part in raw.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separator = part.IndexOf('=');
+            if (separator <= 0)
+            {
+                continue;
+            }
+
+            var key = part[..separator].Trim();
+            var value = part[(separator + 1)..].Trim().Trim('"', '\'');
+            if (key.Length > 0)
+            {
+                fields[key] = value;
+            }
+        }
+
+        return fields;
+    }
+
+    private static bool IsSecretConnectionString(IReadOnlyDictionary<string, string> fields)
+    {
+        var hasServer = fields.ContainsKey("Server") ||
+                        fields.ContainsKey("Host") ||
+                        fields.ContainsKey("Data Source");
+        if (!hasServer)
+        {
+            return false;
+        }
+
+        var password = fields.TryGetValue("Password", out var fullPassword)
+            ? fullPassword
+            : fields.TryGetValue("Pwd", out var shortPassword)
+                ? shortPassword
+                : null;
+
+        return !string.IsNullOrWhiteSpace(password) &&
+               !IsPlaceholderValue(password);
     }
 
     private static bool IsPlaceholderValue(string value)
@@ -403,8 +473,8 @@ internal static partial class SecretContentScanner
     [GeneratedRegex(@"AKIA[0-9A-Z]{16}")]
     private static partial Regex AwsAccessKeyPattern();
 
-    [GeneratedRegex(@"(?i)(Server|Host|Data Source)\s*=.+;(User Id|Username|Uid)\s*=.+;(Password|Pwd)\s*=")]
-    private static partial Regex ConnectionStringPattern();
+    [GeneratedRegex(@"(?i)(?:^|;|\s)(Server|Host|Data Source|Password|Pwd)\s*=")]
+    private static partial Regex ConnectionStringKeyPattern();
 
     [GeneratedRegex(@"https://hooks\.slack\.com/services/[A-Za-z0-9_/]+")]
     private static partial Regex SlackWebhookPattern();
@@ -435,4 +505,6 @@ internal static partial class SecretContentScanner
 
     [GeneratedRegex(@"[^a-z0-9]+")]
     private static partial Regex PlaceholderSeparatorPattern();
+
+    private readonly record struct ConnectionStringCandidate(string Value, int Index);
 }

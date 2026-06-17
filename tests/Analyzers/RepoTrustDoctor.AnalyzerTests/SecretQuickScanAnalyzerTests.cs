@@ -68,6 +68,35 @@ public sealed class SecretQuickScanAnalyzerTests
             evidence.Value);
     }
 
+    [Theory]
+    [InlineData("Password=secret123;Server=db;User Id=admin;")]
+    [InlineData("User Id=admin;Password=secret123;Host=db;")]
+    [InlineData("Data Source=db;Pwd=secret123;")]
+    public async Task AnalyzeAsync_ReportsConnectionStringRegardlessOfFieldOrder(string connectionString)
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), connectionString);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-SECRET005");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportConnectionStringWithPlaceholderPassword()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "config.txt"), """
+        Password=changeme;Server=db;User Id=admin;
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-SECRET005");
+    }
+
 
     [Fact]
     public async Task AnalyzeAsync_ReportsRedactedSlackWebhook()
