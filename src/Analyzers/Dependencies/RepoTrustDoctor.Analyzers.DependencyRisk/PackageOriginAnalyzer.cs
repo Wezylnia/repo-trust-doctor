@@ -18,7 +18,7 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
         new("TRUST-ORIGIN001", "Package repository URL does not match analyzed repository", AnalysisCategory.Dependencies, Severity.Medium, Confidence.Medium, "Package registry metadata points at a different repository URL than the scanned target.", "Verify that package metadata points to the expected source repository."),
         new("TRUST-ORIGIN002", "Package has official-looking name from unverified origin", AnalysisCategory.Dependencies, Severity.Low, Confidence.Low, "A package name resembles an official namespace but metadata is incomplete.", "Manually verify the package publisher and repository before relying on it."),
         new("TRUST-ORIGIN003", "Package origin metadata is incomplete", AnalysisCategory.Dependencies, Severity.Low, Confidence.Medium, "Package metadata does not include a repository URL.", "Prefer dependencies with traceable repository metadata."),
-        new("TRUST-ORIGIN004", "Package source mapping is missing for mixed NuGet sources", AnalysisCategory.Dependencies, Severity.Medium, Confidence.Medium, "NuGet configuration mixes public and non-public package sources without visible source mapping.", "Add NuGet package source mapping to reduce dependency confusion risk."),
+        new("TRUST-ORIGIN004", "Package source mapping is missing for mixed NuGet sources", AnalysisCategory.Dependencies, Severity.Medium, Confidence.Medium, "NuGet configuration mixes public and private package sources without visible source mapping.", "Add NuGet package source mapping to reduce dependency confusion risk."),
         new("TRUST-ORIGIN005", "npm scope registry configuration appears risky", AnalysisCategory.Dependencies, Severity.Medium, Confidence.Medium, "Scoped npm dependencies appear without matching scoped registry configuration.", "Add explicit scope registry mapping in .npmrc for private scopes."),
         new("TRUST-ORIGIN006", "Internal-looking package is resolved from a public registry", AnalysisCategory.Dependencies, Severity.Medium, Confidence.Medium, "A dependency name looks internal but appears to use a public registry source.", "Verify whether the package should come from a private registry.")
     ];
@@ -145,11 +145,15 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
 
     private static void AddDependencyConfusionFindings(AnalysisContext context, DependencyInventoryArtifact inventory, EffectivePackageSourceResolver sourceResolver, List<Finding> findings)
     {
-        var hasNuGetPublic = inventory.PackageSources.Any(source => source.Ecosystem == DependencyEcosystem.NuGet && source.Source.Contains("nuget.org", StringComparison.OrdinalIgnoreCase));
-        var hasNuGetNonPublic = inventory.PackageSources.Any(source => source.Ecosystem == DependencyEcosystem.NuGet && !source.Source.Contains("nuget.org", StringComparison.OrdinalIgnoreCase));
-        if (hasNuGetPublic && hasNuGetNonPublic && !NuGetSourceMappingExists(context.RepositoryPath))
+        var nugetSources = inventory.PackageSources
+            .Where(source => source.Ecosystem == DependencyEcosystem.NuGet)
+            .Select(source => EffectivePackageSourceResolver.ClassifyRegistry(source.Source, source.FilePath, source.IsLocal))
+            .ToArray();
+        var hasNuGetPublic = nugetSources.Any(source => source.IsPublic);
+        var hasNuGetPrivate = nugetSources.Any(source => source.IsPrivate);
+        if (hasNuGetPublic && hasNuGetPrivate && !NuGetSourceMappingExists(context.RepositoryPath))
         {
-            findings.Add(CreateFinding("TRUST-ORIGIN004", "Package source mapping is missing for mixed NuGet sources", Severity.Medium, Confidence.Medium, "NuGet config mixes public and non-public package sources without visible packageSourceMapping.", "nuget-source", "Mixed NuGet sources were detected without package source mapping.", "Add NuGet package source mapping to reduce dependency confusion risk."));
+            findings.Add(CreateFinding("TRUST-ORIGIN004", "Package source mapping is missing for mixed NuGet sources", Severity.Medium, Confidence.Medium, "NuGet config mixes public and private package sources without visible packageSourceMapping.", "nuget-source", "Mixed NuGet sources were detected without package source mapping.", "Add NuGet package source mapping to reduce dependency confusion risk."));
         }
 
         foreach (var package in inventory.Packages.Where(package => package.Ecosystem == DependencyEcosystem.Npm))

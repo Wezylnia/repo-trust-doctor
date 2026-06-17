@@ -561,7 +561,7 @@ public sealed class DependencyRiskAnalyzerTests
         <configuration>
           <packageSources>
             <add key="nuget" value="https://api.nuget.org/v3/index.json" />
-            <add key="internal" value="https://packages.example.test/index.json" />
+            <add key="internal" value="https://packages.company.internal/index.json" />
           </packageSources>
         </configuration>
         """);
@@ -572,7 +572,7 @@ public sealed class DependencyRiskAnalyzerTests
             [],
             [
                 new DependencyPackageSourceInfo(DependencyEcosystem.NuGet, "nuget", "https://api.nuget.org/v3/index.json", "NuGet.config"),
-                new DependencyPackageSourceInfo(DependencyEcosystem.NuGet, "internal", "https://packages.example.test/index.json", "NuGet.config")
+                new DependencyPackageSourceInfo(DependencyEcosystem.NuGet, "internal", "https://packages.company.internal/index.json", "NuGet.config")
             ],
             new Dictionary<string, string>())));
         context.AddArtifact(new AnalyzerArtifact(PackageMetadataArtifact.ArtifactKey, new PackageMetadataArtifact(
@@ -584,6 +584,26 @@ public sealed class DependencyRiskAnalyzerTests
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN003");
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN004");
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN002");
+    }
+
+    [Fact]
+    public async Task PackageOriginAnalyzer_DoesNotTreatUnknownNuGetMirrorAsPrivateSource()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Standard);
+        context.AddArtifact(new AnalyzerArtifact(DependencyInventoryArtifact.ArtifactKey, new DependencyInventoryArtifact(
+            [],
+            [],
+            [],
+            [
+                new DependencyPackageSourceInfo(DependencyEcosystem.NuGet, "nuget", "https://api.nuget.org/v3/index.json", "NuGet.config"),
+                new DependencyPackageSourceInfo(DependencyEcosystem.NuGet, "mirror", "https://unknown-public-registry.example/v3/index.json", "NuGet.config")
+            ],
+            new Dictionary<string, string>())));
+
+        var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN004");
     }
 
     [Fact]

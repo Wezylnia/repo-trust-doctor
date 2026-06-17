@@ -300,7 +300,7 @@ Recommendation: prefer dependencies with traceable repository metadata.
 - Default severity: Medium
 - Default confidence: Medium
 
-Detects NuGet configuration that mixes public and non-public package sources without visible package source mapping.
+Detects NuGet configuration that mixes known public package sources with explicitly private package sources without visible package source mapping. Unrecognized remote registries are treated as unknown instead of automatically private to reduce false-positive dependency-confusion findings.
 
 Why it matters: mixed feeds without source mapping can increase dependency confusion risk.
 

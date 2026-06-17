@@ -1,4 +1,5 @@
 using RepoTrustDoctor.Analysis.Abstractions;
+using System.Net;
 
 namespace RepoTrustDoctor.Analyzers.DependencyRisk;
 
@@ -74,34 +75,41 @@ internal sealed class EffectivePackageSourceResolver
 
         if (nugetSources.Length == 1)
         {
-            return ClassifyRegistry(nugetSources[0].Source, nugetSources[0].FilePath);
+            return ClassifyRegistry(nugetSources[0].Source, nugetSources[0].FilePath, nugetSources[0].IsLocal);
         }
 
-        var publicSources = nugetSources
-            .Where(source => IsPublicRegistry(source.Source))
+        var classifiedSources = nugetSources
+            .Select(source => ClassifyRegistry(source.Source, source.FilePath, source.IsLocal))
             .ToArray();
-        var privateSources = nugetSources
-            .Where(source => !source.IsLocal && !IsPublicRegistry(source.Source))
-            .ToArray();
+        var publicSources = classifiedSources.Where(source => source.IsPublic).ToArray();
+        var privateSources = classifiedSources.Where(source => source.IsPrivate).ToArray();
 
         return publicSources.Length switch
         {
-            0 when privateSources.Length > 0 => EffectivePackageSource.Private(privateSources[0].Source, privateSources[0].FilePath),
-            > 0 when privateSources.Length == 0 => EffectivePackageSource.Public(publicSources[0].Source, publicSources[0].FilePath),
+            0 when privateSources.Length > 0 => privateSources[0],
+            > 0 when privateSources.Length == 0 && classifiedSources.All(source => source.IsPublic) => publicSources[0],
             _ => EffectivePackageSource.Unknown("mixed-nuget-sources")
         };
     }
 
-    private static EffectivePackageSource ClassifyRegistry(string? registry, string? evidencePath)
+    internal static EffectivePackageSource ClassifyRegistry(string? registry, string? evidencePath, bool isExplicitLocal = false)
     {
         if (string.IsNullOrWhiteSpace(registry))
         {
             return EffectivePackageSource.Unknown("registry-missing");
         }
 
-        return IsPublicRegistry(registry)
-            ? EffectivePackageSource.Public(registry, evidencePath)
-            : EffectivePackageSource.Private(registry, evidencePath);
+        if (IsPublicRegistry(registry))
+        {
+            return EffectivePackageSource.Public(registry, evidencePath);
+        }
+
+        if (isExplicitLocal || IsPrivateRegistry(registry))
+        {
+            return EffectivePackageSource.Private(registry, evidencePath);
+        }
+
+        return EffectivePackageSource.Unknown("registry-unrecognized");
     }
 
     private static bool IsPublicRegistry(string registry)
@@ -112,6 +120,67 @@ internal sealed class EffectivePackageSourceResolver
         }
 
         return PublicRegistryHosts.Contains(registry.Trim());
+    }
+
+    private static bool IsPrivateRegistry(string registry)
+    {
+        var candidate = registry.Trim();
+        if (Uri.TryCreate(candidate, UriKind.Absolute, out var uri))
+        {
+            return IsPrivateHost(uri.Host);
+        }
+
+        return Path.IsPathRooted(candidate) ||
+               candidate.StartsWith(".", StringComparison.Ordinal) ||
+               candidate.StartsWith("~", StringComparison.Ordinal) ||
+               IsPrivateHost(candidate);
+    }
+
+    private static bool IsPrivateHost(string host)
+    {
+        var normalized = host.Trim().TrimEnd('.').ToLowerInvariant();
+        if (normalized is "localhost" or "127.0.0.1" or "::1")
+        {
+            return true;
+        }
+
+        if (IPAddress.TryParse(normalized, out var address))
+        {
+            return IsPrivateAddress(address);
+        }
+
+        return !normalized.Contains('.', StringComparison.Ordinal) ||
+               normalized.EndsWith(".local", StringComparison.Ordinal) ||
+               normalized.EndsWith(".internal", StringComparison.Ordinal) ||
+               normalized.EndsWith(".corp", StringComparison.Ordinal) ||
+               normalized.EndsWith(".lan", StringComparison.Ordinal);
+    }
+
+    private static bool IsPrivateAddress(IPAddress address)
+    {
+        if (IPAddress.IsLoopback(address))
+        {
+            return true;
+        }
+
+        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            var bytes = address.GetAddressBytes();
+            return bytes[0] == 10 ||
+                   bytes[0] == 127 ||
+                   (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
+                   (bytes[0] == 192 && bytes[1] == 168);
+        }
+
+        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+        {
+            var bytes = address.GetAddressBytes();
+            return address.IsIPv6LinkLocal ||
+                   address.IsIPv6SiteLocal ||
+                   (bytes[0] & 0xfe) == 0xfc;
+        }
+
+        return false;
     }
 
     private static string ReadSourceKind(
