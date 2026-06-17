@@ -18,7 +18,7 @@ Recommendation: add a README that explains the project purpose, installation, an
 - Default severity: High
 - Default confidence: High
 
-Detects repositories without a root `LICENSE` or `LICENSE.md` file.
+Detects repositories without a root license file. Common root names such as `LICENSE`, `LICENSE.txt`, `LICENCE`, `COPYING`, and `COPYRIGHT` are accepted; unrelated files such as `LICENSE_HEADER` are not treated as project licenses.
 
 Why it matters: users may not know whether they are allowed to use, modify, or redistribute the project.
 

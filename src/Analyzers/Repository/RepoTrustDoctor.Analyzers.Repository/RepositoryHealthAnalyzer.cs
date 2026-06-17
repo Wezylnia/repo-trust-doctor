@@ -43,7 +43,7 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         var findings = new List<Finding>();
 
         CheckRequiredFile(context.RepositoryPath, ["README.md", "README.rst", "README.adoc", "README.txt", "README"], "TRUST-REPO001", "README is missing", "Add a README that explains the project purpose, installation, and basic usage.", findings, Severity.Medium);
-        CheckRequiredFile(context.RepositoryPath, ["LICENSE", "LICENSE.md"], "TRUST-REPO002", "LICENSE is missing", "Add a license file so users can understand whether and how the project can be used.", findings, Severity.High);
+        CheckRequiredFile(context.RepositoryPath, ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENSE.rst", "LICENCE", "LICENCE.md", "LICENCE.txt", "LICENCE.rst", "COPYING", "COPYING.md", "COPYING.txt", "COPYING.rst", "COPYRIGHT", "COPYRIGHT.md", "COPYRIGHT.txt"], "TRUST-REPO002", "LICENSE is missing", "Add a license file so users can understand whether and how the project can be used.", findings, Severity.High);
         CheckRequiredFile(context.RepositoryPath, ["SECURITY.md", ".github/SECURITY.md"], "TRUST-REPO003", "SECURITY.md is missing", "Add SECURITY.md to explain how vulnerabilities should be reported.", findings, Severity.Low);
         CheckRequiredFile(context.RepositoryPath, ["CONTRIBUTING.md", ".github/CONTRIBUTING.md"], "TRUST-REPO004", "CONTRIBUTING.md is missing", "Add contribution guidance for maintainers and contributors.", findings, Severity.Info);
         CheckRequiredFile(context.RepositoryPath, ["CODE_OF_CONDUCT.md", ".github/CODE_OF_CONDUCT.md"], "TRUST-REPO005", "CODE_OF_CONDUCT.md is missing", "Add a code of conduct if the project accepts community contribution.", findings, Severity.Info);
@@ -146,10 +146,15 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
-            var normalizedTarget = Uri.UnescapeDataString(targetWithoutAnchor).Replace('/', Path.DirectorySeparatorChar);
+            if (!TryDecodeLinkTarget(targetWithoutAnchor, out var decodedTarget))
+            {
+                continue;
+            }
+
+            var normalizedTarget = decodedTarget.Replace('/', Path.DirectorySeparatorChar);
             var fullTarget = Path.GetFullPath(Path.Combine(readmeDirectory, normalizedTarget));
             var fullRoot = Path.GetFullPath(rootPath);
-            if (!fullTarget.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase))
+            if (!IsSameOrChildPath(fullRoot, fullTarget))
             {
                 continue;
             }
@@ -183,6 +188,58 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
                !target.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase) &&
                !target.StartsWith("#", StringComparison.Ordinal) &&
                !target.StartsWith("tel:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryDecodeLinkTarget(string target, out string decoded)
+    {
+        if (HasMalformedPercentEncoding(target))
+        {
+            decoded = string.Empty;
+            return false;
+        }
+
+        try
+        {
+            decoded = Uri.UnescapeDataString(target);
+            return true;
+        }
+        catch (UriFormatException)
+        {
+            decoded = string.Empty;
+            return false;
+        }
+    }
+
+    private static bool HasMalformedPercentEncoding(string target)
+    {
+        for (var index = 0; index < target.Length; index++)
+        {
+            if (target[index] != '%')
+            {
+                continue;
+            }
+
+            if (index + 2 >= target.Length ||
+                !Uri.IsHexDigit(target[index + 1]) ||
+                !Uri.IsHexDigit(target[index + 2]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsSameOrChildPath(string rootPath, string candidatePath)
+    {
+        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        var normalizedRoot = rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalizedCandidate = candidatePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return normalizedCandidate.Equals(normalizedRoot, comparison) ||
+               normalizedCandidate.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, comparison) ||
+               normalizedCandidate.StartsWith(normalizedRoot + Path.AltDirectorySeparatorChar, comparison);
     }
 
     private static int GetLineNumber(string content, int matchIndex)

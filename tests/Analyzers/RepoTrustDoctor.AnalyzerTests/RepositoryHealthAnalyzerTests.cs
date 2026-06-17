@@ -18,6 +18,38 @@ public sealed class RepositoryHealthAnalyzerTests
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-REPO002");
     }
 
+    [Theory]
+    [InlineData("LICENSE.txt")]
+    [InlineData("LICENSE.rst")]
+    [InlineData("LICENCE")]
+    [InlineData("COPYING")]
+    [InlineData("COPYING.md")]
+    [InlineData("COPYRIGHT")]
+    public async Task AnalyzeAsync_DoesNotReportMissingLicense_WhenCommonLicenseFileExists(string fileName)
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), "# sample");
+        File.WriteAllText(Path.Combine(fixture.Path, fileName), "license text");
+
+        var analyzer = new RepositoryHealthAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REPO002");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotTreatLicenseHeaderAsLicenseFile()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), "# sample");
+        File.WriteAllText(Path.Combine(fixture.Path, "LICENSE_HEADER"), "copyright header");
+
+        var analyzer = new RepositoryHealthAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-REPO002");
+    }
+
     [Fact]
     public async Task AnalyzeAsync_DoesNotReportMissingReadme_WhenReadmeRstExists()
     {
@@ -162,6 +194,41 @@ public sealed class RepositoryHealthAnalyzerTests
         ## Getting Started
         Install and use.
         See [usage](docs/usage.md) and [site](https://example.com).
+        """);
+
+        var analyzer = new RepositoryHealthAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REPO014");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportReadmeLinksOutsideRepositoryWithSharedPathPrefix()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var siblingName = Path.GetFileName(fixture.Path) + "-other";
+        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), $"""
+        # Project
+        ## Getting Started
+        Install and use.
+        See [outside](../{siblingName}/missing.md).
+        """);
+
+        var analyzer = new RepositoryHealthAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REPO014");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_MalformedPercentEncodedReadmeLinkDoesNotThrow()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), """
+        # Project
+        ## Getting Started
+        Install and use.
+        See [bad](docs/%zz.md).
         """);
 
         var analyzer = new RepositoryHealthAnalyzer();
