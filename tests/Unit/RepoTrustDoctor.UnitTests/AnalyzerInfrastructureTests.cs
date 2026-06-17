@@ -168,6 +168,21 @@ public sealed class AnalyzerInfrastructureTests
     }
 
     [Fact]
+    public async Task AnalyzerExecutor_InvalidEmittedFindingMetadata_ReturnsCompletedWithWarnings()
+    {
+        var analyzer = new InvalidEmittedFindingAnalyzer();
+        var executor = new AnalyzerExecutor();
+        var context = new AnalysisContext(".", ".", AnalysisDepth.Fast);
+
+        var result = await executor.ExecuteAsync(analyzer, context, CancellationToken.None);
+
+        Assert.Equal(ModuleStatus.CompletedWithWarnings, result.Module.Status);
+        Assert.Contains(result.Module.WarningDetails!, warning => warning.Kind == ScanWarningKind.AnalyzerFailure);
+        Assert.Contains(result.Module.Warnings!, warning => warning.Contains("not declared in analyzer.Rules", StringComparison.Ordinal));
+        Assert.Contains(result.Module.Warnings!, warning => warning.Contains("rule metadata declares", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void AllAnalyzers_HavePositiveTimeout()
     {
         var analyzers = DefaultRepositoryScanRunner.CreateAnalyzers();
@@ -446,6 +461,45 @@ public sealed class AnalyzerInfrastructureTests
                     "SECURITY.md is missing.",
                     [new Evidence("file-missing", "SECURITY.md was not found.")],
                     new Recommendation("Add SECURITY.md."))
+            ]));
+    }
+
+    private sealed class InvalidEmittedFindingAnalyzer : IRepositoryAnalyzer
+    {
+        public string Id => "invalid-emitted-finding-analyzer";
+        public string DisplayName => "Invalid Emitted Finding Analyzer";
+        public AnalysisCategory Category => AnalysisCategory.RepositoryHealth;
+        public AnalysisDepth MinimumDepth => AnalysisDepth.Fast;
+        public IReadOnlyCollection<string> DependsOn => [];
+        public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
+        public TimeSpan Timeout => TimeSpan.FromSeconds(10);
+        public IReadOnlyCollection<RuleMetadata> Rules =>
+        [
+            new("TRUST-VALID001", "Valid rule", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "Valid", "Review"),
+            new("TRUST-MISMATCH001", "Mismatch rule", AnalysisCategory.Security, Severity.Info, Confidence.High, "Mismatch", "Review")
+        ];
+
+        public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken) =>
+            Task.FromResult(AnalyzerResult.Completed(
+            [
+                new Finding(
+                    "TRUST-UNKNOWN001",
+                    "Unknown finding",
+                    AnalysisCategory.RepositoryHealth,
+                    Severity.Info,
+                    Confidence.High,
+                    "Unknown finding.",
+                    [new Evidence("test", "unknown")],
+                    new Recommendation("Review.")),
+                new Finding(
+                    "TRUST-MISMATCH001",
+                    "Mismatch finding",
+                    AnalysisCategory.RepositoryHealth,
+                    Severity.Info,
+                    Confidence.High,
+                    "Mismatch finding.",
+                    [new Evidence("test", "mismatch")],
+                    new Recommendation("Review."))
             ]));
     }
 }

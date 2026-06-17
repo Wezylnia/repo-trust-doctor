@@ -36,8 +36,10 @@ public sealed class AnalyzerExecutor
 
             stopwatch.Stop();
             var completed = started.Add(stopwatch.Elapsed);
-            var warningDetails = result.WarningDetails ?? AnalyzerWarningClassifier.Classify(result.Warnings);
-            var warningMessages = result.Warnings ?? warningDetails.Select(warning => warning.Message).ToArray();
+            var warningDetails = (result.WarningDetails ?? AnalyzerWarningClassifier.Classify(result.Warnings))
+                .Concat(ValidateEmittedFindings(analyzer, result.Findings))
+                .ToArray();
+            var warningMessages = warningDetails.Select(warning => warning.Message).ToArray();
             var hasWarnings = warningMessages.Count > 0;
             var status = result.Status == ModuleStatus.Completed && hasWarnings
                 ? ModuleStatus.CompletedWithWarnings
@@ -95,4 +97,56 @@ public sealed class AnalyzerExecutor
                 new ScanModule(analyzer.Id, analyzer.DisplayName, analyzer.Category, ModuleStatus.Failed, started, started.Add(stopwatch.Elapsed), 0, UnexpectedFailureMessage));
         }
     }
+
+    private static IReadOnlyList<ScanWarning> ValidateEmittedFindings(
+        IRepositoryAnalyzer analyzer,
+        IReadOnlyList<Finding> findings)
+    {
+        if (findings.Count == 0)
+        {
+            return [];
+        }
+
+        var rulesById = analyzer.Rules.ToDictionary(rule => rule.RuleId, StringComparer.OrdinalIgnoreCase);
+        var warnings = new List<ScanWarning>();
+        foreach (var finding in findings)
+        {
+            if (!rulesById.TryGetValue(finding.RuleId, out var rule))
+            {
+                warnings.Add(CreateValidationWarning(
+                    analyzer,
+                    $"Analyzer emitted finding '{finding.RuleId}' that is not declared in analyzer.Rules."));
+                continue;
+            }
+
+            if (finding.Category != rule.Category)
+            {
+                warnings.Add(CreateValidationWarning(
+                    analyzer,
+                    $"Analyzer emitted finding '{finding.RuleId}' with category '{finding.Category}' but rule metadata declares '{rule.Category}'."));
+            }
+
+            if (finding.Evidence.Count == 0)
+            {
+                warnings.Add(CreateValidationWarning(
+                    analyzer,
+                    $"Analyzer emitted finding '{finding.RuleId}' without evidence."));
+            }
+
+            if (string.IsNullOrWhiteSpace(finding.Recommendation.Message))
+            {
+                warnings.Add(CreateValidationWarning(
+                    analyzer,
+                    $"Analyzer emitted finding '{finding.RuleId}' without a recommendation."));
+            }
+        }
+
+        return warnings;
+    }
+
+    private static ScanWarning CreateValidationWarning(IRepositoryAnalyzer analyzer, string message) =>
+        new(
+            ScanWarningKind.AnalyzerFailure,
+            $"{analyzer.Id}: {message}",
+            AffectsCoverage: true);
 }
