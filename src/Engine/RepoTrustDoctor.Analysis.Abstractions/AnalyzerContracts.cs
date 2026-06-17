@@ -97,6 +97,8 @@ public interface IRepositoryAnalyzer
 
     IReadOnlyCollection<RuleMetadata> Rules { get; }
 
+    IReadOnlyCollection<string> ProducesArtifacts => [];
+
     TimeSpan Timeout { get; }
 
     Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken);

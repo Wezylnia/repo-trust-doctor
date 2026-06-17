@@ -39,6 +39,8 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
 
     public IReadOnlyCollection<string> DependsOn => [];
 
+    public IReadOnlyCollection<string> ProducesArtifacts => [CodePublicApiArtifact.ArtifactKey];
+
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 
     public TimeSpan Timeout => TimeSpan.FromSeconds(15);

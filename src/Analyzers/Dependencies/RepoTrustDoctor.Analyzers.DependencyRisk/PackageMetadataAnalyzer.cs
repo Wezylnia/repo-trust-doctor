@@ -30,6 +30,7 @@ public sealed class PackageMetadataAnalyzer : IRepositoryAnalyzer
     public AnalysisCategory Category => AnalysisCategory.Dependencies;
     public AnalysisDepth MinimumDepth => AnalysisDepth.Standard;
     public IReadOnlyCollection<string> DependsOn => [DependencyInventoryArtifact.ArtifactKey];
+    public IReadOnlyCollection<string> ProducesArtifacts => [PackageMetadataArtifact.ArtifactKey];
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.NetworkLookup;
     public TimeSpan Timeout => TimeSpan.FromSeconds(45);
     public IReadOnlyCollection<RuleMetadata> Rules => [];

@@ -24,7 +24,9 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
 
     public AnalysisDepth MinimumDepth => AnalysisDepth.Deep;
 
-    public IReadOnlyCollection<string> DependsOn => ["codebase-01-coverage-import"];
+    public IReadOnlyCollection<string> DependsOn => [CoverageArtifact.ArtifactKey];
+
+    public IReadOnlyCollection<string> ProducesArtifacts => [ImportGraphArtifact.ArtifactKey];
 
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 

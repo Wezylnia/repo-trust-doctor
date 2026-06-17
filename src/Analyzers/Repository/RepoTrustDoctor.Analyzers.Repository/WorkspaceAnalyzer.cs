@@ -16,6 +16,8 @@ public sealed class WorkspaceAnalyzer : IRepositoryAnalyzer
 
     public IReadOnlyCollection<string> DependsOn => [];
 
+    public IReadOnlyCollection<string> ProducesArtifacts => [WorkspaceArtifact.ArtifactKey];
+
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 
     public TimeSpan Timeout => TimeSpan.FromSeconds(5);

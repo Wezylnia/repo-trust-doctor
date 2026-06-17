@@ -14,6 +14,7 @@ public sealed class ScanOrchestrator
     private readonly AnalyzerExecutor executor;
     private readonly TrustScorer scorer;
     private readonly AnalyzerExecutionSafety maximumExecutionSafety;
+    private readonly IReadOnlyDictionary<string, string> artifactProducers;
 
     public ScanOrchestrator(
         IEnumerable<IRepositoryAnalyzer> analyzers,
@@ -22,24 +23,84 @@ public sealed class ScanOrchestrator
         AnalyzerExecutionSafety maximumExecutionSafety = AnalyzerExecutionSafety.NetworkLookup)
     {
         var analyzerList = analyzers.ToArray();
-        ValidateAnalyzers(analyzerList);
+        var byId = BuildAnalyzerIdMap(analyzerList);
+        this.artifactProducers = BuildArtifactProducerMap(analyzerList);
+        ValidateAnalyzers(analyzerList, byId);
 
-        this.analyzers = OrderAnalyzers(analyzerList);
+        this.analyzers = OrderAnalyzers(analyzerList, byId, this.artifactProducers);
         this.executor = executor;
         this.scorer = scorer;
         this.maximumExecutionSafety = maximumExecutionSafety;
     }
 
-    private static IReadOnlyList<IRepositoryAnalyzer> OrderAnalyzers(IReadOnlyList<IRepositoryAnalyzer> analyzers)
+    private static IReadOnlyDictionary<string, IRepositoryAnalyzer> BuildAnalyzerIdMap(
+        IReadOnlyList<IRepositoryAnalyzer> analyzers)
     {
-        var byId = analyzers.ToDictionary(analyzer => analyzer.Id, StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, IRepositoryAnalyzer>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var analyzer in analyzers)
+        {
+            if (!map.TryAdd(analyzer.Id, analyzer))
+            {
+                throw new InvalidOperationException($"Duplicate analyzer ID: '{analyzer.Id}'.");
+            }
+        }
+
+        return map;
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildArtifactProducerMap(
+        IReadOnlyList<IRepositoryAnalyzer> analyzers)
+    {
+        var producers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var analyzer in analyzers)
+        {
+            foreach (var artifactKey in analyzer.ProducesArtifacts)
+            {
+                if (string.IsNullOrWhiteSpace(artifactKey))
+                {
+                    throw new InvalidOperationException(
+                        $"Analyzer '{analyzer.Id}' declares an empty produced artifact key.");
+                }
+
+                if (producers.TryGetValue(artifactKey, out var existingProducer))
+                {
+                    throw new InvalidOperationException(
+                        $"Artifact '{artifactKey}' is produced by more than one analyzer: '{existingProducer}' and '{analyzer.Id}'.");
+                }
+
+                producers[artifactKey] = analyzer.Id;
+            }
+        }
+
+        return producers;
+    }
+
+    private static string? ResolveDependency(
+        string dependency,
+        IReadOnlyDictionary<string, string> artifactProducers)
+    {
+        if (artifactProducers.TryGetValue(dependency, out var producerId))
+        {
+            return producerId;
+        }
+
+        return dependency;
+    }
+
+    private static IReadOnlyList<IRepositoryAnalyzer> OrderAnalyzers(
+        IReadOnlyList<IRepositoryAnalyzer> analyzers,
+        IReadOnlyDictionary<string, IRepositoryAnalyzer> byId,
+        IReadOnlyDictionary<string, string> artifactProducers)
+    {
         var ordered = new List<IRepositoryAnalyzer>();
         var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var analyzer in analyzers.OrderBy(analyzer => analyzer.Id, StringComparer.OrdinalIgnoreCase))
+        foreach (var analyzer in analyzers.OrderBy(a => a.Id, StringComparer.OrdinalIgnoreCase))
         {
-            Visit(analyzer, byId, ordered, visiting, visited);
+            Visit(analyzer, byId, artifactProducers, ordered, visiting, visited);
         }
 
         return ordered;
@@ -48,6 +109,7 @@ public sealed class ScanOrchestrator
     private static void Visit(
         IRepositoryAnalyzer analyzer,
         IReadOnlyDictionary<string, IRepositoryAnalyzer> byId,
+        IReadOnlyDictionary<string, string> artifactProducers,
         List<IRepositoryAnalyzer> ordered,
         HashSet<string> visiting,
         HashSet<string> visited)
@@ -64,10 +126,10 @@ public sealed class ScanOrchestrator
 
         foreach (var dependency in analyzer.DependsOn)
         {
-            var dependencyId = ResolveDependencyId(dependency);
-            if (byId.TryGetValue(dependencyId, out var dependencyAnalyzer))
+            var resolvedId = ResolveDependency(dependency, artifactProducers);
+            if (resolvedId is not null && byId.TryGetValue(resolvedId, out var dependencyAnalyzer))
             {
-                Visit(dependencyAnalyzer, byId, ordered, visiting, visited);
+                Visit(dependencyAnalyzer, byId, artifactProducers, ordered, visiting, visited);
             }
         }
 
@@ -76,7 +138,9 @@ public sealed class ScanOrchestrator
         ordered.Add(analyzer);
     }
 
-    private static void ValidateAnalyzers(IReadOnlyList<IRepositoryAnalyzer> analyzers)
+    private void ValidateAnalyzers(
+        IReadOnlyList<IRepositoryAnalyzer> analyzers,
+        IReadOnlyDictionary<string, IRepositoryAnalyzer> byId)
     {
         var analyzerIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var ruleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -111,8 +175,8 @@ public sealed class ScanOrchestrator
         {
             foreach (var dependency in analyzer.DependsOn)
             {
-                var dependencyId = ResolveDependencyId(dependency);
-                if (!analyzerIds.Contains(dependencyId))
+                var resolvedId = ResolveDependency(dependency, artifactProducers);
+                if (resolvedId is null || !byId.ContainsKey(resolvedId))
                 {
                     throw new InvalidOperationException(
                         $"Analyzer '{analyzer.Id}' depends on unknown analyzer or artifact '{dependency}'.");
@@ -120,18 +184,6 @@ public sealed class ScanOrchestrator
             }
         }
     }
-
-    private static string ResolveDependencyId(string dependency) => dependency switch
-    {
-        "dependency.inventory" => "dependency-inventory",
-        "dependency.packageMetadata" => "dependency-metadata",
-        "code.coverage" => "codebase-01-coverage-import",
-        "code.criticality" => "codebase-02-criticality",
-        "code.public-api" => "codebase-04-public-api",
-        "code.import-graph" => "codebase-05-import-graph",
-        "code.framework-routes" => "codebase-06-framework-routes",
-        _ => dependency
-    };
 
     public async Task<RepositoryScan> RunAsync(
         string target,
@@ -202,18 +254,19 @@ public sealed class ScanOrchestrator
             context.Artifacts);
     }
 
-    private static bool TryGetBlockedDependency(
+    private bool TryGetBlockedDependency(
         IRepositoryAnalyzer analyzer,
         IReadOnlyDictionary<string, ModuleStatus> moduleStatuses,
         out string? blockedDependency)
     {
         foreach (var dependency in analyzer.DependsOn)
         {
-            var dependencyId = ResolveDependencyId(dependency);
-            if (moduleStatuses.TryGetValue(dependencyId, out var status) &&
+            var resolvedId = ResolveDependency(dependency, artifactProducers);
+            if (resolvedId is not null &&
+                moduleStatuses.TryGetValue(resolvedId, out var status) &&
                 status is ModuleStatus.Failed or ModuleStatus.TimedOut or ModuleStatus.Skipped or ModuleStatus.Cancelled)
             {
-                blockedDependency = dependencyId;
+                blockedDependency = resolvedId;
                 return true;
             }
         }

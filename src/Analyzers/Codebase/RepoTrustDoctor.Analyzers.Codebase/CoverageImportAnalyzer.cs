@@ -20,6 +20,8 @@ public sealed class CoverageImportAnalyzer : IRepositoryAnalyzer
 
     public IReadOnlyCollection<string> DependsOn => [];
 
+    public IReadOnlyCollection<string> ProducesArtifacts => [CoverageArtifact.ArtifactKey];
+
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 
     public TimeSpan Timeout => TimeSpan.FromSeconds(15);

@@ -19,6 +19,8 @@ public sealed class EvidenceImportAnalyzer : IRepositoryAnalyzer
 
     public IReadOnlyCollection<string> DependsOn => [];
 
+    public IReadOnlyCollection<string> ProducesArtifacts => [];
+
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 
     public TimeSpan Timeout => TimeSpan.FromSeconds(5);

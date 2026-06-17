@@ -58,6 +58,8 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
 
     public IReadOnlyCollection<string> DependsOn => [];
 
+    public IReadOnlyCollection<string> ProducesArtifacts => [FrameworkRouteArtifact.ArtifactKey];
+
     public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
 
     public TimeSpan Timeout => TimeSpan.FromSeconds(20);
