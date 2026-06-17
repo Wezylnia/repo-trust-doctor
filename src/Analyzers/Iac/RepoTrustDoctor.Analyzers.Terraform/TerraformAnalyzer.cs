@@ -302,7 +302,8 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
                 Severity.Medium, relativePath,
                 $"Provider '{sourceMatch.Groups["source"].Value}' has no version constraint.",
                 provider.StartLine,
-                Confidence.Medium));
+                Confidence.Medium,
+                AnalysisCategory.Dependencies));
         }
     }
 
@@ -413,9 +414,9 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
 
     // ── Common helpers ────────────────────────────────────────────────
 
-    private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High)
+    private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High, AnalysisCategory category = AnalysisCategory.Infrastructure)
     {
-        return new Finding(ruleId, title, AnalysisCategory.Infrastructure, severity, confidence, title,
+        return new Finding(ruleId, title, category, severity, confidence, title,
             [new Evidence("terraform", evidence, filePath, lineNumber)],
             new Recommendation("Review the Terraform configuration and apply the recommended fix."));
     }

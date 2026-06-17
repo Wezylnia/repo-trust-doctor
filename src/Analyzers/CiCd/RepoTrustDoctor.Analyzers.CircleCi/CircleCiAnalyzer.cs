@@ -152,7 +152,8 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
             findings.Add(CreateFinding("TRUST-CIRCLE004", "Inline secret in CircleCI config",
                 Severity.High, relativePath, $"Secret-like variable '{key}' has a literal value.",
                 lineNumber,
-                Confidence.Medium));
+                Confidence.Medium,
+                AnalysisCategory.Security));
         }
     }
 
@@ -177,9 +178,9 @@ public sealed partial class CircleCiAnalyzer : IRepositoryAnalyzer
                lower.StartsWith('%');
     }
 
-    private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High)
+    private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High, AnalysisCategory category = AnalysisCategory.CiCd)
     {
-        return new Finding(ruleId, title, AnalysisCategory.CiCd, severity, confidence, title,
+        return new Finding(ruleId, title, category, severity, confidence, title,
             [new Evidence("circleci", evidence, filePath, lineNumber)],
             new Recommendation("Review the CircleCI configuration and apply the recommended fix."));
     }

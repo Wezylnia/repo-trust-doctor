@@ -571,6 +571,7 @@ public sealed class TerraformAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-TF005");
+        Assert.Equal(AnalysisCategory.Dependencies, finding.Category);
         Assert.Contains("hashicorp/aws", finding.Evidence[0].Message);
     }
 

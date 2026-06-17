@@ -147,7 +147,8 @@ public sealed class CircleCiAnalyzerTests
         var analyzer = new CircleCiAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
-        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-CIRCLE004");
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-CIRCLE004");
+        Assert.Equal(AnalysisCategory.Security, finding.Category);
     }
 
     [Fact]
