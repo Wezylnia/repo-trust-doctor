@@ -27,14 +27,24 @@ public sealed record AnalyzerResult(
     IReadOnlyList<AnalyzerArtifact>? Artifacts = null,
     IReadOnlyDictionary<string, string>? Metrics = null,
     IReadOnlyList<string>? Warnings = null,
+    IReadOnlyList<ScanWarning>? WarningDetails = null,
     string? ErrorMessage = null)
 {
     public static AnalyzerResult Completed(
         IReadOnlyList<Finding> findings,
         IReadOnlyList<AnalyzerArtifact>? artifacts = null,
         IReadOnlyDictionary<string, string>? metrics = null,
-        IReadOnlyList<string>? warnings = null) =>
-        new(ModuleStatus.Completed, findings, artifacts, metrics, warnings);
+        IReadOnlyList<string>? warnings = null,
+        IReadOnlyList<ScanWarning>? warningDetails = null) =>
+        new(
+            ModuleStatus.Completed,
+            findings,
+            artifacts,
+            metrics,
+            warningDetails is not null && warnings is null
+                ? warningDetails.Select(warning => warning.Message).ToArray()
+                : warnings,
+            warningDetails);
 }
 
 public sealed class AnalysisContext

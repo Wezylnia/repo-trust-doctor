@@ -164,6 +164,7 @@ public sealed class AnalyzerInfrastructureTests
         Assert.Contains("scope was truncated", result.Module.ErrorMessage, StringComparison.Ordinal);
         Assert.Equal("10", result.Module.Metrics!["analyzed.count"]);
         Assert.Contains("scope was truncated", result.Module.Warnings!);
+        Assert.Equal(ScanWarningKind.PartialCoverage, Assert.Single(result.Module.WarningDetails!).Kind);
     }
 
     [Fact]

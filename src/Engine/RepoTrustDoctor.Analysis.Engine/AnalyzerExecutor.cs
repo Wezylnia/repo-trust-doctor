@@ -36,16 +36,19 @@ public sealed class AnalyzerExecutor
 
             stopwatch.Stop();
             var completed = started.Add(stopwatch.Elapsed);
-            var status = result.Status == ModuleStatus.Completed && (result.Warnings?.Count ?? 0) > 0
+            var warningDetails = result.WarningDetails ?? AnalyzerWarningClassifier.Classify(result.Warnings);
+            var warningMessages = result.Warnings ?? warningDetails.Select(warning => warning.Message).ToArray();
+            var hasWarnings = warningMessages.Count > 0;
+            var status = result.Status == ModuleStatus.Completed && hasWarnings
                 ? ModuleStatus.CompletedWithWarnings
                 : result.Status;
-            var moduleMessage = status == ModuleStatus.CompletedWithWarnings && (result.Warnings?.Count ?? 0) > 0
-                ? string.Join("; ", result.Warnings!.Take(3))
+            var moduleMessage = status == ModuleStatus.CompletedWithWarnings && hasWarnings
+                ? string.Join("; ", warningMessages.Take(3))
                 : result.ErrorMessage;
 
             return new AnalyzerExecutionResult(
                 analyzer,
-                result with { Status = status },
+                result with { Status = status, Warnings = warningMessages, WarningDetails = warningDetails },
                 new ScanModule(
                     analyzer.Id,
                     analyzer.DisplayName,
@@ -56,7 +59,8 @@ public sealed class AnalyzerExecutor
                     result.Findings.Count,
                     moduleMessage,
                     Metrics: result.Metrics,
-                    Warnings: result.Warnings));
+                    Warnings: warningMessages,
+                    WarningDetails: warningDetails));
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {

@@ -128,12 +128,32 @@ public sealed class MarkdownReportWriter
                 builder.AppendLine($"  - Skipped: {MarkdownText.Inline(module.SkippedReason)}");
             }
 
-            foreach (var warning in module.Warnings ?? [])
+            foreach (var warning in EnumerateWarningMessages(module))
             {
                 if (!string.IsNullOrWhiteSpace(warning))
                 {
                     builder.AppendLine($"  - Warning: {MarkdownText.Inline(warning)}");
                 }
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateWarningMessages(ScanModule module)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var warning in module.WarningDetails?.Select(detail => detail.Message) ?? [])
+        {
+            if (seen.Add(warning))
+            {
+                yield return warning;
+            }
+        }
+
+        foreach (var warning in module.Warnings ?? [])
+        {
+            if (seen.Add(warning))
+            {
+                yield return warning;
             }
         }
     }

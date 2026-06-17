@@ -67,6 +67,16 @@ public enum FinalDecisionKind
     NeedsManualReview
 }
 
+public enum ScanWarningKind
+{
+    Informational,
+    StaleData,
+    PartialCoverage,
+    UnsupportedInput,
+    TransientFailure,
+    AnalyzerFailure
+}
+
 public sealed record Evidence(
     string Kind,
     string Message,
@@ -90,6 +100,11 @@ public sealed record Finding(
     string? Fingerprint = null,
     string? IdentityKey = null);
 
+public sealed record ScanWarning(
+    ScanWarningKind Kind,
+    string Message,
+    bool AffectsCoverage = false);
+
 public sealed record ScanModule(
     string ModuleId,
     string DisplayName,
@@ -101,7 +116,8 @@ public sealed record ScanModule(
     string? ErrorMessage = null,
     string? SkippedReason = null,
     IReadOnlyDictionary<string, string>? Metrics = null,
-    IReadOnlyList<string>? Warnings = null);
+    IReadOnlyList<string>? Warnings = null,
+    IReadOnlyList<ScanWarning>? WarningDetails = null);
 
 public sealed record CategoryScore(AnalysisCategory Category, int Score);
 
