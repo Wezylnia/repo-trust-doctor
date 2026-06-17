@@ -33,6 +33,8 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         new("TRUST-DOCKER009", "Dockerfile uses ADD instead of COPY", AnalysisCategory.Containers, Severity.Low, Confidence.High, "ADD is used where COPY would be sufficient.", "Prefer COPY over ADD unless you specifically need tar extraction or URL fetching."),
         new("TRUST-DOCKER010", "Dockerfile uses sudo", AnalysisCategory.Containers, Severity.High, Confidence.High, "sudo is used in a RUN instruction.", "Remove sudo usage. Docker containers normally run as root, and sudo adds complexity without real isolation."),
         new("TRUST-DOCKER011", "Dockerfile EXPOSE uses overly broad port range", AnalysisCategory.Containers, Severity.Low, Confidence.Medium, "EXPOSE specifies a port range.", "Expose only the specific ports your application needs."),
+        new("TRUST-DOCKER012", "Dockerfile pipes remote installer to shell", AnalysisCategory.Containers, Severity.High, Confidence.High, "A RUN instruction downloads remote content and pipes it into a shell.", "Download release artifacts with pinned checksums or signatures instead of piping network content directly to a shell."),
+        new("TRUST-DOCKER014", "Dockerfile disables healthcheck", AnalysisCategory.Containers, Severity.Low, Confidence.High, "HEALTHCHECK NONE disables container health reporting.", "Remove HEALTHCHECK NONE and add an appropriate health probe for long-running service images."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -84,6 +86,7 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
             CheckAddVsCopy(content, relativePath, findings);
             CheckSudoUsage(content, relativePath, findings);
             CheckExposePortRange(content, relativePath, findings);
+            CheckRemoteInstallerPipe(content, relativePath, findings);
 
             foreach (Match match in SecretEnvPattern().Matches(content))
             {
@@ -116,6 +119,18 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
             !HealthcheckPattern().IsMatch(runtimeContent))
         {
             findings.Add(CreateFinding("TRUST-DOCKER004", "Dockerfile does not declare HEALTHCHECK", Severity.Low, relativePath, "No HEALTHCHECK instruction was found."));
+        }
+
+        if (ExposeInstructionPattern().IsMatch(runtimeContent) &&
+            HealthcheckNonePattern().IsMatch(runtimeContent))
+        {
+            findings.Add(CreateFinding(
+                "TRUST-DOCKER014",
+                "Dockerfile disables healthcheck",
+                Severity.Low,
+                relativePath,
+                "HEALTHCHECK NONE disables container health reporting.",
+                recommendationText: "Remove HEALTHCHECK NONE and add an appropriate health probe for long-running service images."));
         }
 
         var fromCount = FromInstructionPattern().Matches(fullContent).Count;
@@ -318,6 +333,9 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"(?mi)^\s*HEALTHCHECK\b")]
     private static partial Regex HealthcheckPattern();
 
+    [GeneratedRegex(@"(?mi)^\s*HEALTHCHECK\s+NONE\b")]
+    private static partial Regex HealthcheckNonePattern();
+
     [GeneratedRegex(@"(?mi)^\s*FROM\s+(?<image>\S+)")]
     private static partial Regex FromInstructionPattern();
 
@@ -409,6 +427,24 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         }
     }
 
+    private static void CheckRemoteInstallerPipe(string content, string relativePath, List<Finding> findings)
+    {
+        var matches = RemoteInstallerPipePattern().Matches(content);
+        foreach (Match match in matches)
+        {
+            findings.Add(new Finding(
+                "TRUST-DOCKER012",
+                "Dockerfile pipes remote installer to shell",
+                AnalysisCategory.Containers,
+                Severity.High,
+                Confidence.High,
+                "A RUN instruction downloads remote content and pipes it into a shell.",
+                [new Evidence("dockerfile", "Remote installer output is piped directly to a shell.", relativePath, GetLineNumber(content, match.Index), match.Value.Trim())],
+                new Recommendation("Download release artifacts with pinned checksums or signatures instead of piping network content directly to a shell.")));
+            break;
+        }
+    }
+
     [GeneratedRegex(@"(?mi)^\s*ADD\s+(?<src>\S+)\s+\S+")]
     private static partial Regex AddInstructionPattern();
 
@@ -417,6 +453,9 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"(?mi)^\s*EXPOSE\s+(?<start>\d+)-(?<end>\d+)")]
     private static partial Regex ExposePortRangePattern();
+
+    [GeneratedRegex(@"(?mi)^\s*RUN\s+.*\b(?:curl|wget)\b.*\|\s*(?:/bin/)?(?:sh|bash)\b")]
+    private static partial Regex RemoteInstallerPipePattern();
 
     private sealed record DockerfileCandidate(string FullPath, string RelativePath, bool IsBuildSupport);
 

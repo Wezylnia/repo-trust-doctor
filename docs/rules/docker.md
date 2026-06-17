@@ -15,9 +15,10 @@ rules.
 CI/toolchain images, nested build-only images, and explicit test-runner images
 are still scanned for concrete content risks such as `latest` tags,
 secret-like `ENV` values, `ADD` misuse, separated `apt-get update`, `sudo`, and
-broad `EXPOSE` ranges. Runtime-only application-image expectations such as
-root `.dockerignore`, non-root `USER`, `HEALTHCHECK`, multi-stage build, and
-dependency-restore copy ordering are not reported for those support images.
+broad `EXPOSE` ranges, and remote installer pipe-to-shell patterns.
+Runtime-only application-image expectations such as root `.dockerignore`,
+non-root `USER`, `HEALTHCHECK`, multi-stage build, and dependency-restore copy
+ordering are not reported for those support images.
 
 Why it matters: large or sensitive files may be copied into the Docker build context unintentionally.
 
@@ -146,6 +147,37 @@ Detects `EXPOSE` instructions that specify a port range spanning more than 100 p
 Why it matters: exposing large port ranges may indicate that the image is unnecessarily permissive. It is better to expose only the ports the application actually listens on.
 
 Recommendation: expose only the specific ports your application needs.
+
+## TRUST-DOCKER012: Dockerfile Pipes Remote Installer to Shell
+
+- Category: Containers
+- Default severity: High
+- Default confidence: High
+
+Detects `RUN` instructions that download content with `curl` or `wget` and pipe
+that content directly to `sh` or `bash`.
+
+Why it matters: piping network content directly to a shell bypasses artifact
+integrity checks and makes builds depend on mutable remote script contents.
+
+Recommendation: download versioned release artifacts, verify checksums or
+signatures, and run reviewed installer code explicitly.
+
+## TRUST-DOCKER014: Dockerfile Disables Healthcheck
+
+- Category: Containers
+- Default severity: Low
+- Default confidence: High
+
+Detects runtime service Dockerfiles that expose a port and explicitly declare
+`HEALTHCHECK NONE`.
+
+Why it matters: disabling health reporting removes a useful signal for
+orchestration and incident response. CLI, batch, build, and test-runner images
+are not expected to define service health probes.
+
+Recommendation: remove `HEALTHCHECK NONE` and add an appropriate health probe
+for long-running service images.
 
 ## Docker Compose Rules
 

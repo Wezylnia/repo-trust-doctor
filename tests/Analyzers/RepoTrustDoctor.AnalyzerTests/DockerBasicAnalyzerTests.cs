@@ -322,6 +322,61 @@ public sealed class DockerBasicAnalyzerTests
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DOCKER011");
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_ReportsRemoteInstallerPipedToShell()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM alpine:3.18
+        RUN curl -fsSL https://example.com/install.sh | sh
+        USER appuser
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DOCKER012");
+        Assert.Equal(Severity.High, finding.Severity);
+        Assert.Equal(Confidence.High, finding.Confidence);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportDownloadedArtifactWithoutShellPipe()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM alpine:3.18
+        RUN wget -O /tmp/tool.tar.gz https://example.com/tool.tar.gz
+        USER appuser
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DOCKER012");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsHealthcheckNoneForServiceImage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fixture.Path, "Dockerfile"), """
+        FROM alpine:3.18
+        EXPOSE 8080
+        USER appuser
+        HEALTHCHECK NONE
+        """);
+
+        var analyzer = new DockerBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DOCKER014");
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DOCKER004");
+    }
+
     [Theory]
     [InlineData("railties/lib/rails/generators/rails/app/templates/Dockerfile.tt")]
     [InlineData("railties/test/fixtures/Dockerfile.test")]
