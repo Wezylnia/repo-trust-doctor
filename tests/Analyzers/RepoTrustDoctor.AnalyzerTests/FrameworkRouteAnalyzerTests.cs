@@ -61,6 +61,24 @@ public sealed class FrameworkRouteAnalyzerTests
     }
 
     [Fact]
+    public async Task FrameworkRouteAnalyzer_DerivesMethodFromRouteTokenNotPathText()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "routes.js"), """
+        app.post('/forget-password', (req, res) => { res.send('ok'); });
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new FrameworkRouteAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        var artifact = Assert.Single(result.Artifacts!, art => art.Key == FrameworkRouteArtifact.ArtifactKey);
+        var routesArtifact = Assert.IsType<FrameworkRouteArtifact>(artifact.Value);
+        var route = Assert.Single(routesArtifact.Routes);
+        Assert.Equal("POST", route.HttpMethod);
+        Assert.Equal("/forget-password", route.PathPattern);
+    }
+
+    [Fact]
     public async Task FrameworkRouteAnalyzer_ReportsFindingTruncationMetrics()
     {
         using var fixture = TemporaryRepository.Create();

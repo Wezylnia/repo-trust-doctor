@@ -88,14 +88,55 @@ public sealed partial class FrameworkRouteAnalyzer
 
     private static string DetermineHttpMethod(string snippet, string framework)
     {
-        var lower = snippet.ToLowerInvariant();
-        if (lower.Contains("get")) return "GET";
-        if (lower.Contains("post")) return "POST";
-        if (lower.Contains("put")) return "PUT";
-        if (lower.Contains("delete")) return "DELETE";
-        if (lower.Contains("patch")) return "PATCH";
+        if (AspNetMethodRegex().Match(snippet) is { Success: true } aspNet)
+        {
+            return NormalizeHttpMethod(aspNet.Groups["method"].Value);
+        }
+
+        if (ExpressMethodRegex().Match(snippet) is { Success: true } express)
+        {
+            return NormalizeHttpMethod(express.Groups["method"].Value);
+        }
+
+        if (SpringMappingMethodRegex().Match(snippet) is { Success: true } springMapping)
+        {
+            return NormalizeHttpMethod(springMapping.Groups["method"].Value);
+        }
+
+        if (SpringRequestMethodRegex().Match(snippet) is { Success: true } springRequest)
+        {
+            return NormalizeHttpMethod(springRequest.Groups["method"].Value);
+        }
+
+        if (PythonRouteMethodsRegex().Match(snippet) is { Success: true } pythonMethods)
+        {
+            return NormalizeHttpMethod(pythonMethods.Groups["method"].Value);
+        }
+
+        if (GoMethodRegex().Match(snippet) is { Success: true } go)
+        {
+            return NormalizeHttpMethod(go.Groups["method"].Value);
+        }
+
+        if (RustMethodRegex().Match(snippet) is { Success: true } rust)
+        {
+            return NormalizeHttpMethod(rust.Groups["method"].Value);
+        }
+
         return "GET";
     }
+
+    private static string NormalizeHttpMethod(string method) =>
+        method.ToUpperInvariant() switch
+        {
+            "GET" => "GET",
+            "POST" => "POST",
+            "PUT" => "PUT",
+            "DELETE" => "DELETE",
+            "PATCH" => "PATCH",
+            "ALL" or "ANY" or "HANDLE" => "ANY",
+            _ => "GET"
+        };
 
     private static string? DeterminePathPattern(string snippet, string framework)
     {
@@ -106,5 +147,25 @@ public sealed partial class FrameworkRouteAnalyzer
     [GeneratedRegex(@"['""](?<path>[^'""]+)['""]")]
     private static partial Regex PathLiteralRegex();
 
+    [GeneratedRegex(@"\b(?:Map|Http)(?<method>Get|Post|Put|Delete|Patch)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex AspNetMethodRegex();
+
+    [GeneratedRegex(@"\.\s*(?<method>get|post|put|delete|patch|all)\s*\(", RegexOptions.IgnoreCase)]
+    private static partial Regex ExpressMethodRegex();
+
+    [GeneratedRegex(@"@\s*(?<method>Get|Post|Put|Delete|Patch)Mapping\b", RegexOptions.IgnoreCase)]
+    private static partial Regex SpringMappingMethodRegex();
+
+    [GeneratedRegex(@"RequestMethod\s*\.\s*(?<method>GET|POST|PUT|DELETE|PATCH)", RegexOptions.IgnoreCase)]
+    private static partial Regex SpringRequestMethodRegex();
+
+    [GeneratedRegex(@"methods\s*=\s*\[[^\]]*['""](?<method>GET|POST|PUT|DELETE|PATCH)['""]", RegexOptions.IgnoreCase)]
+    private static partial Regex PythonRouteMethodsRegex();
+
+    [GeneratedRegex(@"\.\s*(?<method>GET|POST|PUT|DELETE|PATCH|Handle|Any)\s*\(")]
+    private static partial Regex GoMethodRegex();
+
+    [GeneratedRegex(@"(?:web::|#\[\s*)(?<method>get|post|put|delete|patch)\s*\(", RegexOptions.IgnoreCase)]
+    private static partial Regex RustMethodRegex();
 }
 
