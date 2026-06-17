@@ -98,9 +98,16 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
+            var mode = match.Groups["mode"].Success ? match.Groups["mode"].Value : string.Empty;
+            var isReadOnly = IsReadOnlyVolumeMode(mode);
             findings.Add(CreateFinding("TRUST-COMP003", "Docker Compose mounts host directory",
-                Severity.Medium, relativePath, $"Mounts host path '{path}'.",
-                GetLineNumber(content, match.Index), Confidence.Medium));
+                isReadOnly ? Severity.Low : Severity.Medium,
+                relativePath,
+                string.IsNullOrWhiteSpace(mode)
+                    ? $"Mounts host path '{path}' using default read-write mode."
+                    : $"Mounts host path '{path}' using '{mode}' mode.",
+                GetLineNumber(content, match.Index),
+                isReadOnly ? Confidence.Low : Confidence.Medium));
         }
 
         foreach (var mount in EnumerateLongBindMounts(content))
@@ -353,6 +360,22 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
         path.Equals("/var/run/docker.sock", StringComparison.OrdinalIgnoreCase) ||
         path.Equals("/run/docker.sock", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsReadOnlyVolumeMode(string mode)
+    {
+        if (string.IsNullOrWhiteSpace(mode))
+        {
+            return false;
+        }
+
+        var tokens = mode.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Any(static token => token.Equals("rw", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        return tokens.Any(static token => token.Equals("ro", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High, bool isBlocking = false)
     {
         return new Finding(ruleId, title, AnalysisCategory.Containers, severity, confidence, title,
@@ -375,7 +398,7 @@ public sealed partial class DockerComposeAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"(?m)^\s*network_mode\s*:\s*['""]?host['""]?\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex HostNetworkPattern();
 
-    [GeneratedRegex(@"(?m)^\s*-\s*['""]?(?<path>/[^:'""\n]+):/[^:'""\n]*(?::[A-Za-z]+)?['""]?\s*$")]
+    [GeneratedRegex(@"(?m)^\s*-\s*['""]?(?<path>/[^:'""\n]+):/[^:'""\n]*(?::(?<mode>[A-Za-z,]+))?['""]?\s*$")]
     private static partial Regex HostVolumePattern();
 
     [GeneratedRegex(@"(?m)^\s*-\s*['""]?(?:(?:0\.0\.0\.0|\*)\s*:\s*)?\d+(?:-\d+)?\s*:\s*\d+(?:-\d+)?(?:/\w+)?['""]?\s*$")]

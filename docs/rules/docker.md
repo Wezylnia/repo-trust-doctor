@@ -211,7 +211,7 @@ Recommendation: use bridge networks instead of host mode.
 - Default severity: Medium
 - Default confidence: Medium
 
-Detects unquoted or quoted host path volume mounts in Compose files. Docker socket mounts are reported only by `TRUST-COMP006` to avoid duplicate findings for the same line.
+Detects unquoted or quoted host path volume mounts in Compose files. Short and long syntax mounts with explicit read-only mode (`:ro`, `ro,z`, or `read_only: true`) are downgraded to Low severity. Missing mode and explicit `rw` remain Medium because Compose bind mounts are writable by default. Docker socket mounts are reported only by `TRUST-COMP006` to avoid duplicate findings for the same line.
 
 Why it matters: host directory mounts can expose the host filesystem to the container.
 

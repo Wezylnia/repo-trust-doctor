@@ -55,7 +55,9 @@ public sealed class DockerComposeAnalyzerTests
         var analyzer = new DockerComposeAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
-        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-COMP003");
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-COMP003");
+        Assert.Equal(Severity.Medium, finding.Severity);
+        Assert.Contains("default read-write mode", finding.Evidence[0].Message);
     }
 
     [Fact]
@@ -73,7 +75,29 @@ public sealed class DockerComposeAnalyzerTests
         var analyzer = new DockerComposeAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
-        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-COMP003");
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-COMP003");
+        Assert.Equal(Severity.Low, finding.Severity);
+        Assert.Contains("ro", finding.Evidence[0].Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ShortSyntaxReadWriteHostVolumeIsMediumSeverity()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "docker-compose.yml"), """
+        services:
+          app:
+            image: nginx
+            volumes:
+              - "/var/log/app:/logs:rw"
+        """);
+
+        var analyzer = new DockerComposeAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-COMP003");
+        Assert.Equal(Severity.Medium, finding.Severity);
+        Assert.Contains("rw", finding.Evidence[0].Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
