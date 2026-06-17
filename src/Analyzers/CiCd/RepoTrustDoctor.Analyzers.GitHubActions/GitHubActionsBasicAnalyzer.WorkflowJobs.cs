@@ -16,20 +16,29 @@ public sealed partial class GitHubActionsBasicAnalyzer
         }
 
         var jobs = new List<WorkflowJob>();
+        var jobsIndent = GetIndentation(lines[jobsLine]);
+        int? jobIndent = null;
         for (var index = jobsLine + 1; index < lines.Length; index++)
         {
             var line = lines[index];
-            if (string.IsNullOrWhiteSpace(line))
+            if (string.IsNullOrWhiteSpace(line) || IsCommentLine(line))
             {
                 continue;
             }
 
-            if (GetIndentation(line) == 0)
+            var indent = GetIndentation(line);
+            if (indent <= jobsIndent)
             {
                 break;
             }
 
-            var match = Regex.Match(line, @"^\s{2}(?<name>[A-Za-z0-9_.-]+)\s*:\s*(?:#.*)?$");
+            jobIndent ??= indent;
+            if (indent != jobIndent.Value)
+            {
+                continue;
+            }
+
+            var match = Regex.Match(line, @"^\s*(?<name>[A-Za-z0-9_.-]+)\s*:\s*(?:#.*)?$");
             if (!match.Success)
             {
                 continue;
@@ -40,7 +49,8 @@ public sealed partial class GitHubActionsBasicAnalyzer
             for (var cursor = index + 1; cursor < lines.Length; cursor++)
             {
                 if (!string.IsNullOrWhiteSpace(lines[cursor]) &&
-                    GetIndentation(lines[cursor]) <= 2)
+                    !IsCommentLine(lines[cursor]) &&
+                    GetIndentation(lines[cursor]) <= jobIndent.Value)
                 {
                     end = cursor;
                     break;
@@ -54,6 +64,9 @@ public sealed partial class GitHubActionsBasicAnalyzer
 
         return jobs;
     }
+
+    private static bool IsCommentLine(string line) =>
+        line.TrimStart().StartsWith('#');
 
     private static IReadOnlyList<string> ParseNeeds(string jobBody)
     {
