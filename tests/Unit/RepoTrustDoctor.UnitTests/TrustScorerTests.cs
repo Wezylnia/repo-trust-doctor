@@ -374,7 +374,7 @@ public sealed class TrustScorerTests
     }
 
     [Fact]
-    public void Score_StrictProfileHardCapTakesPriorityOverSoftPolicyViolation()
+    public void Score_StrictProfileDoesNotHardCapNonBlockingHighFinding()
     {
         var findings = new[]
         {
@@ -393,6 +393,23 @@ public sealed class TrustScorerTests
             findings,
             TrustProfile.SecuritySensitiveDependency,
             [AnalysisCategory.RepositoryHealth, AnalysisCategory.Codebase]);
+
+        Assert.NotEqual(FinalDecisionKind.AvoidAsProductionDependency, score.Decision.Kind);
+        Assert.True(score.Overall > 60, $"Expected no strict-profile blanket hard cap, got {score.Overall}.");
+    }
+
+    [Fact]
+    public void Score_StrictProfileHardCapsCriticalFinding()
+    {
+        var finding = CreateFinding(
+            "TRUST-SECRET002",
+            AnalysisCategory.Security,
+            Severity.Critical);
+
+        var score = new TrustScorer().Score(
+            [finding],
+            TrustProfile.SecuritySensitiveDependency,
+            [AnalysisCategory.Security]);
 
         Assert.Equal(FinalDecisionKind.AvoidAsProductionDependency, score.Decision.Kind);
         Assert.True(score.Overall <= 60, $"Expected hard cap at 60, got {score.Overall}.");

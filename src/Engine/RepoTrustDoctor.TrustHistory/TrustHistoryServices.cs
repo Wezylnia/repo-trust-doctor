@@ -225,8 +225,14 @@ public sealed class TrustRegressionDetector
         var scoreDropThreshold = schedule?.ScoreDropAlertThreshold ?? 10;
         var newFindingSeverity = schedule?.NewFindingAlertSeverity ?? Severity.High;
         var alerts = new List<TrustRegressionAlert>();
+        if (diff.Comparability == TrustDiffComparability.DifferentTarget)
+        {
+            return alerts;
+        }
 
-        if (diff.OverallScoreDelta <= -scoreDropThreshold)
+        var canCompareScoresAndDecisions = diff.Comparability == TrustDiffComparability.Direct;
+        if (canCompareScoresAndDecisions &&
+            diff.OverallScoreDelta <= -scoreDropThreshold)
         {
             alerts.Add(new TrustRegressionAlert(
                 TrustRegressionAlertKind.ScoreDrop,
@@ -234,7 +240,8 @@ public sealed class TrustRegressionDetector
                 $"Trust score dropped by {Math.Abs(diff.OverallScoreDelta)} points."));
         }
 
-        if (IsDecisionWorse(diff.Before.Decision, diff.After.Decision))
+        if (canCompareScoresAndDecisions &&
+            IsDecisionWorse(diff.Before.Decision, diff.After.Decision))
         {
             alerts.Add(new TrustRegressionAlert(
                 TrustRegressionAlertKind.DecisionWorsened,

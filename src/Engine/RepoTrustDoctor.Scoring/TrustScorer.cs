@@ -103,15 +103,11 @@ public sealed class TrustScorer
             overall,
             categoryScores);
 
-        // Hard-cap: only when blocking risks exist from policy, or critical/high findings under strict profiles
-        var policyHardCap = policyEvaluation.HasBlockingRisks;
-
-        // For strict profiles, also cap if critical/high findings exist
-        if (!policyHardCap && normalizedProfile == TrustProfile.SecuritySensitiveDependency)
-        {
-            var hasSerious = findings.Any(f => f.IsBlocking || f.Severity == Severity.Critical || f.Severity == Severity.High);
-            if (hasSerious) policyHardCap = true;
-        }
+        // Hard-cap only for explicit blocking policy risks, explicit blocking findings,
+        // or critical evidence. Non-blocking High findings still affect the score and
+        // decision, but they should not become automatic Avoid decisions.
+        var policyHardCap = policyEvaluation.HasBlockingRisks ||
+                            findings.Any(f => f.IsBlocking || f.Severity == Severity.Critical);
 
         var policySoftCap = policyEvaluation.Violations.Count > 0 && !policyHardCap;
 

@@ -212,6 +212,40 @@ public sealed class TrustHistoryTests
         Assert.Contains(alerts, alert => alert.Kind == TrustRegressionAlertKind.NewBlockingFinding);
     }
 
+    [Fact]
+    public void TrustRegressionDetector_DoesNotAlertForDifferentTargets()
+    {
+        var before = Snapshot("https://github.com/example/one", 90, FinalDecisionKind.SafeToTry, []);
+        var after = Snapshot("https://github.com/example/two", 60, FinalDecisionKind.AvoidAsProductionDependency, [
+            FindingSnapshot("fp-new", "TRUST-NEW", Severity.High, true)
+        ]);
+        var diff = new TrustDiffEngine().Compare(before, after);
+
+        var alerts = new TrustRegressionDetector().Detect(diff);
+
+        Assert.Empty(alerts);
+    }
+
+    [Fact]
+    public void TrustRegressionDetector_PartialComparisonSuppressesScoreAndDecisionAlerts()
+    {
+        var before = Snapshot("repo", 90, FinalDecisionKind.SafeToTry, []);
+        var after = Snapshot(
+            "repo",
+            60,
+            FinalDecisionKind.AvoidAsProductionDependency,
+            [FindingSnapshot("fp-new", "TRUST-NEW", Severity.High, true)],
+            depth: AnalysisDepth.Fast,
+            trustProfile: TrustProfile.SecuritySensitiveDependency);
+        var diff = new TrustDiffEngine().Compare(before, after);
+
+        var alerts = new TrustRegressionDetector().Detect(diff);
+
+        Assert.DoesNotContain(alerts, alert => alert.Kind == TrustRegressionAlertKind.ScoreDrop);
+        Assert.DoesNotContain(alerts, alert => alert.Kind == TrustRegressionAlertKind.DecisionWorsened);
+        Assert.Contains(alerts, alert => alert.Kind == TrustRegressionAlertKind.NewBlockingFinding);
+    }
+
     private static RepositoryScan CreateScan(string target, int score, FinalDecisionKind decision, IReadOnlyList<Finding> findings) =>
         new(
             Guid.NewGuid(),
