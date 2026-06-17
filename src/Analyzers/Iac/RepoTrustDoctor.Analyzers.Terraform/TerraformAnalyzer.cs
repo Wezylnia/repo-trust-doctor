@@ -478,31 +478,179 @@ internal static class CommentStripper
     {
         var result = new System.Text.StringBuilder(content.Length);
         var i = 0;
+        var inString = false;
+        var escaped = false;
+        var inBlockComment = false;
+        var inLineComment = false;
+        string? heredocTerminator = null;
+        var atLineStart = true;
+
         while (i < content.Length)
         {
-            // Block comments /* ... */
-            if (i + 1 < content.Length && content[i] == '/' && content[i + 1] == '*')
-            {
-                i += 2;
-                while (i + 1 < content.Length && !(content[i] == '*' && content[i + 1] == '/'))
-                    i++;
-                i += 2;
-                continue;
-            }
+            var current = content[i];
+            var next = i + 1 < content.Length ? content[i + 1] : '\0';
 
-            // Line comments # or //
-            if (content[i] == '#' || (i + 1 < content.Length && content[i] == '/' && content[i + 1] == '/'))
+            if (heredocTerminator is not null)
             {
-                while (i < content.Length && content[i] != '\n')
-                    i++;
-                if (i < content.Length) result.Append('\n');
+                if (atLineStart && IsHeredocTerminatorAt(content, i, heredocTerminator))
+                {
+                    heredocTerminator = null;
+                }
+
+                result.Append(current);
+                atLineStart = current == '\n';
                 i++;
                 continue;
             }
 
-            result.Append(content[i]);
+            if (inLineComment)
+            {
+                if (current == '\n')
+                {
+                    inLineComment = false;
+                    result.Append(current);
+                    atLineStart = true;
+                }
+                else
+                {
+                    result.Append(' ');
+                }
+
+                i++;
+                continue;
+            }
+
+            if (inBlockComment)
+            {
+                if (current == '*' && next == '/')
+                {
+                    result.Append(' ');
+                    result.Append(' ');
+                    i += 2;
+                    inBlockComment = false;
+                    continue;
+                }
+
+                result.Append(current == '\n' ? '\n' : ' ');
+                atLineStart = current == '\n';
+                i++;
+                continue;
+            }
+
+            if (inString)
+            {
+                result.Append(current);
+                if (escaped)
+                {
+                    escaped = false;
+                }
+                else if (current == '\\')
+                {
+                    escaped = true;
+                }
+                else if (current == '"')
+                {
+                    inString = false;
+                }
+
+                atLineStart = current == '\n';
+                i++;
+                continue;
+            }
+
+            if (current == '"')
+            {
+                inString = true;
+                result.Append(current);
+                atLineStart = false;
+                i++;
+                continue;
+            }
+
+            if (current == '/' && next == '*')
+            {
+                inBlockComment = true;
+                result.Append(' ');
+                result.Append(' ');
+                i += 2;
+                continue;
+            }
+
+            if (current == '#' || (current == '/' && next == '/'))
+            {
+                inLineComment = true;
+                result.Append(' ');
+                if (current == '/')
+                {
+                    result.Append(' ');
+                    i += 2;
+                }
+                else
+                {
+                    i++;
+                }
+
+                continue;
+            }
+
+            if (current == '<' && next == '<' && TryReadHeredocTerminator(content, i, out var terminator))
+            {
+                heredocTerminator = terminator;
+            }
+
+            result.Append(current);
+            atLineStart = current == '\n';
             i++;
         }
+
         return result.ToString();
+    }
+
+    private static bool TryReadHeredocTerminator(string content, int markerIndex, out string terminator)
+    {
+        terminator = string.Empty;
+        var index = markerIndex + 2;
+        if (index < content.Length && content[index] == '-')
+        {
+            index++;
+        }
+
+        while (index < content.Length && char.IsWhiteSpace(content[index]) && content[index] != '\n')
+        {
+            index++;
+        }
+
+        var start = index;
+        while (index < content.Length && (char.IsLetterOrDigit(content[index]) || content[index] == '_'))
+        {
+            index++;
+        }
+
+        if (index == start)
+        {
+            return false;
+        }
+
+        terminator = content[start..index];
+        return true;
+    }
+
+    private static bool IsHeredocTerminatorAt(string content, int index, string terminator)
+    {
+        var cursor = index;
+        while (cursor < content.Length && (content[cursor] == ' ' || content[cursor] == '\t'))
+        {
+            cursor++;
+        }
+
+        if (!content.AsSpan(cursor).StartsWith(terminator, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        cursor += terminator.Length;
+        return cursor >= content.Length ||
+               content[cursor] == '\r' ||
+               content[cursor] == '\n';
     }
 }

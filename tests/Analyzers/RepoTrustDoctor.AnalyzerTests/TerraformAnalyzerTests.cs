@@ -119,6 +119,53 @@ public sealed class TerraformAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_BlockExtractorIgnoresBracesInsideStrings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "main.tf"), """
+        resource "aws_s3_bucket" "enc" {
+          bucket = "enc-bucket"
+          tags = {
+            template = "}"
+          }
+          server_side_encryption_configuration {
+            rule {
+              apply_server_side_encryption_by_default {
+                sse_algorithm = "aws:kms"
+              }
+            }
+          }
+        }
+        """);
+
+        var analyzer = new TerraformAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-TF004");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_CommentStripperPreservesUrlsAndHashInsideStrings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "main.tf"), """
+        terraform {
+          backend "s3" {
+            bucket = "state"
+            key    = "https://example.com/state#prod"
+            region = "us-east-1"
+            encrypt = true
+          }
+        }
+        """);
+
+        var analyzer = new TerraformAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-TF006");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ActionOnlyWildcard_NoTF002()
     {
         using var fixture = TemporaryRepository.Create();
