@@ -35,7 +35,9 @@ internal static partial class PythonApiExtractor
         foreach (var rawLine in lines)
         {
             var line = rawLine.Trim();
-            if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal))
+            if (line.Length == 0 ||
+                line.StartsWith("#", StringComparison.Ordinal) ||
+                CountIndent(rawLine) > 0)
             {
                 continue;
             }
@@ -63,6 +65,17 @@ internal static partial class PythonApiExtractor
         }
 
         return symbols.ToArray();
+    }
+
+    private static int CountIndent(string line)
+    {
+        var count = 0;
+        while (count < line.Length && char.IsWhiteSpace(line[count]))
+        {
+            count++;
+        }
+
+        return count;
     }
 
     [GeneratedRegex(@"__all__\s*=\s*\[(?<content>[^\]]*)\]", RegexOptions.Singleline)]

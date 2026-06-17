@@ -208,6 +208,28 @@ public sealed class PublicApiAnalyzerTests
     }
 
     [Fact]
+    public async Task PublicApiAnalyzer_DoesNotTreatPythonClassMethodsAsTopLevelFunctions()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "service.py"), """
+        class Service:
+            def execute(self):
+                pass
+
+        def create():
+            pass
+        """);
+
+        var context = new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Deep);
+        var result = await new PublicApiAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        var artifact = Assert.IsType<CodePublicApiArtifact>(Assert.Single(result.Artifacts!).Value);
+        Assert.Contains("python:service.py:class Service", artifact.Symbols);
+        Assert.Contains("python:service.py:def create", artifact.Symbols);
+        Assert.DoesNotContain("python:service.py:def execute", artifact.Symbols);
+    }
+
+    [Fact]
     public async Task PublicApiAnalyzer_SkipsBaselineDiffWhenSourceInventoryIsIncomplete()
     {
         using var fixture = TemporaryRepository.Create();
