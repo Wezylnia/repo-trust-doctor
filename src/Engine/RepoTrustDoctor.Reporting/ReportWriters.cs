@@ -34,6 +34,8 @@ public sealed class JsonReportWriter
 
 public sealed class MarkdownReportWriter
 {
+    internal const int MaxRenderedFindings = 100;
+
     public string Write(RepositoryScan scan)
     {
         var builder = new StringBuilder();
@@ -85,7 +87,16 @@ public sealed class MarkdownReportWriter
         }
         else
         {
-            foreach (var finding in findings)
+            var renderedFindings = findings.Take(MaxRenderedFindings).ToArray();
+            builder.AppendLine();
+            builder.AppendLine($"Showing {renderedFindings.Length} of {findings.Count} findings.");
+            if (renderedFindings.Length < findings.Count)
+            {
+                builder.AppendLine($"The remaining {findings.Count - renderedFindings.Length} findings are omitted from this Markdown view; JSON and SARIF exports include the complete finding set.");
+            }
+
+            builder.AppendLine();
+            foreach (var finding in renderedFindings)
             {
                 builder.AppendLine($"### {MarkdownText.Heading(finding.RuleId)} - {MarkdownText.Heading(finding.Title)}");
                 builder.AppendLine();

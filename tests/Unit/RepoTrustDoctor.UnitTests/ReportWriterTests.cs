@@ -174,6 +174,31 @@ public sealed class ReportWriterTests
     }
 
     [Fact]
+    public void MarkdownReport_LimitsRenderedFindingsWithoutDroppingJsonFindings()
+    {
+        var findings = Enumerable
+            .Range(1, 101)
+            .Select(index => CreateFinding(
+                $"TRUST-TEST{index:000}",
+                Severity.Low,
+                AnalysisCategory.RepositoryHealth,
+                filePath: $"file-{index}.txt"))
+            .ToArray();
+        var scan = CreateMinimalScan() with { Findings = findings };
+
+        var markdown = new MarkdownReportWriter().Write(scan);
+        var json = new JsonReportWriter().Write(scan);
+
+        Assert.Contains("Showing 100 of 101 findings.", markdown);
+        Assert.Contains("The remaining 1 findings are omitted from this Markdown view", markdown);
+        Assert.Contains("TRUST-TEST100", markdown);
+        Assert.DoesNotContain("TRUST-TEST101", markdown);
+
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(101, document.RootElement.GetProperty("findings").GetArrayLength());
+    }
+
+    [Fact]
     public void JsonReport_ProducesStableFindingFingerprintAcrossReportWrites()
     {
         var finding = CreateFinding(

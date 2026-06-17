@@ -31,6 +31,12 @@ Each finding includes:
 
 Reports should be readable in Markdown and deterministic in JSON and SARIF.
 
+Markdown is optimized for human review. When a scan produces more than 100
+findings, the Markdown writer renders the first 100 sorted findings and states
+how many additional findings were omitted from that view. JSON and SARIF exports
+remain complete and include every finding used for scoring, policy evaluation,
+and automation.
+
 ## API Report Export
 
 `v1.0.0` exposes completed scan reports from the API host:
