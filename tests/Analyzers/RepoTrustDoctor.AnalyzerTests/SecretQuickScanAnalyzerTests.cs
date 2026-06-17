@@ -178,7 +178,7 @@ public sealed class SecretQuickScanAnalyzerTests
     }
 
     [Fact]
-    public async Task AnalyzeAsync_SkipsSensitiveFileNames_InExampleFixturePaths()
+    public async Task AnalyzeAsync_ReportsSensitiveFileNames_InExampleFixturePaths()
     {
         using var fixture = TemporaryRepository.Create();
 
@@ -199,8 +199,51 @@ public sealed class SecretQuickScanAnalyzerTests
         var analyzer = new SecretQuickScanAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
-        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-SECRET001");
-        Assert.Equal(".env", Assert.Single(finding.Evidence).FilePath);
+        var sensitivePaths = result.Findings
+            .Where(f => f.RuleId == "TRUST-SECRET001")
+            .Select(f => Assert.Single(f.Evidence).FilePath)
+            .ToArray();
+
+        Assert.Contains(".env", sensitivePaths);
+        Assert.Contains("tests/Fixtures/.env", sensitivePaths);
+        Assert.Contains("docs/examples/.env.production", sensitivePaths);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsRealTokenInsideTestEnvFile()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var fakeToken = "ghp_" + "abcdefghijklmnopqrstuvwxyz123456";
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "tests", "Fixtures"));
+        File.WriteAllText(Path.Combine(fixture.Path, "tests", "Fixtures", ".env"), $"""
+        GITHUB_TOKEN={fakeToken}
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-SECRET001" && f.Evidence[0].FilePath == "tests/Fixtures/.env");
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-SECRET003" && f.Evidence[0].FilePath == "tests/Fixtures/.env");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReportsRealPrivateKeyInsideFixtureSensitiveFile()
+    {
+        using var fixture = TemporaryRepository.Create();
+
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "fixtures", "auth"));
+        File.WriteAllText(Path.Combine(fixture.Path, "fixtures", "auth", "id_rsa"), """
+        -----BEGIN PRIVATE KEY-----
+        MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDbE2m7LlJx4c7y
+        -----END PRIVATE KEY-----
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-SECRET001" && f.Evidence[0].FilePath == "fixtures/auth/id_rsa");
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-SECRET002" && f.Evidence[0].FilePath == "fixtures/auth/id_rsa");
     }
 
     [Fact]
@@ -269,7 +312,12 @@ public sealed class SecretQuickScanAnalyzerTests
         var analyzer = new SecretQuickScanAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
-        Assert.DoesNotContain(result.Findings, finding => finding.RuleId is "TRUST-SECRET001" or "TRUST-SECRET002");
+        Assert.DoesNotContain(result.Findings, finding =>
+            finding.RuleId == "TRUST-SECRET002");
+        Assert.DoesNotContain(result.Findings, finding =>
+            finding.RuleId == "TRUST-SECRET001" &&
+            finding.Evidence.FirstOrDefault()?.FilePath is not "packages/app/__tests__/fixtures/env/.env" and
+                not "playground/env/.env.production");
     }
 
     [Fact]

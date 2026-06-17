@@ -127,20 +127,23 @@ public sealed class SecretQuickScanAnalyzer : IRepositoryAnalyzer
                 sensitiveCandidateCount++;
             }
 
-            if (IsExampleFixturePath(candidate.RelativePath))
+            if (IsExampleFixturePath(candidate.RelativePath) &&
+                candidate.Kind is not SecretCandidateKind.Sensitive and not SecretCandidateKind.CredentialConfiguration)
             {
                 continue;
             }
 
-            if (candidate.Kind == SecretCandidateKind.Sensitive &&
-                !IsDocumentationSensitiveFilePath(candidate.RelativePath))
+            if (candidate.Kind == SecretCandidateKind.Sensitive)
             {
                 if (IsPublicCertificatePem(candidate.Path, candidate.Extension))
                 {
                     continue;
                 }
 
-                findings.Add(SecretContentScanner.CreateSensitiveFileFinding(candidate));
+                if (!IsLowSignalSensitiveFixture(candidate))
+                {
+                    findings.Add(SecretContentScanner.CreateSensitiveFileFinding(candidate));
+                }
             }
 
             if (candidate.Kind == SecretCandidateKind.Source &&
@@ -275,19 +278,22 @@ public sealed class SecretQuickScanAnalyzer : IRepositoryAnalyzer
             var relativePath = Path.GetRelativePath(root, file).Replace('\\', '/');
             var fileName = Path.GetFileName(file);
             var extension = Path.GetExtension(file);
+            var isSensitive = SensitiveFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) ||
+                              SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase);
+            var isCredentialConfiguration = CredentialConfigFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase);
             if (RepositoryPathClassifier.IsNonProductionEvidencePath(relativePath) &&
+                !isSensitive &&
+                !isCredentialConfiguration &&
                 !ShouldScanDocumentationContent(relativePath, fileName, extension))
             {
                 continue;
             }
 
-            var isSensitive = SensitiveFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) ||
-                              SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase);
             if (isSensitive)
             {
                 yield return new SecretCandidateFile(file, relativePath, fileName, extension, SecretCandidateKind.Sensitive);
             }
-            else if (CredentialConfigFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+            else if (isCredentialConfiguration)
             {
                 yield return new SecretCandidateFile(file, relativePath, fileName, extension, SecretCandidateKind.CredentialConfiguration);
             }
@@ -365,15 +371,45 @@ public sealed class SecretQuickScanAnalyzer : IRepositoryAnalyzer
         return classification.HasAny(lowSignal);
     }
 
-    private static bool IsDocumentationSensitiveFilePath(string relativePath)
+    private static bool IsLowSignalSensitiveFixture(SecretCandidateFile candidate)
     {
-        var normalized = RepositoryPathClassifier.Normalize(relativePath);
-        var fileName = Path.GetFileName(normalized);
-        var extension = Path.GetExtension(normalized);
+        var normalized = RepositoryPathClassifier.Normalize(candidate.RelativePath);
+        if (!IsExampleFixturePath(normalized) &&
+            !RepositoryPathClassifier.IsDocumentationPath(normalized))
+        {
+            return false;
+        }
 
-        return RepositoryPathClassifier.IsDocumentationPath(normalized) &&
-               (SensitiveFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase) ||
-                SensitiveExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase));
+        if (SensitiveFileNames.Contains(candidate.FileName, StringComparer.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!RepositoryFileSystem.CanReadAsText(candidate.Path))
+        {
+            return false;
+        }
+
+        try
+        {
+            var content = File.ReadAllText(candidate.Path);
+            if (SecretContentScanner.ContainsPrivateKeyMarker(content))
+            {
+                return false;
+            }
+
+            var lower = content.ToLowerInvariant();
+            return lower.Contains("fixture", StringComparison.Ordinal) ||
+                   lower.Contains("sample certificate", StringComparison.Ordinal) ||
+                   lower.Contains("test certificate", StringComparison.Ordinal) ||
+                   lower.Contains("documentation certificate", StringComparison.Ordinal) ||
+                   lower.Contains("test key fixture", StringComparison.Ordinal) ||
+                   lower.Contains("certificate fixture", StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static bool IsPublicCertificatePem(string filePath, string extension)
