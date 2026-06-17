@@ -91,25 +91,40 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
         CheckPublicAcl(content, relativePath, findings);
         CheckS3Encryption(content, blocks, relativePath, findings);
         CheckProviderVersion(content, blocks, relativePath, findings);
-        CheckBackendEncryption(content, relativePath, findings);
+        CheckBackendEncryption(blocks, relativePath, findings);
     }
 
     private void AnalyzeTfJson(JsonDocument doc, string relativePath, List<Finding> findings)
     {
         var root = doc.RootElement;
-        if (!root.TryGetProperty("resource", out var resources)) return;
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty("resource", out var resources) ||
+            resources.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
 
         foreach (var resource in resources.EnumerateObject())
         {
+            if (resource.Value.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
             foreach (var instance in resource.Value.EnumerateObject())
             {
+                if (instance.Value.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
                 var type = resource.Name;
                 var name = instance.Name;
 
                 // TF001: public ingress via JSON
                 if (type is "aws_security_group" or "aws_security_group_rule")
                 {
-                    if (HasPublicCidrInJson(instance.Value))
+                    if (HasPublicCidrInJson(type, instance.Value))
                     {
                         findings.Add(CreateFinding("TRUST-TF001", "Public ingress",
                             Severity.High, relativePath, "Security group allows ingress from 0.0.0.0/0 or ::/0.", confidence: Confidence.Medium));
@@ -253,8 +268,14 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
             return false;
         }
 
-        return text.Contains($"aws_s3_bucket.{bucketName}.", StringComparison.OrdinalIgnoreCase) ||
-               text.Contains($"aws_s3_bucket.{bucketName}", StringComparison.OrdinalIgnoreCase) ||
+        return Regex.IsMatch(
+                   text,
+                   $@"\baws_s3_bucket\.{Regex.Escape(bucketName)}(?:\.|\[|\s|$)",
+                   RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(
+                   text,
+                   $@"\baws_s3_bucket\[\s*""{Regex.Escape(bucketName)}""\s*\]",
+                   RegexOptions.IgnoreCase) ||
                Regex.IsMatch(text, $@"(?mi)^\s*bucket\s*=\s*""{Regex.Escape(bucketName)}""\s*$");
     }
 
@@ -308,28 +329,75 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
 
     // ── TF006: backend encryption ─────────────────────────────────────
 
-    private void CheckBackendEncryption(string content, string relativePath, List<Finding> findings)
+    private void CheckBackendEncryption(IReadOnlyList<TerraformBlock> blocks, string relativePath, List<Finding> findings)
     {
-        if (!S3BackendPattern().IsMatch(content)) return;
-        if (content.Contains("encrypt = true", StringComparison.OrdinalIgnoreCase))
-            return;
+        foreach (var backend in blocks.Where(block =>
+                     block.Header.StartsWith("backend", StringComparison.OrdinalIgnoreCase) &&
+                     block.Labels.FirstOrDefault()?.Equals("s3", StringComparison.OrdinalIgnoreCase) == true))
+        {
+            if (BackendEncryptTruePattern().IsMatch(backend.Text))
+            {
+                continue;
+            }
 
-        findings.Add(CreateFinding("TRUST-TF006", "S3 backend missing encryption",
-            Severity.Low, relativePath,
-            "backend \"s3\" block does not set encrypt = true.",
-            confidence: Confidence.Medium));
+            findings.Add(CreateFinding("TRUST-TF006", "S3 backend missing encryption",
+                Severity.Low, relativePath,
+                "backend \"s3\" block does not set encrypt = true.",
+                backend.StartLine,
+                Confidence.Medium));
+        }
     }
 
     // ── JSON helpers ──────────────────────────────────────────────────
 
-    private static bool HasPublicCidrInJson(JsonElement element)
+    private static bool HasPublicCidrInJson(string resourceType, JsonElement element)
     {
-        if (!element.TryGetProperty("type", out var type) || type.GetString() != "ingress") return false;
+        if (resourceType.Equals("aws_security_group", StringComparison.Ordinal))
+        {
+            return element.TryGetProperty("ingress", out var ingress) &&
+                   HasPublicCidrBlocks(ingress);
+        }
+
+        if (!element.TryGetProperty("type", out var type) ||
+            !type.ValueEquals("ingress"))
+        {
+            return false;
+        }
+
+        return HasPublicCidrBlocks(element);
+    }
+
+    private static bool HasPublicCidrBlocks(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                if (HasPublicCidrBlocks(item))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
         if (element.TryGetProperty("cidr_blocks", out var cidrs))
         {
+            if (cidrs.ValueKind != JsonValueKind.Array)
+            {
+                return false;
+            }
+
             foreach (var c in cidrs.EnumerateArray())
                 if (c.GetString() is "0.0.0.0/0" or "::/0") return true;
         }
+
         return false;
     }
 
@@ -396,8 +464,8 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
     [GeneratedRegex(@"(?m)^\s*version\s*=\s*""[^""]+""\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex VersionConstraintPattern();
 
-    [GeneratedRegex(@"backend\s+""s3""", RegexOptions.IgnoreCase)]
-    private static partial Regex S3BackendPattern();
+    [GeneratedRegex(@"(?mi)^\s*encrypt\s*=\s*true\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex BackendEncryptTruePattern();
 }
 
 /// <summary>

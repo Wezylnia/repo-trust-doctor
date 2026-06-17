@@ -273,6 +273,31 @@ public sealed class TerraformAnalyzerTests
         Assert.Equal(13, finding.Evidence[0].LineNumber);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_S3EncryptionReferenceDoesNotUsePrefixMatch()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "main.tf"), """
+        resource "aws_s3_bucket" "foo" {
+          bucket = "foo"
+        }
+
+        resource "aws_s3_bucket_server_side_encryption_configuration" "foobar" {
+          bucket = aws_s3_bucket.foobar.id
+          rule {
+            apply_server_side_encryption_by_default {
+              sse_algorithm = "AES256"
+            }
+          }
+        }
+        """);
+
+        var analyzer = new TerraformAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-TF004");
+    }
+
     // ── TF005: provider version ───────────────────────────────────────
 
     [Fact]
@@ -357,6 +382,77 @@ public sealed class TerraformAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-TF006");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_S3BackendIgnoresEncryptTrueOutsideBackend()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "main.tf"), """
+        terraform {
+          backend "s3" {
+            bucket = "state"
+            key    = "terraform.tfstate"
+            region = "us-east-1"
+          }
+        }
+
+        resource "example" "x" {
+          encrypt = true
+        }
+        """);
+
+        var analyzer = new TerraformAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-TF006");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_TfJsonMalformedResourceShape_DoesNotCrash()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "main.tf.json"), """
+        {
+          "resource": {
+            "aws_s3_bucket": [],
+            "aws_security_group": {
+              "web": null
+            }
+          }
+        }
+        """);
+
+        var analyzer = new TerraformAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Empty(result.Findings);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_TfJsonNestedSecurityGroupIngress_DetectsPublicCidr()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "main.tf.json"), """
+        {
+          "resource": {
+            "aws_security_group": {
+              "web": {
+                "ingress": [
+                  {
+                    "cidr_blocks": ["0.0.0.0/0"]
+                  }
+                ]
+              }
+            }
+          }
+        }
+        """);
+
+        var analyzer = new TerraformAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-TF001");
     }
 
     [Theory]

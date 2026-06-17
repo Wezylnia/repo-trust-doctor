@@ -11,7 +11,7 @@ internal sealed record TerraformBlock(
 internal static partial class TerraformBlockExtractor
 {
     public static IReadOnlyList<TerraformBlock> Extract(string content) =>
-        ExtractBlocks(content, @"(?m)^\s*(?<header>(?<type>resource|data|terraform|required_providers|provider|module|locals|variable|output)\b[^{]*)\{");
+        ExtractBlocks(content, @"(?m)^\s*(?<header>(?<type>resource|data|terraform|backend|required_providers|provider|module|locals|variable|output)\b[^{]*)\{");
 
     public static IReadOnlyList<TerraformBlock> ExtractAssignments(string content, int baseLine) =>
         ExtractBlocks(content, @"(?m)^\s*(?<header>[A-Za-z0-9_-]+\s*=)\s*\{", baseLine - 1);
