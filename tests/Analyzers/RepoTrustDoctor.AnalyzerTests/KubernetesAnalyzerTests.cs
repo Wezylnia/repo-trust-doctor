@@ -536,6 +536,96 @@ public sealed class KubernetesAnalyzerTests
         Assert.Contains("debugger", Assert.Single(finding.Evidence).Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_DetectsExplicitServiceAccountTokenAutomount()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              automountServiceAccountToken: true
+              containers:
+              - name: app
+                image: nginx:1.29
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-K8S009");
+    }
+
+    [Theory]
+    [InlineData("nginx")]
+    [InlineData("nginx:latest")]
+    public async Task AnalyzeAsync_DetectsMutableContainerImage(string image)
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), $$"""
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: {{image}}
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-K8S012");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotReportDigestPinnedContainerImage()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-K8S012");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_DetectsHostPort()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "deploy.yaml"), """
+        apiVersion: apps/v1
+        kind: Deployment
+        spec:
+          template:
+            spec:
+              containers:
+              - name: app
+                image: nginx:1.29
+                ports:
+                - containerPort: 8080
+                  hostPort: 8080
+        """);
+
+        var analyzer = new KubernetesAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-K8S013");
+    }
+
     [Theory]
     [InlineData("staging/src/k8s.io/api/testdata/HEAD/apps.v1.Deployment.yaml")]
     [InlineData("test/manifests/deployment.yaml")]

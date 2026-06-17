@@ -97,3 +97,48 @@ Detects `allowPrivilegeEscalation: true`.
 Why it matters: allowing privilege escalation lets a process gain more privileges than its parent, increasing risk.
 
 Recommendation: set `allowPrivilegeEscalation: false` unless the container genuinely needs it.
+
+## TRUST-K8S009: Kubernetes automounts service account token
+
+- Category: Containers
+- Default severity: Medium
+- Default confidence: High
+
+Detects workload manifests that explicitly set `automountServiceAccountToken: true`.
+
+Why it matters: automatically mounting service account tokens gives the
+container Kubernetes API credentials. Many workloads do not need direct API
+access, and exposed tokens increase blast radius after compromise.
+
+Recommendation: set `automountServiceAccountToken: false` unless the workload
+needs Kubernetes API access.
+
+## TRUST-K8S012: Kubernetes container image uses mutable tag
+
+- Category: Containers
+- Default severity: Medium
+- Default confidence: High
+
+Detects container `image:` values that use `latest` or omit a tag/digest. Images
+pinned by `@sha256:` digest are treated as immutable, and templated image values
+are skipped to avoid guessing resolved deployment inputs.
+
+Why it matters: mutable image references can change without a manifest change,
+making deployments less reproducible and harder to audit.
+
+Recommendation: pin images to immutable digests or explicit, reviewed version
+tags.
+
+## TRUST-K8S013: Kubernetes container uses hostPort
+
+- Category: Containers
+- Default severity: Medium
+- Default confidence: High
+
+Detects container ports that set `hostPort`.
+
+Why it matters: `hostPort` binds directly on the node, bypassing normal Service
+abstractions and increasing scheduling and exposure complexity.
+
+Recommendation: prefer Kubernetes Services or Ingress. Use `hostPort` only for
+node-level agents or workloads that truly require node port binding.

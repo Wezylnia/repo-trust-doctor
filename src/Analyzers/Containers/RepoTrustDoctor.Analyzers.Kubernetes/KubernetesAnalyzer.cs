@@ -41,6 +41,12 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
             "A container adds SYS_ADMIN, NET_ADMIN, or ALL capabilities.", "Drop all capabilities and add only those strictly needed by the application."),
         new("TRUST-K8S008", "Kubernetes container allows privilege escalation", AnalysisCategory.Containers, Severity.Medium, Confidence.High,
             "A container has allowPrivilegeEscalation set to true.", "Set allowPrivilegeEscalation: false unless the container genuinely needs it."),
+        new("TRUST-K8S009", "Kubernetes automounts service account token", AnalysisCategory.Containers, Severity.Medium, Confidence.High,
+            "A pod explicitly enables automountServiceAccountToken.", "Disable service account token automounting unless the workload needs Kubernetes API access."),
+        new("TRUST-K8S012", "Kubernetes container image uses mutable tag", AnalysisCategory.Containers, Severity.Medium, Confidence.High,
+            "A container image is not pinned by digest or uses latest/no tag.", "Pin container images to immutable digests or explicit, reviewed version tags."),
+        new("TRUST-K8S013", "Kubernetes container uses hostPort", AnalysisCategory.Containers, Severity.Medium, Confidence.High,
+            "A container binds a port directly on the node.", "Avoid hostPort unless node-level exposure is required. Prefer Services or Ingress."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -82,6 +88,9 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
                 CheckHostPathVolumes(content, relativePath, findings);
                 CheckCapabilityAdds(containers, relativePath, findings);
                 CheckPrivilegeEscalation(containers, relativePath, findings);
+                CheckServiceAccountTokenAutomount(content, relativePath, findings);
+                CheckMutableImages(content, relativePath, findings);
+                CheckHostPorts(content, relativePath, findings);
             }
             CheckSecretManifest(content, relativePath, findings);
         }
@@ -175,6 +184,63 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
                 Severity.Medium, relativePath, $"{container.DisplayName} sets allowPrivilegeEscalation: true. Set to false unless needed.",
                 container.LineNumber));
         }
+    }
+
+    private static void CheckServiceAccountTokenAutomount(string content, string relativePath, List<Finding> findings)
+    {
+        foreach (Match match in AutomountServiceAccountTokenPattern().Matches(content))
+        {
+            findings.Add(CreateFinding("TRUST-K8S009", "Kubernetes automounts service account token",
+                Severity.Medium, relativePath, "Pod explicitly sets automountServiceAccountToken: true.",
+                GetLineNumber(content, match.Index)));
+            break;
+        }
+    }
+
+    private static void CheckMutableImages(string content, string relativePath, List<Finding> findings)
+    {
+        foreach (Match match in ImagePattern().Matches(content))
+        {
+            var image = match.Groups["image"].Value.Trim().Trim('"', '\'');
+            if (!IsMutableContainerImage(image))
+            {
+                continue;
+            }
+
+            findings.Add(CreateFinding("TRUST-K8S012", "Kubernetes container image uses mutable tag",
+                Severity.Medium, relativePath, $"Container image `{image}` is not pinned by digest or uses latest/no tag.",
+                GetLineNumber(content, match.Index)));
+        }
+    }
+
+    private static void CheckHostPorts(string content, string relativePath, List<Finding> findings)
+    {
+        foreach (Match match in HostPortPattern().Matches(content))
+        {
+            findings.Add(CreateFinding("TRUST-K8S013", "Kubernetes container uses hostPort",
+                Severity.Medium, relativePath, $"Container binds hostPort {match.Groups["port"].Value} directly on the node.",
+                GetLineNumber(content, match.Index)));
+        }
+    }
+
+    private static bool IsMutableContainerImage(string image)
+    {
+        if (string.IsNullOrWhiteSpace(image) ||
+            image.Contains("@sha256:", StringComparison.OrdinalIgnoreCase) ||
+            image.Contains('$', StringComparison.Ordinal) ||
+            image.Contains("{{", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var lastSlash = image.LastIndexOf('/');
+        var lastColon = image.LastIndexOf(':');
+        if (lastColon <= lastSlash)
+        {
+            return true;
+        }
+
+        return image[(lastColon + 1)..].Equals("latest", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Finding CreateFinding(string ruleId, string title, Severity severity, string filePath, string evidence, int? lineNumber = null, Confidence confidence = Confidence.High)
@@ -421,6 +487,15 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"allowPrivilegeEscalation\s*:\s*true", RegexOptions.IgnoreCase)]
     private static partial Regex AllowPrivilegeEscalationPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*automountServiceAccountToken\s*:\s*true\s*(?:#.*)?$")]
+    private static partial Regex AutomountServiceAccountTokenPattern();
+
+    [GeneratedRegex(@"(?mi)^\s*image\s*:\s*(?<image>[""']?[^""'\s#]+[""']?)")]
+    private static partial Regex ImagePattern();
+
+    [GeneratedRegex(@"(?mi)^\s*hostPort\s*:\s*(?<port>\d+)\s*(?:#.*)?$")]
+    private static partial Regex HostPortPattern();
 
     [GeneratedRegex(@"""(?<cap>SYS_ADMIN|NET_ADMIN|ALL)""", RegexOptions.IgnoreCase)]
     private static partial Regex CapabilityNamePattern();
