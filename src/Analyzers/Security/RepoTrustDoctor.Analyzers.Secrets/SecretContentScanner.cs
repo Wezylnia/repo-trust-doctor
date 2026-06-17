@@ -277,7 +277,8 @@ internal static partial class SecretContentScanner
         HasGenericApiKeySignal(content);
 
     private static bool HasConnectionStringSignal(string content) =>
-        content.Contains("password", StringComparison.OrdinalIgnoreCase) &&
+        (content.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+         content.Contains("pwd=", StringComparison.OrdinalIgnoreCase)) &&
         (content.Contains("server", StringComparison.OrdinalIgnoreCase) ||
          content.Contains("host", StringComparison.OrdinalIgnoreCase) ||
          content.Contains("data source", StringComparison.OrdinalIgnoreCase));

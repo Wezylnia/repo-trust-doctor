@@ -40,7 +40,7 @@ public sealed class AnalyzerExecutor
                 .Concat(ValidateEmittedFindings(analyzer, result.Findings))
                 .ToArray();
             var warningMessages = warningDetails.Select(warning => warning.Message).ToArray();
-            var hasWarnings = warningMessages.Count > 0;
+            var hasWarnings = warningMessages.Length > 0;
             var status = result.Status == ModuleStatus.Completed && hasWarnings
                 ? ModuleStatus.CompletedWithWarnings
                 : result.Status;

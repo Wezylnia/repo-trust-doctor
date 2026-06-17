@@ -631,7 +631,9 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
                         continue;
                     }
 
-                    if (CountIndent(line) <= addIndent)
+                    var itemIndent = CountIndent(line);
+                    if (itemIndent < addIndent ||
+                        (itemIndent == addIndent && !line.TrimStart().StartsWith('-')))
                     {
                         break;
                     }
