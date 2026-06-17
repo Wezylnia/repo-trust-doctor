@@ -615,6 +615,39 @@ public sealed class ReportWriterTests
             FindingFingerprinter.Compute(second));
     }
 
+    [Fact]
+    public void FindingFingerprint_IdentityKeyIgnoresPresentationFields()
+    {
+        var first = CreateFinding(
+            "TRUST-VULN001",
+            Severity.High,
+            AnalysisCategory.Dependencies,
+            title: "Old title",
+            evidenceKind: "old-evidence",
+            filePath: "old/path.json",
+            recommendation: "Old recommendation.",
+            tags: ["old-tag"]) with
+        {
+            IdentityKey = "vulnerability:nuget:serilog@4.0.0:GHSA-1234"
+        };
+        var second = CreateFinding(
+            "TRUST-VULN001",
+            Severity.High,
+            AnalysisCategory.Dependencies,
+            title: "New title",
+            evidenceKind: "new-evidence",
+            filePath: "new/path.json",
+            recommendation: "New recommendation.",
+            tags: ["new-tag"]) with
+        {
+            IdentityKey = "vulnerability:nuget:serilog@4.0.0:GHSA-1234"
+        };
+
+        Assert.Equal(
+            FindingFingerprinter.Compute(first),
+            FindingFingerprinter.Compute(second));
+    }
+
     private static string ExtractFirstFindingFingerprint(string json)
     {
         using var document = JsonDocument.Parse(json);
