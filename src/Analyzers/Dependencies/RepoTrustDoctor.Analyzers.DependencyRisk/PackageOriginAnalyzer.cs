@@ -1,5 +1,6 @@
 ﻿using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
+using RepoTrustDoctor.Infrastructure.PackageRegistries;
 using static RepoTrustDoctor.Analyzers.DependencyRisk.FindingFactory;
 
 namespace RepoTrustDoctor.Analyzers.DependencyRisk;
@@ -189,8 +190,8 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
             return false;
         }
 
-        var targetName = NormalizePackageName(Path.GetFileName(targetUri.AbsolutePath.TrimEnd('/')));
-        var packageName = NormalizePackageName(package.Name);
+        var targetName = NormalizeRepositoryComparableName(Path.GetFileName(targetUri.AbsolutePath.TrimEnd('/')));
+        var packageName = NormalizeRepositoryComparableName(package.Name);
         return targetName.Length > 0 &&
                (string.Equals(targetName, packageName, StringComparison.OrdinalIgnoreCase) ||
                 packageName.EndsWith($"/{targetName}", StringComparison.OrdinalIgnoreCase));
@@ -210,7 +211,7 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
 
     private static string NormalizeRepoPath(string path) => path.Trim('/').Replace(".git", string.Empty, StringComparison.OrdinalIgnoreCase);
 
-    private static string NormalizePackageName(string name)
+    private static string NormalizeRepositoryComparableName(string name)
     {
         var normalized = name.Trim().TrimStart('@').Replace(".git", string.Empty, StringComparison.OrdinalIgnoreCase);
         var slash = normalized.LastIndexOf('/');
@@ -221,9 +222,7 @@ public sealed class PackageOriginAnalyzer : IRepositoryAnalyzer
         $"{ecosystem}:{NormalizePackageIdentityName(ecosystem, name)}:{version ?? string.Empty}";
 
     private static string NormalizePackageIdentityName(DependencyEcosystem ecosystem, string name) =>
-        ecosystem is DependencyEcosystem.Npm or DependencyEcosystem.Cargo or DependencyEcosystem.Go
-            ? name
-            : name.ToLowerInvariant();
+        PackageMetadataIdentity.NormalizePackageName(ecosystem, name);
 
     private static bool LooksOfficial(string name) =>
         name.Contains("microsoft", StringComparison.OrdinalIgnoreCase) ||

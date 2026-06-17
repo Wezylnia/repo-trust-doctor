@@ -3,7 +3,7 @@ using RepoTrustDoctor.Analysis.Abstractions;
 
 namespace RepoTrustDoctor.Infrastructure.PackageRegistries;
 
-internal static class PackageMetadataIdentity
+public static class PackageMetadataIdentity
 {
     public static string NormalizePackageName(DependencyEcosystem ecosystem, string packageName)
     {

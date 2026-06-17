@@ -623,6 +623,22 @@ public sealed class DependencyRiskAnalyzerTests
     }
 
     [Fact]
+    public async Task PackageOriginAnalyzer_UsesSharedPackageIdentityNormalization()
+    {
+        var context = CreateContextWithInventory(
+        [
+            CreatePackage(DependencyEcosystem.Python, "my_pkg", "1.2.3", DependencyScope.Development)
+        ]);
+        context.AddArtifact(new AnalyzerArtifact(PackageMetadataArtifact.ArtifactKey, new PackageMetadataArtifact(
+            [new PackageRegistryMetadata(DependencyEcosystem.Python, "my-pkg", "1.2.3", "1.2.3", null, false, false, null, null, "MIT", null, "pypi.org")],
+            new Dictionary<string, string>())));
+
+        var result = await new PackageOriginAnalyzer().AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-ORIGIN003");
+    }
+
+    [Fact]
     public async Task PackageOriginAnalyzer_DoesNotCompareThirdPartyDependencyRepositoryToTarget()
     {
         var context = new AnalysisContext(".", "https://github.com/example/application", AnalysisDepth.Standard);
