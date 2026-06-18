@@ -250,7 +250,8 @@ internal static class GitHubActionsSemanticChecks
                     relativePath,
                     BuildReleaseDependencyMessage(job.Name, jobsByName),
                     job.StartLine,
-                    Confidence.Medium);
+                    Confidence.Medium,
+                    identityKey: $"gha009|{relativePath}|{job.Name}");
             }
         }
     }
@@ -278,7 +279,8 @@ internal static class GitHubActionsSemanticChecks
                     relativePath,
                     $"Workflow-level permissions grant {scope}:write.",
                     line: null,
-                    confidence: Confidence.Medium);
+                    confidence: Confidence.Medium,
+                    identityKey: $"gha016|{relativePath}|{scope}|write");
                 return;
             }
         }

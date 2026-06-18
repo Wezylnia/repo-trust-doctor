@@ -340,6 +340,27 @@ public sealed class GitHubActionsSemanticRuleTests
         Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA009");
     }
 
+    [Fact]
+    public async Task GHA009_And_GHA016_EmitIdentityKeys()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        name: ci
+        on: [push]
+        permissions:
+          contents: write
+        jobs:
+          publish:
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var findings = await ScanAsync(fixture);
+
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA009" && !string.IsNullOrWhiteSpace(f.IdentityKey));
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA016" && !string.IsNullOrWhiteSpace(f.IdentityKey));
+    }
+
     // Identity key stability
     [Fact]
     public async Task SemanticFindings_HaveStableIdentityKeys()
