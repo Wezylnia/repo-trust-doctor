@@ -58,6 +58,7 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var findings = new List<Finding>();
+        var warnings = new List<string>();
 
         foreach (var file in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.yaml")
                      .Concat(RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.yml")))
@@ -104,10 +105,16 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
 
             // WP2: Semantic security context checks using structured parsing.
             var document = KubernetesWorkloadParser.Parse(relativePath, content);
+            foreach (var w in document.Warnings)
+            {
+                warnings.Add($"{relativePath}: {w}");
+            }
             KubernetesSecurityContextChecks.CheckAll(document, findings);
         }
 
-        return AnalyzerResult.Completed(findings);
+        return warnings.Count == 0
+            ? AnalyzerResult.Completed(findings)
+            : new AnalyzerResult(ModuleStatus.CompletedWithWarnings, findings, Warnings: warnings);
     }
 
     private static void CheckPrivileged(IReadOnlyCollection<ContainerSecurityState> containers, string relativePath, List<Finding> findings)

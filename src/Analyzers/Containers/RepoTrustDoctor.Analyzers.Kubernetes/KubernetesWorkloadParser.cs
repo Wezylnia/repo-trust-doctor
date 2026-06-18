@@ -265,7 +265,8 @@ internal static partial class KubernetesWorkloadParser
 
                 found = true;
                 currentIndex = i + 1;
-                expectedIndent = indent + 2; // next segment should be nested deeper.
+                // Dynamically determine the child indent level instead of assuming 2 spaces.
+                expectedIndent = FindChildIndent(lines, i, indent, docRange.EndExclusive) ?? (indent + 2);
                 break;
             }
 
@@ -463,7 +464,11 @@ internal static partial class KubernetesWorkloadParser
             var values = inlineMatch.Groups["values"].Value;
             foreach (Match m in QuotedValueRegex().Matches(values))
             {
-                items.Add(m.Groups["val"].Value);
+                var val = m.Groups["val"].Value;
+                // Strip trailing commas left by unquoted values like "ALL,".
+                val = val.TrimEnd(',');
+                if (val.Length > 0)
+                    items.Add(val);
             }
             return items;
         }
@@ -602,7 +607,7 @@ internal static partial class KubernetesWorkloadParser
                     {
                         found = true;
                         currentIndex = i + 1;
-                        expectedIndent = indent + 2;
+                        expectedIndent = FindChildIndent(lines, i, indent, docRange.EndExclusive) ?? (indent + 2);
                         break;
                     }
                 }
@@ -691,6 +696,24 @@ internal static partial class KubernetesWorkloadParser
 
     private static bool IsListItem(string line, int indent) =>
         CountIndent(line) == indent && line.TrimStart().StartsWith("- ", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Returns the indent of the first non-empty, non-comment child line after the given parent line,
+    /// or null if no children exist within the block.
+    /// </summary>
+    private static int? FindChildIndent(string[] lines, int parentLine, int parentIndent, int blockEnd)
+    {
+        for (var i = parentLine + 1; i < blockEnd; i++)
+        {
+            if (string.IsNullOrWhiteSpace(lines[i]) || IsCommentLine(lines[i]))
+                continue;
+            var indent = CountIndent(lines[i]);
+            if (indent <= parentIndent)
+                return null; // reached end of parent block
+            return indent;
+        }
+        return null;
+    }
 
     private static int CountIndent(string line)
     {

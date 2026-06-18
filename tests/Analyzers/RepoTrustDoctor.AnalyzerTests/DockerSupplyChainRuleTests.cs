@@ -305,7 +305,7 @@ public sealed class DockerSupplyChainRuleTests
     }
 
     [Fact]
-    public async Task DOCKER016_SecretMountSuppresses_ByExactId()
+    public async Task DOCKER016_SecretMountDoesNotSuppress()
     {
         using var fx = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fx.Path, ".dockerignore"), "*.log");
@@ -317,23 +317,54 @@ public sealed class DockerSupplyChainRuleTests
         """);
 
         var r = await Analyzer.AnalyzeAsync(new AnalysisContext(fx.Path, fx.Path, AnalysisDepth.Fast), CancellationToken.None);
-        Assert.DoesNotContain(r.Findings, x => x.RuleId == "TRUST-DOCKER016");
+        // BuildKit secret mount does NOT suppress the ARG finding.
+        Assert.Contains(r.Findings, x => x.RuleId == "TRUST-DOCKER016");
     }
 
     [Fact]
-    public async Task DOCKER016_SecretMountMismatched_Reports()
+    public async Task DOCKER016_PrivateRegistry_Passes()
     {
         using var fx = TemporaryRepository.Create();
         File.WriteAllText(Path.Combine(fx.Path, ".dockerignore"), "*.log");
         File.WriteAllText(Path.Combine(fx.Path, "Dockerfile"), """
         FROM alpine:3.20
-        ARG API_TOKEN
-        RUN --mount=type=secret,id=OTHER_TOKEN echo "different secret"
+        ARG PRIVATE_REGISTRY
         USER app
         """);
 
         var r = await Analyzer.AnalyzeAsync(new AnalysisContext(fx.Path, fx.Path, AnalysisDepth.Fast), CancellationToken.None);
-        Assert.Contains(r.Findings, x => x.RuleId == "TRUST-DOCKER016");
+        // PRIVATE_REGISTRY ends with "REGISTRY", not a secret suffix token.
+        Assert.DoesNotContain(r.Findings, x => x.RuleId == "TRUST-DOCKER016");
+    }
+
+    [Fact]
+    public async Task DOCKER016_CertificatePath_Passes()
+    {
+        using var fx = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fx.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fx.Path, "Dockerfile"), """
+        FROM alpine:3.20
+        ARG CERTIFICATE_PATH
+        USER app
+        """);
+
+        var r = await Analyzer.AnalyzeAsync(new AnalysisContext(fx.Path, fx.Path, AnalysisDepth.Fast), CancellationToken.None);
+        Assert.DoesNotContain(r.Findings, x => x.RuleId == "TRUST-DOCKER016");
+    }
+
+    [Fact]
+    public async Task DOCKER016_SigningAlgorithm_Passes()
+    {
+        using var fx = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fx.Path, ".dockerignore"), "*.log");
+        File.WriteAllText(Path.Combine(fx.Path, "Dockerfile"), """
+        FROM alpine:3.20
+        ARG SIGNING_ALGORITHM
+        USER app
+        """);
+
+        var r = await Analyzer.AnalyzeAsync(new AnalysisContext(fx.Path, fx.Path, AnalysisDepth.Fast), CancellationToken.None);
+        Assert.DoesNotContain(r.Findings, x => x.RuleId == "TRUST-DOCKER016");
     }
 
     [Fact]

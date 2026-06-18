@@ -43,14 +43,30 @@ internal static class KubernetesSecurityContextChecks
         var workloadName = workload.Name ?? "<unnamed>";
         var identityKey = $"k8s010|{relativePath}|{workload.Kind}|{workloadName}|{container.Name}";
 
+        var (title, message, confidence) = effectiveSeccomp switch
+        {
+            "Unconfined" => (
+                "Seccomp is explicitly configured as Unconfined",
+                $"Seccomp is explicitly configured as Unconfined for container '{container.Name}' in {workload.Kind} '{workloadName}'.",
+                Confidence.High),
+            null => (
+                "Seccomp profile is not explicitly configured",
+                $"No explicit seccomp profile was found for container '{container.Name}' in {workload.Kind} '{workloadName}'. The cluster may apply a default profile, but that cannot be verified statically.",
+                Confidence.Medium),
+            _ => (
+                "Seccomp profile is not recognized",
+                $"Seccomp profile '{effectiveSeccomp}' for container '{container.Name}' in {workload.Kind} '{workloadName}' is not recognized as RuntimeDefault or Localhost.",
+                Confidence.Medium)
+        };
+
         findings.Add(new Finding(
             "TRUST-K8S010",
-            "Seccomp profile is not explicitly configured",
+            title,
             AnalysisCategory.Containers,
             Severity.Low,
-            Confidence.Medium,
-            "No explicit seccomp profile was found for this container. The cluster may apply a default profile, but that cannot be verified statically.",
-            [new Evidence("kubernetes-security-context", $"No explicit seccomp profile for container '{container.Name}' in {workload.Kind} '{workloadName}'.", relativePath, container.StartLine)],
+            confidence,
+            message,
+            [new Evidence("kubernetes-security-context", message, relativePath, container.StartLine)],
             new Recommendation("Set seccompProfile.type: RuntimeDefault or Localhost in the pod or container securityContext."),
             IdentityKey: identityKey));
     }

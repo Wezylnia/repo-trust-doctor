@@ -15,9 +15,10 @@ internal static partial class DockerSupplyChainChecks
     {
         // Collect stage aliases for resolving COPY --from references.
         var stageAliases = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var stage in stages)
+        var stageCount = stages.Length;
+        for (var i = 0; i < stages.Length; i++)
         {
-            var alias = ExtractStageAlias(stage.Content);
+            var alias = ExtractStageAlias(stages[i].Content);
             if (alias is not null)
             {
                 stageAliases.Add(alias);
@@ -25,7 +26,7 @@ internal static partial class DockerSupplyChainChecks
         }
 
         // TRUST-DOCKER013: Scan once per Dockerfile, not per stage.
-        CheckExternalCopyFromDigest(content, relativePath, stageAliases, findings);
+        CheckExternalCopyFromDigest(content, relativePath, stageAliases, stageCount, findings);
 
         foreach (var stage in stages.Length == 0
                      ? [new DockerBasicAnalyzer.DockerfileStage(string.Empty, content)]
@@ -40,7 +41,7 @@ internal static partial class DockerSupplyChainChecks
     // ── TRUST-DOCKER013: External COPY --from not digest-pinned ──────
 
     private static void CheckExternalCopyFromDigest(
-        string content, string relativePath, HashSet<string> stageAliases, List<Finding> findings)
+        string content, string relativePath, HashSet<string> stageAliases, int stageCount, List<Finding> findings)
     {
         foreach (Match match in CopyFromPattern().Matches(content))
         {
@@ -49,6 +50,13 @@ internal static partial class DockerSupplyChainChecks
 
             // Skip if referencing a stage alias declared in the same Dockerfile.
             if (stageAliases.Contains(fromRef))
+            {
+                continue;
+            }
+
+            // Skip numeric stage references: --from=0, --from=1, etc.
+            if (int.TryParse(fromRef, out var stageIndex) &&
+                stageIndex >= 0 && stageIndex < stageCount)
             {
                 continue;
             }
@@ -154,25 +162,22 @@ internal static partial class DockerSupplyChainChecks
 
     private static readonly HashSet<string> SecretLikeArgNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "TOKEN", "SECRET", "PASSWORD", "PASS", "API_KEY",
+        "TOKEN", "AUTH_TOKEN", "API_TOKEN",
+        "PASSWORD", "DB_PASSWORD", "CERTIFICATE_PASSWORD",
+        "SECRET", "CLIENT_SECRET",
+        "API_KEY", "ACCESS_KEY", "SECRET_KEY",
         "PRIVATE_KEY", "SIGNING_KEY", "ENCRYPTION_KEY",
-        "ACCESS_KEY", "SECRET_KEY", "CLIENT_SECRET",
-        "CREDENTIALS", "AUTH_TOKEN", "CERTIFICATE",
+        "CREDENTIALS",
+    };
+
+    // Suffixes that indicate a secret when the token right before it is a secret indicator.
+    private static readonly HashSet<string> SecretSuffixTokens = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "TOKEN", "PASSWORD", "PASS", "SECRET", "KEY", "CREDENTIALS", "CERTIFICATE",
     };
 
     private static void CheckSecretLikeArgs(string content, string relativePath, List<Finding> findings)
     {
-        // Gather secret mounts declared in the Dockerfile for cross-referencing.
-        var secretMountIds = new HashSet<string>(StringComparer.Ordinal);
-        foreach (Match match in SecretMountPattern().Matches(content))
-        {
-            var id = match.Groups["id"].Value.Trim();
-            if (id.Length > 0)
-            {
-                secretMountIds.Add(id);
-            }
-        }
-
         foreach (Match match in ArgInstructionPattern().Matches(content))
         {
             var argName = match.Groups["name"].Value.Trim();
@@ -183,15 +188,8 @@ internal static partial class DockerSupplyChainChecks
                 continue;
             }
 
-            // Check if this looks like a secret.
+            // Check if this looks like a secret using token-aware matching.
             if (!IsSecretLikeArg(argName))
-            {
-                continue;
-            }
-
-            // If a corresponding BuildKit secret mount is declared with the
-            // same logical identifier, suppress the finding.
-            if (secretMountIds.Contains(argName))
             {
                 continue;
             }
@@ -214,24 +212,28 @@ internal static partial class DockerSupplyChainChecks
 
     private static bool IsSecretLikeArg(string argName)
     {
-        // Direct match against known secret patterns.
+        // Direct match against known secret patterns (exact or prefix).
         if (SecretLikeArgNames.Contains(argName))
-        {
             return true;
+
+        // Token-aware suffix matching: split on underscores, check if the last
+        // meaningful token is a secret indicator.
+        // e.g. SIGNING_CREDENTIALS -> "CREDENTIALS" is secret suffix
+        // e.g. PRIVATE_REGISTRY -> "REGISTRY" is NOT a secret suffix
+        // e.g. SIGNING_ALGORITHM -> "ALGORITHM" is NOT a secret suffix
+        // e.g. CERTIFICATE_PATH -> "PATH" is NOT a secret suffix
+        // e.g. CERTIFICATE_FILE -> "FILE" is NOT a secret suffix
+        var tokens = argName.Split('_', StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length > 0)
+        {
+            var lastToken = tokens[^1];
+            if (SecretSuffixTokens.Contains(lastToken))
+            {
+                return true;
+            }
         }
 
-        // Heuristic: argument name contains secret-related substrings.
-        return argName.Contains("TOKEN", StringComparison.OrdinalIgnoreCase) ||
-               argName.Contains("SECRET", StringComparison.OrdinalIgnoreCase) ||
-               argName.Contains("PASSWORD", StringComparison.OrdinalIgnoreCase) ||
-               argName.Contains("PASSWD", StringComparison.OrdinalIgnoreCase) ||
-               argName.Contains("API_KEY", StringComparison.OrdinalIgnoreCase) ||
-               argName.Contains("PRIVATE", StringComparison.OrdinalIgnoreCase) ||
-               argName.Contains("SIGNING", StringComparison.OrdinalIgnoreCase) ||
-               argName.Contains("ENCRYPTION", StringComparison.OrdinalIgnoreCase) ||
-               argName.Contains("CERTIFICATE", StringComparison.OrdinalIgnoreCase) ||
-               argName.Contains("CREDENTIAL", StringComparison.OrdinalIgnoreCase) ||
-               argName.StartsWith("AUTH_", StringComparison.OrdinalIgnoreCase);
+        return false;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
