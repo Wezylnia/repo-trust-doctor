@@ -171,3 +171,67 @@ Detects top-level workflow permissions that grant repository-mutating scopes suc
 Why it matters: workflow-level write scopes apply broadly unless overridden. A compromised job or action may gain repository or package write access it does not need.
 
 Recommendation: keep top-level permissions read-only or empty, and grant write scopes only on the specific job that needs them.
+
+Noise control: only top-level workflow permissions are evaluated for this rule. Job-level write permissions are intentionally left to job-scoped review and do not trigger `TRUST-GHA016` by themselves.
+
+## TRUST-GHA019: Mutable Reusable Workflow Reference
+
+- Category: CI/CD
+- Default severity: Medium
+- Default confidence: High
+
+Detects reusable workflow calls such as `owner/repo/.github/workflows/build.yml@main` or `@v1` when the reference is not pinned to a full 40-character commit SHA.
+
+Local reusable workflow references such as `./.github/workflows/build.yml` are ignored.
+
+Why it matters: branch and tag references can move, causing a workflow to execute different logic without any change in the caller repository.
+
+Recommendation: pin external reusable workflows to a full commit SHA.
+
+## TRUST-GHA020: Validation Job Is Allowed To Fail
+
+- Category: CI/CD
+- Default severity: Medium
+- Default confidence: High
+
+Detects validation jobs or steps with `continue-on-error: true` when their names indicate testing, linting, scanning, validation, verification, or auditing.
+
+Noise control: clearly experimental or optional compatibility jobs are ignored. Notification-style steps such as Slack or Teams alerts are also ignored.
+
+Why it matters: a validation stage that is allowed to fail can leave release or merge automation running after checks that should have blocked it.
+
+Recommendation: remove `continue-on-error` from validation jobs and validation steps unless the failure is intentionally non-blocking and separately reviewed.
+
+## TRUST-GHA021: Release Job Runs Regardless Of Failed Dependencies
+
+- Category: CI/CD
+- Default severity: High
+- Default confidence: Medium
+
+Detects release or publish jobs that use `if: always()` while depending on validation jobs.
+
+Why it matters: `always()` can make a release job continue after a failed dependency, which weakens the guarantee that artifacts are published only after successful validation.
+
+Recommendation: avoid `if: always()` on release or publish jobs that depend on validation. Publish only after successful validation.
+
+## TRUST-GHA022: Untrusted Event Data Controls Cache Identity
+
+- Category: CI/CD
+- Default severity: Medium
+- Default confidence: Medium
+
+Detects cache keys or restore keys that directly include untrusted event fields such as pull request titles, issue bodies, or comment bodies.
+
+Examples of flagged fields:
+
+- `github.event.pull_request.title`
+- `github.event.pull_request.body`
+- `github.event.issue.title`
+- `github.event.issue.body`
+- `github.event.comment.body`
+
+Normal stable cache inputs such as `github.sha`, `runner.os`, `matrix.*`, or `hashFiles(...)` do not trigger this rule by themselves.
+
+Why it matters: attacker-controlled cache identity inputs can make cache reuse and poisoning behavior harder to reason about.
+
+Recommendation: keep cache identity based on stable repository or build inputs rather than untrusted event text.

@@ -125,6 +125,43 @@ public sealed class GitHubActionsSemanticRuleTests
         Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA020");
     }
 
+    [Fact]
+    public async Task GHA020_OptionalCompatibilityJob_Passes()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        name: ci
+        on: [push]
+        jobs:
+          optional-compatibility:
+            runs-on: ubuntu-latest
+            continue-on-error: true
+            steps:
+              - run: echo compat
+        """);
+
+        var findings = await ScanAsync(fixture);
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA020");
+    }
+
+    [Fact]
+    public async Task GHA020_NotificationStep_Passes()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        name: ci
+        on: [push]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - name: Slack notification
+                run: echo notify
+                continue-on-error: true
+        """);
+
+        var findings = await ScanAsync(fixture);
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA020");
+    }
+
     // TRUST-GHA021 tests
     [Fact]
     public async Task GHA021_ReleaseJob_TransitiveDependency()
