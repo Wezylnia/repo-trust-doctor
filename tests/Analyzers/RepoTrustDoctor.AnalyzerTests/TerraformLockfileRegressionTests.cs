@@ -1,0 +1,1 @@
+namespace RepoTrustDoctor.AnalyzerTests;
