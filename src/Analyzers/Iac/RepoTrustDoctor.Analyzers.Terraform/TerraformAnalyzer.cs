@@ -35,11 +35,22 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
             "A required_providers entry is missing a version constraint.", "Add version constraints to required_providers entries for reproducible infrastructure."),
         new("TRUST-TF006", "Terraform S3 backend lacks encryption", AnalysisCategory.Infrastructure, Severity.Low, Confidence.Medium,
             "A backend 's3' block does not set encrypt = true.", "Set encrypt = true in the S3 backend configuration."),
+        new("TRUST-TF007", "Terraform dependency lockfile is missing", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High,
+            "No .terraform.lock.hcl exists alongside .tf files that declare required_providers.", "Run 'terraform providers lock' to create a .terraform.lock.hcl for reproducible provider versions."),
+        new("TRUST-TF008", "Remote Terraform module source is mutable", AnalysisCategory.Dependencies, Severity.Medium, Confidence.High,
+            "A module references a remote Git source without an immutable commit SHA ref.", "Pin Git module sources to a full commit SHA, e.g. ?ref=abc123..."),
+        new("TRUST-TF009", "Database resource is publicly accessible", AnalysisCategory.Infrastructure, Severity.High, Confidence.High,
+            "A database resource has publicly_accessible = true.", "Set publicly_accessible = false unless public access is explicitly required."),
+        new("TRUST-TF010", "KMS key rotation is explicitly disabled", AnalysisCategory.Infrastructure, Severity.Medium, Confidence.High,
+            "A KMS key has enable_key_rotation = false.", "Set enable_key_rotation = true to enable automatic annual key rotation."),
+        new("TRUST-TF011", "S3 public-access block is explicitly disabled", AnalysisCategory.Infrastructure, Severity.High, Confidence.High,
+            "An S3 public-access block resource disables one or more public-access protections.", "Set all public-access block flags to true to protect the bucket."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
     {
         var findings = new List<Finding>();
+        var lockfileDirectoriesChecked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Process .tf files
         foreach (var file in RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*.tf"))
@@ -53,6 +64,13 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
 
             var content = await File.ReadAllTextAsync(file, cancellationToken);
             AnalyzeTfContent(content, relativePath, findings);
+
+            // WP4: Lockfile check per directory (only once per directory).
+            var dir = Path.GetDirectoryName(relativePath)?.Replace('\\', '/') ?? ".";
+            if (lockfileDirectoriesChecked.Add(dir))
+            {
+                TerraformLockfileChecks.CheckAll(context.RepositoryPath, dir, content, findings);
+            }
         }
 
         // Process .tf.json files
@@ -92,6 +110,10 @@ public sealed partial class TerraformAnalyzer : IRepositoryAnalyzer
         CheckS3Encryption(content, blocks, relativePath, findings);
         CheckProviderVersion(content, blocks, relativePath, findings);
         CheckBackendEncryption(blocks, relativePath, findings);
+
+        // WP4: New supply-chain and cloud resource checks.
+        TerraformModuleSourceChecks.CheckAll(blocks, relativePath, findings);
+        TerraformCloudResourceChecks.CheckAll(blocks, relativePath, findings);
     }
 
     private void AnalyzeTfJson(JsonDocument doc, string relativePath, List<Finding> findings)
