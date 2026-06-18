@@ -12,6 +12,7 @@ artifacts/
 
 # Local source notes are not part of the public repository.
 private-docs/
+RepoTrustDoctor-csharp.md
 
 # Scan workspaces and generated reports.
 .repo-trust/
