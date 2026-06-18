@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
 
@@ -14,6 +15,8 @@ internal sealed record RequiredProvidersEvidence(
 /// </summary>
 internal static class TerraformLockfileChecks
 {
+    private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
+
     public static void CheckAll(
         string repositoryPath,
         string relativeDirectory,
@@ -91,15 +94,26 @@ internal static class TerraformLockfileChecks
         }
 
         var sanitized = CommentStripper.StripComments(content);
-        var requiredProviders = TerraformBlockExtractor
-            .Extract(sanitized)
-            .FirstOrDefault(static block =>
-                block.Header.StartsWith(
-                    "required_providers",
-                    StringComparison.OrdinalIgnoreCase));
+        var match = Regex.Match(
+            sanitized,
+            @"(?m)^[ \t]*required_providers[ \t]*\{",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+            RegexTimeout);
 
-        return requiredProviders is null
-            ? null
-            : new RequiredProvidersEvidence(relativePath, requiredProviders.StartLine);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var lineNumber = 1;
+        for (var index = 0; index < match.Index; index++)
+        {
+            if (sanitized[index] == '\n')
+            {
+                lineNumber++;
+            }
+        }
+
+        return new RequiredProvidersEvidence(relativePath, lineNumber);
     }
 }
