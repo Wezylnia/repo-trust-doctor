@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <InternalsVisibleTo Include="RepoTrustDoctor.AnalyzerTests" />
     <ProjectReference Include="..\..\..\Core\RepoTrustDoctor.Domain\RepoTrustDoctor.Domain.csproj" />
     <ProjectReference Include="..\..\..\Engine\RepoTrustDoctor.Analysis.Abstractions\RepoTrustDoctor.Analysis.Abstractions.csproj" />
   </ItemGroup>

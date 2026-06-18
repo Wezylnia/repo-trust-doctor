@@ -38,6 +38,10 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         new("TRUST-GHA016", "Workflow-level write permissions are overly broad", AnalysisCategory.CiCd, Severity.Medium, Confidence.Medium, "Top-level permissions grant contents:write, packages:write, or actions:write.", "Reduce permissions to least privilege per job. Avoid broad write at the workflow level."),
         new("TRUST-GHA017", "Workflow uses overly broad cache path", AnalysisCategory.CiCd, Severity.Low, Confidence.Medium, "An actions/cache step caches an overly broad path.", "Narrow cache paths to specific package directories."),
         new("TRUST-GHA018", "Workflow job container or service image uses latest", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "A job container or service image uses :latest or no tag.", "Pin container images to specific versions or digests."),
+        new("TRUST-GHA019", "Mutable reusable workflow reference", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "An external reusable workflow is referenced by branch or tag instead of a full commit SHA.", "Pin external reusable workflows to a full commit SHA."),
+        new("TRUST-GHA020", "Validation job is allowed to fail", AnalysisCategory.CiCd, Severity.Medium, Confidence.High, "A validation job or step has continue-on-error: true.", "Remove continue-on-error from validation jobs to ensure failures are visible."),
+        new("TRUST-GHA021", "Release job runs regardless of failed dependencies", AnalysisCategory.CiCd, Severity.High, Confidence.Medium, "A release or publish job uses if: always() while depending on validation jobs.", "Avoid if: always() on release jobs that depend on validation. Only publish after successful validation."),
+        new("TRUST-GHA022", "Untrusted event data controls cache identity", AnalysisCategory.CiCd, Severity.Medium, Confidence.Medium, "A cache key or restore-keys contains untrusted event data such as a pull request title.", "Avoid using untrusted event data such as PR titles in cache keys."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -49,6 +53,7 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         }
 
         var findings = new List<Finding>();
+        var parseWarnings = new List<string>();
         var unpinnedActionUses = new List<UnpinnedActionUse>();
         var unsafeCheckoutUses = new List<UnsafeCheckoutUse>();
         foreach (var file in RepositoryFileSystem.EnumerateFiles(workflowRoot, "*.*", SearchOption.TopDirectoryOnly)
@@ -112,7 +117,20 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
             }
 
             CheckShellInjection(content, relativePath, findings);
-            CheckReleaseWorkflowDependency(content, relativePath, findings);
+
+            var parseResult = GitHubWorkflowParser.Parse(content);
+            parseWarnings.AddRange(parseResult.Warnings);
+            if (parseResult.Model is not null)
+            {
+                var semanticFindings = GitHubActionsSemanticChecks.RunAll(content, relativePath, parseResult.Model);
+                findings.AddRange(semanticFindings);
+            }
+            else
+            {
+                CheckReleaseWorkflowDependency(content, relativePath, findings);
+                CheckWorkflowWritePermissions(content, relativePath, findings);
+            }
+
             CheckArtifactUploadPaths(content, relativePath, findings);
             CheckHardcodedSecretsInEnv(content, relativePath, findings);
             CheckMatrixInjection(content, relativePath, findings);
@@ -121,7 +139,6 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
             {
                 AddFinding(findings, "TRUST-GHA003", "Workflow uses pull_request_target", Severity.Medium, "Review pull_request_target usage carefully and avoid running untrusted pull request code with repository privileges.", relativePath, "pull_request_target trigger was found.", GetLineNumber(content, pullRequestTargetMatch.Index), Confidence.Medium);
             }
-            CheckWorkflowWritePermissions(content, relativePath, findings);
             CheckBroadCachePaths(content, relativePath, findings);
             CheckJobContainerLatest(content, relativePath, findings);
         }
@@ -129,7 +146,9 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
         AddUnpinnedActionFindings(findings, unpinnedActionUses);
         AddUnsafeCheckoutFinding(findings, unsafeCheckoutUses);
 
-        return AnalyzerResult.Completed(findings);
+        return parseWarnings.Count == 0
+            ? AnalyzerResult.Completed(findings)
+            : new AnalyzerResult(ModuleStatus.CompletedWithWarnings, findings, Warnings: parseWarnings);
     }
 
     private static void AddUnpinnedActionFindings(List<Finding> findings, IReadOnlyList<UnpinnedActionUse> unpinnedActionUses)
@@ -252,4 +271,3 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
     private sealed record UnsafeCheckoutUse(string FilePath, int LineNumber);
 
 }
-
