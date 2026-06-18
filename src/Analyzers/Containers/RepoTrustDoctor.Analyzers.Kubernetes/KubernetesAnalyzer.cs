@@ -43,10 +43,16 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
             "A container has allowPrivilegeEscalation set to true.", "Set allowPrivilegeEscalation: false unless the container genuinely needs it."),
         new("TRUST-K8S009", "Kubernetes automounts service account token", AnalysisCategory.Containers, Severity.Medium, Confidence.High,
             "A pod explicitly enables automountServiceAccountToken.", "Disable service account token automounting unless the workload needs Kubernetes API access."),
+        new("TRUST-K8S010", "Seccomp profile is not explicitly configured", AnalysisCategory.Containers, Severity.Low, Confidence.Medium,
+            "No explicit seccomp profile was found for this container.", "Set seccompProfile.type: RuntimeDefault or Localhost in the pod or container securityContext."),
+        new("TRUST-K8S011", "Container does not declare resource limits", AnalysisCategory.Containers, Severity.Low, Confidence.High,
+            "Container does not declare CPU and/or memory limits.", "Set resources.limits.cpu and resources.limits.memory for every container."),
         new("TRUST-K8S012", "Kubernetes container image uses mutable tag", AnalysisCategory.Containers, Severity.Medium, Confidence.High,
             "A container image is not pinned by digest or uses latest/no tag.", "Pin container images to immutable digests or explicit, reviewed version tags."),
         new("TRUST-K8S013", "Kubernetes container uses hostPort", AnalysisCategory.Containers, Severity.Medium, Confidence.High,
             "A container binds a port directly on the node.", "Avoid hostPort unless node-level exposure is required. Prefer Services or Ingress."),
+        new("TRUST-K8S014", "Container adds capabilities without dropping ALL", AnalysisCategory.Containers, Severity.Medium, Confidence.High,
+            "Container adds Linux capabilities without including drop: ALL.", "Add drop: [ALL] to the securityContext.capabilities block and only add explicitly needed capabilities."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -95,6 +101,10 @@ public sealed partial class KubernetesAnalyzer : IRepositoryAnalyzer
                 CheckHostPorts(content, relativePath, findings);
             }
             CheckSecretManifest(content, relativePath, findings);
+
+            // WP2: Semantic security context checks using structured parsing.
+            var document = KubernetesWorkloadParser.Parse(relativePath, content);
+            KubernetesSecurityContextChecks.CheckAll(document, findings);
         }
 
         return AnalyzerResult.Completed(findings);
