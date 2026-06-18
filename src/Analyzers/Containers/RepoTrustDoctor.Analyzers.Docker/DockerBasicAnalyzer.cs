@@ -35,6 +35,9 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
         new("TRUST-DOCKER011", "Dockerfile EXPOSE uses overly broad port range", AnalysisCategory.Containers, Severity.Low, Confidence.Medium, "EXPOSE specifies a port range.", "Expose only the specific ports your application needs."),
         new("TRUST-DOCKER012", "Dockerfile pipes remote installer to shell", AnalysisCategory.Containers, Severity.High, Confidence.High, "A RUN instruction downloads remote content and pipes it into a shell.", "Download release artifacts with pinned checksums or signatures instead of piping network content directly to a shell."),
         new("TRUST-DOCKER014", "Dockerfile disables healthcheck", AnalysisCategory.Containers, Severity.Low, Confidence.High, "HEALTHCHECK NONE disables container health reporting.", "Remove HEALTHCHECK NONE and add an appropriate health probe for long-running service images."),
+        new("TRUST-DOCKER013", "External build stage is not digest-pinned", AnalysisCategory.Containers, Severity.Medium, Confidence.High, "A COPY --from instruction references an external image without a digest pin.", "Pin external COPY --from images with a digest reference (e.g. image@sha256:...)."),
+        new("TRUST-DOCKER015", "Package-manager cache remains in the image layer", AnalysisCategory.Containers, Severity.Low, Confidence.Medium, "A RUN instruction installs packages without cleaning the cache in the same layer.", "Combine package manager install with cache cleanup in the same RUN instruction."),
+        new("TRUST-DOCKER016", "Secret-like build argument uses ordinary ARG", AnalysisCategory.Containers, Severity.Medium, Confidence.High, "An ARG instruction declares a secret-like build argument that will be persisted in image history.", "Use BuildKit secret mounts instead of ordinary ARG for secrets."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -118,6 +121,9 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
                     [new Evidence("dockerfile", evidenceText, relativePath, GetLineNumber(content, match.Index), redactedLine)],
                     new Recommendation("Avoid defining secrets in ENV variables. Use Docker build secrets or pass secrets at runtime instead.")));
             }
+
+            // WP3: Supply-chain hardening checks (TRUST-DOCKER013/015/016).
+            DockerSupplyChainChecks.CheckAll(logicalContent, relativePath, stages, findings);
         }
 
         return AnalyzerResult.Completed(findings);
@@ -551,5 +557,5 @@ public sealed partial class DockerBasicAnalyzer : IRepositoryAnalyzer
 
     private sealed record DockerfileCandidate(string FullPath, string RelativePath, bool IsBuildSupport);
 
-    private sealed record DockerfileStage(string BaseImage, string Content);
+    internal sealed record DockerfileStage(string BaseImage, string Content);
 }
