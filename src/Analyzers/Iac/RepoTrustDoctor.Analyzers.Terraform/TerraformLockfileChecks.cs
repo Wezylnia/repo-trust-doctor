@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Domain;
 
@@ -13,7 +12,7 @@ internal sealed record RequiredProvidersEvidence(
 /// Directory-scoped — checks whether a .terraform.lock.hcl exists
 /// alongside .tf files that declare required_providers.
 /// </summary>
-internal static partial class TerraformLockfileChecks
+internal static class TerraformLockfileChecks
 {
     public static void CheckAll(
         string repositoryPath,
@@ -35,17 +34,19 @@ internal static partial class TerraformLockfileChecks
             ? StringComparer.OrdinalIgnoreCase
             : StringComparer.Ordinal;
 
-        var evidence = Directory
-            .EnumerateFiles(directoryPath, "*.tf", SearchOption.TopDirectoryOnly)
-            .Where(RepositoryFileSystem.CanReadAsText)
-            .Select(file => new
+        RequiredProvidersEvidence? evidence = null;
+        foreach (var file in Directory
+                     .EnumerateFiles(directoryPath, "*.tf", SearchOption.TopDirectoryOnly)
+                     .Where(RepositoryFileSystem.CanReadAsText)
+                     .OrderBy(file => Path.GetRelativePath(repositoryPath, file), pathComparer))
+        {
+            var relativePath = Path.GetRelativePath(repositoryPath, file).Replace('\\', '/');
+            evidence = TryFindRequiredProviders(file, relativePath);
+            if (evidence is not null)
             {
-                FullPath = file,
-                RelativePath = Path.GetRelativePath(repositoryPath, file).Replace('\\', '/')
-            })
-            .OrderBy(candidate => candidate.RelativePath, pathComparer)
-            .Select(candidate => TryFindRequiredProviders(candidate.FullPath, candidate.RelativePath))
-            .FirstOrDefault(static candidate => candidate is not null);
+                break;
+            }
+        }
 
         if (evidence is null)
         {
@@ -92,36 +93,23 @@ internal static partial class TerraformLockfileChecks
         }
 
         var sanitized = CommentStripper.StripComments(content);
-        foreach (var block in TerraformBlockExtractor.Extract(sanitized))
+        foreach (var terraformBlock in TerraformBlockExtractor
+                     .Extract(sanitized)
+                     .Where(static block => block.Header.Equals("terraform", StringComparison.OrdinalIgnoreCase)))
         {
-            if (!block.Header.Equals("terraform", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
+            var requiredProviders = TerraformBlockExtractor
+                .Extract(terraformBlock.Text)
+                .FirstOrDefault(static block =>
+                    block.Header.Equals("required_providers", StringComparison.OrdinalIgnoreCase));
 
-            var match = RequiredProvidersPattern().Match(block.Text);
-            if (!match.Success)
+            if (requiredProviders is not null)
             {
-                continue;
+                return new RequiredProvidersEvidence(
+                    relativePath,
+                    terraformBlock.StartLine + requiredProviders.StartLine - 1);
             }
-
-            var lineNumber = block.StartLine;
-            for (var index = 0; index < match.Index; index++)
-            {
-                if (block.Text[index] == '\n')
-                {
-                    lineNumber++;
-                }
-            }
-
-            return new RequiredProvidersEvidence(relativePath, lineNumber);
         }
 
         return null;
     }
-
-    [GeneratedRegex(
-        @"^[ \t]*required_providers[ \t]*\{",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Multiline)]
-    private static partial Regex RequiredProvidersPattern();
 }
