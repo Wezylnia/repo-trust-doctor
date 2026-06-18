@@ -1,5 +1,6 @@
 using RepoTrustDoctor.Analyzers.Terraform;
 using RepoTrustDoctor.Analysis.Abstractions;
+using RepoTrustDoctor.Domain;
 
 namespace RepoTrustDoctor.AnalyzerTests;
 
