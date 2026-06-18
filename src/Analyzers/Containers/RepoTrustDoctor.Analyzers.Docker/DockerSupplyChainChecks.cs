@@ -13,26 +13,29 @@ internal static partial class DockerSupplyChainChecks
 {
     public static void CheckAll(string content, string relativePath, DockerBasicAnalyzer.DockerfileStage[] stages, List<Finding> findings)
     {
-        // Collect stage aliases for resolving COPY --from references.
         var stageAliases = new HashSet<string>(StringComparer.Ordinal);
         var stageCount = stages.Length;
-        for (var i = 0; i < stages.Length; i++)
+        for (var index = 0; index < stages.Length; index++)
         {
-            var alias = ExtractStageAlias(stages[i].Content);
+            var alias = ExtractStageAlias(stages[index].Content);
             if (alias is not null)
             {
                 stageAliases.Add(alias);
             }
         }
 
-        // TRUST-DOCKER013: Scan once per Dockerfile, not per stage.
         CheckExternalCopyFromDigest(content, relativePath, stageAliases, stageCount, findings);
 
-        foreach (var stage in stages.Length == 0
-                     ? [new DockerBasicAnalyzer.DockerfileStage(string.Empty, content)]
-                     : stages)
+        var effectiveStages = stages.Length == 0
+            ? [new DockerBasicAnalyzer.DockerfileStage(string.Empty, content)]
+            : stages;
+        for (var stageIndex = 0; stageIndex < effectiveStages.Length; stageIndex++)
         {
-            CheckPackageCacheCleanup(stage.Content, relativePath, findings);
+            CheckPackageCacheCleanup(
+                effectiveStages[stageIndex].Content,
+                relativePath,
+                stageIndex,
+                findings);
         }
 
         CheckSecretLikeArgs(content, relativePath, findings);
@@ -41,34 +44,48 @@ internal static partial class DockerSupplyChainChecks
     // ── TRUST-DOCKER013: External COPY --from not digest-pinned ──────
 
     private static void CheckExternalCopyFromDigest(
-        string content, string relativePath, HashSet<string> stageAliases, int stageCount, List<Finding> findings)
+        string content,
+        string relativePath,
+        HashSet<string> stageAliases,
+        int stageCount,
+        List<Finding> findings)
     {
-        foreach (Match match in CopyFromPattern().Matches(content))
-        {
-            var fromRef = match.Groups["fromRef"].Value.Trim();
-            var rawLine = match.Value;
+        var occurrences = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-            // Skip if referencing a stage alias declared in the same Dockerfile.
+        foreach (Match copyMatch in CopyInstructionPattern().Matches(content))
+        {
+            var options = copyMatch.Groups["options"].Value;
+            var fromMatch = CopyFromOptionPattern().Match(options);
+            if (!fromMatch.Success)
+            {
+                continue;
+            }
+
+            var fromRef = fromMatch.Groups["fromRef"].Value.Trim();
+            var operands = NormalizeForIdentity(copyMatch.Groups["operands"].Value);
+
             if (stageAliases.Contains(fromRef))
             {
                 continue;
             }
 
-            // Skip numeric stage references: --from=0, --from=1, etc.
-            if (int.TryParse(fromRef, out var stageIndex) &&
-                stageIndex >= 0 && stageIndex < stageCount)
+            if (int.TryParse(fromRef, out var referencedStage) &&
+                referencedStage >= 0 && referencedStage < stageCount)
             {
                 continue;
             }
 
-            // Skip if already pinned by digest.
             if (fromRef.Contains("@sha256:", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            var lineNumber = GetLineNumber(content, match.Index);
-            var identityKey = $"docker013|{relativePath}|{lineNumber}|{fromRef}";
+            var occurrenceKey = $"{fromRef}|{operands}";
+            var occurrence = occurrences.GetValueOrDefault(occurrenceKey);
+            occurrences[occurrenceKey] = occurrence + 1;
+
+            var lineNumber = GetLineNumber(content, copyMatch.Index);
+            var identityKey = $"docker013|{relativePath}|{fromRef}|{operands}|{occurrence}";
 
             findings.Add(new Finding(
                 "TRUST-DOCKER013",
@@ -77,7 +94,12 @@ internal static partial class DockerSupplyChainChecks
                 Severity.Medium,
                 Confidence.High,
                 $"COPY --from={fromRef} references an external image without a digest pin.",
-                [new Evidence("dockerfile", $"COPY --from={fromRef} is not pinned to an immutable digest.", relativePath, lineNumber, rawLine.Trim())],
+                [new Evidence(
+                    "dockerfile",
+                    $"COPY --from={fromRef} is not pinned to an immutable digest.",
+                    relativePath,
+                    lineNumber,
+                    copyMatch.Value.Trim())],
                 new Recommendation("Pin external COPY --from images with a digest reference (e.g. image@sha256:...)."),
                 IdentityKey: identityKey));
         }
@@ -85,61 +107,68 @@ internal static partial class DockerSupplyChainChecks
 
     // ── TRUST-DOCKER015: Package-manager cache left in layer ─────────
 
-    private static void CheckPackageCacheCleanup(string content, string relativePath, List<Finding> findings)
+    private static void CheckPackageCacheCleanup(
+        string content,
+        string relativePath,
+        int stageIndex,
+        List<Finding> findings)
     {
+        var occurrences = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
         foreach (Match match in RunInstructionPattern().Matches(content))
         {
             var runLine = match.Value;
             var lineNumber = GetLineNumber(content, match.Index);
 
-            // apt-get
             if (AptGetInstallPattern().IsMatch(runLine))
             {
                 if (!AptGetCleanupPattern().IsMatch(runLine))
                 {
-                    AddPackageCacheFinding("TRUST-DOCKER015", relativePath, lineNumber, "apt-get", findings);
+                    AddPackageCacheFinding(relativePath, lineNumber, stageIndex, "apt-get", occurrences, findings);
                 }
                 continue;
             }
 
-            // apk
             if (ApkAddPattern().IsMatch(runLine))
             {
                 if (!ApkNoCachePattern().IsMatch(runLine))
                 {
-                    AddPackageCacheFinding("TRUST-DOCKER015", relativePath, lineNumber, "apk", findings);
+                    AddPackageCacheFinding(relativePath, lineNumber, stageIndex, "apk", occurrences, findings);
                 }
                 continue;
             }
 
-            // yum
             if (YumInstallPattern().IsMatch(runLine))
             {
                 if (!YumCleanAllPattern().IsMatch(runLine))
                 {
-                    AddPackageCacheFinding("TRUST-DOCKER015", relativePath, lineNumber, "yum", findings);
+                    AddPackageCacheFinding(relativePath, lineNumber, stageIndex, "yum", occurrences, findings);
                 }
                 continue;
             }
 
-            // dnf
-            if (DnfInstallPattern().IsMatch(runLine))
+            if (DnfInstallPattern().IsMatch(runLine) &&
+                !DnfCleanAllPattern().IsMatch(runLine))
             {
-                if (!DnfCleanAllPattern().IsMatch(runLine))
-                {
-                    AddPackageCacheFinding("TRUST-DOCKER015", relativePath, lineNumber, "dnf", findings);
-                }
+                AddPackageCacheFinding(relativePath, lineNumber, stageIndex, "dnf", occurrences, findings);
             }
         }
     }
 
     private static void AddPackageCacheFinding(
-        string ruleId, string relativePath, int lineNumber, string packageManager, List<Finding> findings)
+        string relativePath,
+        int lineNumber,
+        int stageIndex,
+        string packageManager,
+        IDictionary<string, int> occurrences,
+        List<Finding> findings)
     {
-        var identityKey = $"docker015|{relativePath}|{lineNumber}|{packageManager}";
+        var occurrence = occurrences.GetValueOrDefault(packageManager);
+        occurrences[packageManager] = occurrence + 1;
+        var identityKey = $"docker015|{relativePath}|stage:{stageIndex}|{packageManager}|{occurrence}";
 
         findings.Add(new Finding(
-            ruleId,
+            "TRUST-DOCKER015",
             "Package-manager cache remains in the image layer",
             AnalysisCategory.Containers,
             Severity.Low,
@@ -170,7 +199,6 @@ internal static partial class DockerSupplyChainChecks
         "CREDENTIALS",
     };
 
-    // Suffixes that indicate a secret when the token right before it is a secret indicator.
     private static readonly HashSet<string> SecretSuffixTokens = new(StringComparer.OrdinalIgnoreCase)
     {
         "TOKEN", "PASSWORD", "PASS", "SECRET", "KEY", "CREDENTIALS", "CERTIFICATE",
@@ -178,24 +206,21 @@ internal static partial class DockerSupplyChainChecks
 
     private static void CheckSecretLikeArgs(string content, string relativePath, List<Finding> findings)
     {
+        var occurrences = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
         foreach (Match match in ArgInstructionPattern().Matches(content))
         {
             var argName = match.Groups["name"].Value.Trim();
 
-            // Skip safe arguments.
-            if (SafeArgNames.Contains(argName))
+            if (SafeArgNames.Contains(argName) || !IsSecretLikeArg(argName))
             {
                 continue;
             }
 
-            // Check if this looks like a secret using token-aware matching.
-            if (!IsSecretLikeArg(argName))
-            {
-                continue;
-            }
-
+            var occurrence = occurrences.GetValueOrDefault(argName);
+            occurrences[argName] = occurrence + 1;
             var lineNumber = GetLineNumber(content, match.Index);
-            var identityKey = $"docker016|{relativePath}|{lineNumber}|{argName}";
+            var identityKey = $"docker016|{relativePath}|{argName}|{occurrence}";
 
             findings.Add(new Finding(
                 "TRUST-DOCKER016",
@@ -212,28 +237,13 @@ internal static partial class DockerSupplyChainChecks
 
     private static bool IsSecretLikeArg(string argName)
     {
-        // Direct match against known secret patterns (exact or prefix).
         if (SecretLikeArgNames.Contains(argName))
-            return true;
-
-        // Token-aware suffix matching: split on underscores, check if the last
-        // meaningful token is a secret indicator.
-        // e.g. SIGNING_CREDENTIALS -> "CREDENTIALS" is secret suffix
-        // e.g. PRIVATE_REGISTRY -> "REGISTRY" is NOT a secret suffix
-        // e.g. SIGNING_ALGORITHM -> "ALGORITHM" is NOT a secret suffix
-        // e.g. CERTIFICATE_PATH -> "PATH" is NOT a secret suffix
-        // e.g. CERTIFICATE_FILE -> "FILE" is NOT a secret suffix
-        var tokens = argName.Split('_', StringSplitOptions.RemoveEmptyEntries);
-        if (tokens.Length > 0)
         {
-            var lastToken = tokens[^1];
-            if (SecretSuffixTokens.Contains(lastToken))
-            {
-                return true;
-            }
+            return true;
         }
 
-        return false;
+        var tokens = argName.Split('_', StringSplitOptions.RemoveEmptyEntries);
+        return tokens.Length > 0 && SecretSuffixTokens.Contains(tokens[^1]);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
@@ -243,6 +253,9 @@ internal static partial class DockerSupplyChainChecks
         var match = FromAliasPattern().Match(stageContent);
         return match.Success ? match.Groups["alias"].Value.Trim() : null;
     }
+
+    private static string NormalizeForIdentity(string value) =>
+        WhitespacePattern().Replace(value.Trim(), " ");
 
     private static int GetLineNumber(string content, int matchIndex)
     {
@@ -259,15 +272,15 @@ internal static partial class DockerSupplyChainChecks
 
     // ── Regexes ──────────────────────────────────────────────────────
 
-    // COPY --from=<image> (external image reference)
-    [GeneratedRegex(@"(?mi)^\s*COPY\s+--from=(?<fromRef>[^\s]+)", RegexOptions.IgnoreCase)]
-    private static partial Regex CopyFromPattern();
+    [GeneratedRegex(@"(?mi)^\s*COPY\b(?<options>(?:\s+--[^\s]+)*)\s+(?<operands>.+)$", RegexOptions.IgnoreCase)]
+    private static partial Regex CopyInstructionPattern();
 
-    // FROM <image> AS <alias>
+    [GeneratedRegex(@"(?:^|\s)--from=(?<fromRef>[^\s]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex CopyFromOptionPattern();
+
     [GeneratedRegex(@"(?mi)^\s*FROM\s+\S+\s+AS\s+(?<alias>\S+)", RegexOptions.IgnoreCase)]
     private static partial Regex FromAliasPattern();
 
-    // Package manager patterns
     [GeneratedRegex(@"(?mi)^\s*RUN\s+.+$")]
     private static partial Regex RunInstructionPattern();
 
@@ -295,11 +308,9 @@ internal static partial class DockerSupplyChainChecks
     [GeneratedRegex(@"dnf\s+clean\s+all", RegexOptions.IgnoreCase)]
     private static partial Regex DnfCleanAllPattern();
 
-    // ARG <name>
     [GeneratedRegex(@"(?mi)^\s*ARG\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)", RegexOptions.IgnoreCase)]
     private static partial Regex ArgInstructionPattern();
 
-    // RUN --mount=type=secret,id=<id>
-    [GeneratedRegex(@"--mount=type=secret[^ ]*id=(?<id>\S+)", RegexOptions.IgnoreCase)]
-    private static partial Regex SecretMountPattern();
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex WhitespacePattern();
 }
