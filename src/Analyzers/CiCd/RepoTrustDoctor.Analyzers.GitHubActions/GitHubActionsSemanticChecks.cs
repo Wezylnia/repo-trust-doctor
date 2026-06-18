@@ -6,8 +6,9 @@ namespace RepoTrustDoctor.Analyzers.GitHubActions;
 
 internal static class GitHubActionsSemanticChecks
 {
-    private static readonly string[] ValidationJobNameHints =
-        ["test", "security", "scan", "lint", "validate", "verification", "audit"];
+    private static readonly string[] ValidationTokens =
+        ["test", "tests", "testing", "lint", "linter", "security", "scan", "audit",
+         "validate", "validation", "verify", "verification", "checks", "quality", "integration"];
     private static readonly string[] OptionalValidationHints =
         ["experimental", "compat", "compatibility", "optional"];
     private static readonly string[] NotificationStepHints =
@@ -23,7 +24,7 @@ internal static class GitHubActionsSemanticChecks
         CheckMutableReusableWorkflow(content, relativePath, model, findings);
         CheckValidationJobContinueOnError(relativePath, model, findings);
         CheckReleaseJobUnconditional(relativePath, model, findings);
-        CheckUntrustedEventInCacheKey(content, relativePath, findings);
+        CheckUntrustedEventInCacheKey(relativePath, model, findings);
         CheckReleaseWithoutTestDependency(relativePath, model, findings);
         CheckWorkflowWritePermissions(content, relativePath, model, findings);
 
@@ -63,7 +64,7 @@ internal static class GitHubActionsSemanticChecks
         foreach (var job in model.Jobs.Values)
         {
             if (job.ContinueOnError &&
-                IsValidationName(job.Name) &&
+                IsValidationJob(job) &&
                 !IsOptionalValidationName(job.Name))
             {
                 AddFinding(
@@ -82,10 +83,9 @@ internal static class GitHubActionsSemanticChecks
             foreach (var step in job.Steps)
             {
                 if (step.ContinueOnError &&
-                    step.Name is not null &&
-                    IsValidationName(step.Name) &&
-                    !IsOptionalValidationName(step.Name) &&
-                    !IsNotificationStepName(step.Name))
+                    IsValidationStep(step) &&
+                    !IsOptionalValidationName(step.Name ?? "") &&
+                    !IsNotificationStepName(step.Name ?? ""))
                 {
                     AddFinding(
                         findings,
@@ -94,10 +94,10 @@ internal static class GitHubActionsSemanticChecks
                     Severity.Medium,
                     "Remove continue-on-error from validation steps to ensure failures are visible.",
                     relativePath,
-                    $"Validation step '{step.Name}' in job '{job.Name}' has continue-on-error: true.",
+                    $"Validation step '{(step.Name ?? "<unnamed>")}' in job '{job.Name}' has continue-on-error: true.",
                     step.StartLine,
                     Confidence.High,
-                    identityKey: $"gha020|{relativePath}|step|{job.Name}|{step.Name}");
+                    identityKey: $"gha020|{relativePath}|step|{job.Name}|{step.Name ?? "<unnamed>"}");
                 }
             }
         }
@@ -141,8 +141,8 @@ internal static class GitHubActionsSemanticChecks
 
     // TRUST-GHA022: Untrusted event data controls cache identity
     private static void CheckUntrustedEventInCacheKey(
-        string content,
         string relativePath,
+        GitHubWorkflowModel model,
         List<Finding> findings)
     {
         var untrustedEventFields = new[]
@@ -154,72 +154,51 @@ internal static class GitHubActionsSemanticChecks
             "github.event.comment.body"
         };
 
-        var lines = content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-        var cacheUsesByLine = new HashSet<int>();
-        var currentUsesLine = -1;
-        var currentUsesIndent = -1;
-        for (var i = 0; i < lines.Length; i++)
+        string[] cacheActionRefs = ["actions/cache", "actions/cache/restore", "actions/cache/save"];
+
+        foreach (var (jobName, job) in model.Jobs)
         {
-            var line = lines[i];
-            if (string.IsNullOrWhiteSpace(line))
+            for (var si = 0; si < job.Steps.Count; si++)
             {
-                continue;
-            }
+                var step = job.Steps[si];
+                if (step.Uses is null) continue;
 
-            var indent = GetIndentation(line);
-            if (currentUsesLine >= 0 && indent <= currentUsesIndent)
-            {
-                currentUsesLine = -1;
-                currentUsesIndent = -1;
-            }
-
-            if (line.Contains("uses:", StringComparison.OrdinalIgnoreCase) &&
-                line.Contains("actions/cache@", StringComparison.OrdinalIgnoreCase))
-            {
-                currentUsesLine = i;
-                currentUsesIndent = indent;
-                cacheUsesByLine.Add(i);
-            }
-        }
-
-        foreach (var lineNumber in cacheUsesByLine.OrderBy(value => value))
-        {
-            var stepEnd = FindStepEnd(lines, lineNumber);
-            for (var i = lineNumber + 1; i < stepEnd; i++)
-            {
-                if (IsBlankOrComment(lines[i]))
-                {
+                var usesRef = step.Uses.Split('@')[0];
+                if (!cacheActionRefs.Any(r => r.Equals(usesRef, StringComparison.OrdinalIgnoreCase)))
                     continue;
-                }
 
-                if (!ContainsCacheKeyDeclaration(lines[i]))
+                // Check key and restore-keys from parsed With dictionary.
+                string[] cacheKeyFields = ["key", "restore-keys"];
+                foreach (var keyField in cacheKeyFields)
                 {
-                    continue;
-                }
+                    if (!step.With.TryGetValue(keyField, out var keyValue)) continue;
 
-                foreach (var field in untrustedEventFields)
-                {
-                    if (!lines[i].Contains(field, StringComparison.OrdinalIgnoreCase))
+                    foreach (var field in untrustedEventFields)
                     {
-                        continue;
+                        if (!keyValue.Contains(field, StringComparison.OrdinalIgnoreCase)) continue;
+
+                        var stepIdentity = step.Name is not null
+                            ? step.Name
+                            : $"{usesRef}@{si}";
+                        var identityKey = $"gha022|{relativePath}|{jobName}|{stepIdentity}|{keyField}|{field}";
+
+                        AddFinding(
+                            findings,
+                            "TRUST-GHA022",
+                            "Untrusted event data controls cache identity",
+                            Severity.Medium,
+                            "Avoid using untrusted event data such as PR titles in cache keys. Cache poisoning may allow an attacker to control which cache entry is restored.",
+                            relativePath,
+                            $"Cache {keyField} contains untrusted event data in job '{jobName}': {field}",
+                            step.StartLine,
+                            Confidence.Medium,
+                            identityKey: identityKey);
+                        goto NextCacheStep;
                     }
-
-                    AddFinding(
-                        findings,
-                        "TRUST-GHA022",
-                        "Untrusted event data controls cache identity",
-                        Severity.Medium,
-                        "Avoid using untrusted event data such as PR titles in cache keys. Cache poisoning may allow an attacker to control which cache entry is restored.",
-                        relativePath,
-                        $"Cache key or restore-keys contains untrusted event data in a cache step: {field}",
-                        i + 1,
-                        Confidence.Medium,
-                        identityKey: $"gha022|{relativePath}|{i + 1}|{field}");
-                    goto NextCacheStep;
                 }
-            }
 
-            NextCacheStep:;
+                NextCacheStep:;
+            }
         }
     }
 
@@ -239,20 +218,26 @@ internal static class GitHubActionsSemanticChecks
             }
 
             var hasStrictValidationDependency = JobTransitivelyNeedsStrictValidation(job.Name, jobsByName);
-            if (!hasStrictValidationDependency || JobRunsRegardlessOfNeedsResult(job))
+
+            // When a strict validation dependency exists:
+            //   - if: always() → GHA021 handles it exclusively
+            //   - otherwise    → no finding (publish after validation is correct)
+            if (hasStrictValidationDependency)
             {
-                AddFinding(
-                    findings,
-                    "TRUST-GHA009",
-                    "Release workflow may publish without test dependency",
-                    Severity.High,
-                    "Make release or publish jobs depend on a test or CI job before publishing artifacts or packages.",
-                    relativePath,
-                    BuildReleaseDependencyMessage(job.Name, jobsByName),
-                    job.StartLine,
-                    Confidence.Medium,
-                    identityKey: $"gha009|{relativePath}|{job.Name}");
+                continue;
             }
+
+            AddFinding(
+                findings,
+                "TRUST-GHA009",
+                "Release workflow may publish without test dependency",
+                Severity.High,
+                "Make release or publish jobs depend on a test or CI job before publishing artifacts or packages.",
+                relativePath,
+                BuildReleaseDependencyMessage(job.Name, jobsByName),
+                job.StartLine,
+                Confidence.Medium,
+                identityKey: $"gha009|{relativePath}|{job.Name}");
         }
     }
 
@@ -288,35 +273,87 @@ internal static class GitHubActionsSemanticChecks
 
     private static bool IsPublishOrReleaseJob(GitHubJobModel job)
     {
-        var publishKeywords = new[]
-        {
-            "gh release", "npm publish", "dotnet nuget push", "nuget push",
-            "twine upload", "docker push", "docker buildx build"
-        };
-
         foreach (var step in job.Steps)
         {
-            if (step.Run is not null)
+            if (step.Run is not null && IsPublishingCommand(step.Run))
             {
-                foreach (var keyword in publishKeywords)
-                {
-                    if (step.Run.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return true;
-                    }
-                }
+                return true;
             }
 
-            if (step.Uses is not null)
+            if (step.Uses is not null && IsPublishingAction(step))
             {
-                foreach (var keyword in publishKeywords)
-                {
-                    if (step.Uses.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return true;
-                    }
-                }
+                return true;
             }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Recognizes specific publishing CLI commands. Does NOT use generic substring search.
+    /// </summary>
+    private static bool IsPublishingCommand(string run)
+    {
+        // Bounded patterns: must match complete command tokens, not arbitrary substrings.
+        string[] publishPatterns =
+        [
+            "gh release create", "gh release upload",
+            "npm publish", "pnpm publish", "yarn npm publish",
+            "dotnet nuget push", "nuget push",
+            "twine upload",
+            "docker push",
+            "cargo publish",
+            "gem push",
+        ];
+
+        foreach (var pattern in publishPatterns)
+        {
+            if (run.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+            {
+                // Exclude false positives: gh release view/list, docker buildx build without --push.
+                if (pattern == "docker push" && run.Contains("docker push", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                if (pattern != "docker push")
+                    return true;
+            }
+        }
+
+        // docker buildx build ... --push (must have --push flag)
+        if (run.Contains("docker buildx build", StringComparison.OrdinalIgnoreCase) &&
+            run.Contains("--push", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Recognizes specific publishing GitHub Actions. Context-aware for docker/build-push-action.
+    /// </summary>
+    private static bool IsPublishingAction(GitHubStepModel step)
+    {
+        var uses = step.Uses!;
+        var usesRef = uses.Split('@')[0]; // strip version
+
+        string[] publishActions =
+        [
+            "softprops/action-gh-release",
+            "ncipollo/release-action",
+            "pypa/gh-action-pypi-publish",
+        ];
+
+        foreach (var action in publishActions)
+        {
+            if (usesRef.Equals(action, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        // docker/build-push-action: only when push: true
+        if (usesRef.Equals("docker/build-push-action", StringComparison.OrdinalIgnoreCase))
+        {
+            return step.With.TryGetValue("push", out var pushValue) &&
+                   pushValue.Equals("true", StringComparison.OrdinalIgnoreCase);
         }
 
         return false;
@@ -393,7 +430,7 @@ internal static class GitHubActionsSemanticChecks
 
     private static bool IsStrictValidationJob(GitHubJobModel job)
     {
-        return IsValidationName(job.Name) &&
+        return IsValidationJob(job) &&
                !IsOptionalValidationName(job.Name) &&
                !JobAllowsValidationFailure(job);
     }
@@ -403,9 +440,8 @@ internal static class GitHubActionsSemanticChecks
         return job.ContinueOnError ||
                job.Steps.Any(step =>
                    step.ContinueOnError &&
-                   step.Name is not null &&
-                   IsValidationName(step.Name) &&
-                   !IsNotificationStepName(step.Name));
+                   IsValidationStep(step) &&
+                   !IsNotificationStepName(step.Name ?? ""));
     }
 
     private static bool JobRunsRegardlessOfNeedsResult(GitHubJobModel job)
@@ -414,14 +450,56 @@ internal static class GitHubActionsSemanticChecks
                job.IfExpression.Contains("always()", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Tokenizes name on separators (-, _, space, ., /) and matches complete tokens
+    /// against the validation token list. Avoids false positives like "contest" matching "test".
+    /// </summary>
     private static bool IsValidationName(string name)
     {
-        foreach (var hint in ValidationJobNameHints)
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        var tokens = name.Split(['-', '_', ' ', '.', '/'], StringSplitOptions.RemoveEmptyEntries);
+        return tokens.Any(token => ValidationTokens.Contains(token, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static bool IsValidationJob(GitHubJobModel job)
+    {
+        // Name-based classification.
+        if (IsValidationName(job.Name))
+            return true;
+
+        // Command-based: check steps for recognized validation commands.
+        return job.Steps.Any(step => IsValidationStep(step));
+    }
+
+    private static bool IsValidationStep(GitHubStepModel step)
+    {
+        // Name-based (including unnamed steps with validation commands).
+        if (step.Name is not null && IsValidationName(step.Name))
+            return true;
+
+        // Command-based recognition for unnamed steps.
+        if (step.Run is not null)
         {
-            if (name.Contains(hint, StringComparison.OrdinalIgnoreCase))
+            string[] validationCommands =
+            [
+                "dotnet test", "npm test", "npm run test", "pnpm test", "yarn test",
+                "pytest", "python -m pytest", "cargo test", "go test",
+                "mvn test", "mvn verify", "gradle test", "gradle check",
+                "./gradlew test", "./gradlew check",
+            ];
+            foreach (var cmd in validationCommands)
             {
-                return true;
+                if (step.Run.Contains(cmd, StringComparison.OrdinalIgnoreCase))
+                    return true;
             }
+        }
+
+        // Action-based recognition.
+        if (step.Uses is not null)
+        {
+            var usesRef = step.Uses.Split('@')[0];
+            if (usesRef.Equals("github/codeql-action/analyze", StringComparison.OrdinalIgnoreCase))
+                return true;
         }
 
         return false;

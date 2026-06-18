@@ -937,7 +937,7 @@ public sealed class GitHubActionsBasicAnalyzerTests
     }
 
     [Fact]
-    public async Task AnalyzeAsync_PublishJobAlwaysCondition_ReportsGHA009()
+    public async Task AnalyzeAsync_PublishJobAlwaysCondition_ReportsGHA021()
     {
         using var fixture = TemporaryRepository.Create();
         var dir = Path.Combine(fixture.Path, ".github", "workflows");
@@ -959,9 +959,11 @@ public sealed class GitHubActionsBasicAnalyzerTests
         var analyzer = new GitHubActionsBasicAnalyzer();
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
+        // With strict validation dependency and always(), GHA021 fires instead of GHA009.
         Assert.Contains(result.Findings, f =>
-            f.RuleId == "TRUST-GHA009" &&
+            f.RuleId == "TRUST-GHA021" &&
             f.Evidence.Any(evidence => evidence.Message.Contains("always", StringComparison.OrdinalIgnoreCase)));
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA009");
     }
 
     [Fact]

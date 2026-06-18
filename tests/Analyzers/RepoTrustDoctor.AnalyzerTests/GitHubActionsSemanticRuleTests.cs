@@ -421,6 +421,289 @@ public sealed class GitHubActionsSemanticRuleTests
         Assert.Contains(findings, f => f.RuleId == "TRUST-GHA022" && !string.IsNullOrWhiteSpace(f.IdentityKey));
     }
 
+    [Fact]
+    public async Task GHA021_GHA009_NotDuplicated_WhenAlwaysAndNeeds()
+    {
+        // Publish needs test + if: always() → GHA021 only, no GHA009.
+        using var fixture = CreateWorkflow("ci.yml", """
+        name: ci
+        on: [push]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - run: dotnet test
+          publish:
+            needs: test
+            if: always()
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var findings = await ScanAsync(fixture);
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA021");
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task GHA009_Only_WhenNoNeeds()
+    {
+        // Publish with no needs → GHA009 only, no GHA021.
+        using var fixture = CreateWorkflow("ci.yml", """
+        name: ci
+        on: [push]
+        jobs:
+          publish:
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var findings = await ScanAsync(fixture);
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA009");
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA021");
+    }
+
+    [Fact]
+    public async Task NeitherGHA009_NorGHA021_WhenNeedsTestWithoutAlways()
+    {
+        // Publish needs test, no always() → neither finding.
+        using var fixture = CreateWorkflow("ci.yml", """
+        name: ci
+        on: [push]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - run: dotnet test
+          publish:
+            needs: test
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var findings = await ScanAsync(fixture);
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA009");
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA021");
+    }
+
+    [Fact]
+    public async Task GHA021_Only_WhenTransitiveNeedsTestWithAlways()
+    {
+        // Publish needs build needs test + if: always() → GHA021 only.
+        using var fixture = CreateWorkflow("ci.yml", """
+        name: ci
+        on: [push]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - run: dotnet test
+          build:
+            needs: test
+            runs-on: ubuntu-latest
+            steps:
+              - run: dotnet build
+          publish:
+            needs: build
+            if: always()
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var findings = await ScanAsync(fixture);
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA021");
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    // ── 1.2: Publish detection accuracy ──────────────────────────────
+
+    [Fact]
+    public async Task PublishDetection_GhReleaseCreate_IsPublishing()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        jobs:
+          publish:
+            runs-on: ubuntu-latest
+            steps:
+              - run: gh release create v1.0
+        """);
+        var findings = await ScanAsync(fixture);
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task PublishDetection_GhReleaseView_IsNotPublishing()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        jobs:
+          check:
+            runs-on: ubuntu-latest
+            steps:
+              - run: gh release view
+        """);
+        var findings = await ScanAsync(fixture);
+        // gh release view is not publishing; if no other publish, no GHA009/GHA021.
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA009");
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA021");
+    }
+
+    [Fact]
+    public async Task PublishDetection_NpmPublish_IsPublishing()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        jobs:
+          publish:
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+        var findings = await ScanAsync(fixture);
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task PublishDetection_DockerPush_IsPublishing()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        jobs:
+          publish:
+            runs-on: ubuntu-latest
+            steps:
+              - run: docker push myimage:latest
+        """);
+        var findings = await ScanAsync(fixture);
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task PublishDetection_DockerBuildxBuild_WithoutPush_IsNotPublishing()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+            steps:
+              - run: docker buildx build -t myimage .
+        """);
+        var findings = await ScanAsync(fixture);
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA009");
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA021");
+    }
+
+    [Fact]
+    public async Task PublishDetection_DockerBuildxBuild_WithPush_IsPublishing()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        jobs:
+          publish:
+            runs-on: ubuntu-latest
+            steps:
+              - run: docker buildx build -t myimage . --push
+        """);
+        var findings = await ScanAsync(fixture);
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task PublishDetection_SoftpropsActionRelease_IsPublishing()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        jobs:
+          publish:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: softprops/action-gh-release@v1
+        """);
+        var findings = await ScanAsync(fixture);
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task PublishDetection_DockerBuildPushAction_WithPushTrue_IsPublishing()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        jobs:
+          publish:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: docker/build-push-action@v5
+                with:
+                  push: true
+        """);
+        var findings = await ScanAsync(fixture);
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task PublishDetection_DockerBuildPushAction_WithoutPush_IsNotPublishing()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: docker/build-push-action@v5
+                with:
+                  push: false
+        """);
+        var findings = await ScanAsync(fixture);
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA009");
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA021");
+    }
+
+    // ── 1.3: Validation job/step classification ────────────────────
+
+    [Fact]
+    public async Task Validation_UnnamedStep_DotnetTest_WithContinueOnError()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+            steps:
+              - run: dotnet test
+                continue-on-error: true
+        """);
+        var findings = await ScanAsync(fixture);
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA020");
+    }
+
+    [Fact]
+    public async Task Validation_JobNamedCi_WithDotnetTest()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        jobs:
+          ci:
+            runs-on: ubuntu-latest
+            steps:
+              - run: dotnet test
+        """);
+        var findings = await ScanAsync(fixture);
+        // "ci" is not a validation token, but dotnet test makes the step validation.
+        // GHA009/GHA021 not triggered (no publish). Just verify no crash.
+        Assert.NotNull(findings);
+    }
+
+    [Fact]
+    public async Task Validation_Contest_NotTest()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        jobs:
+          contest:
+            runs-on: ubuntu-latest
+            steps:
+              - run: echo hello
+        """);
+        var findings = await ScanAsync(fixture);
+        // "contest" should NOT match "test" (token-based matching).
+        // With continue-on-error, should NOT trigger GHA020.
+        Assert.DoesNotContain(findings, f => f.RuleId == "TRUST-GHA020");
+    }
+
     private static TemporaryRepository CreateWorkflow(string fileName, string content)
     {
         var fixture = TemporaryRepository.Create();

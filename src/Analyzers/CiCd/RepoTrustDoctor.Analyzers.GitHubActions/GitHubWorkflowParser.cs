@@ -239,6 +239,14 @@ internal static class GitHubWorkflowParser
         }
 
         var baseIndent = GetIndentation(lines[keyIndex]);
+
+        // Check for inline flow mapping: permissions: { contents: write, packages: read }
+        var flowValues = TryParseFlowMapping(lines[keyIndex], key);
+        if (flowValues is not null)
+        {
+            return flowValues;
+        }
+
         var valueIndent = FindFirstChildIndent(lines, keyIndex, baseIndent, end);
         if (valueIndent is null)
         {
@@ -487,6 +495,64 @@ internal static class GitHubWorkflowParser
         }
 
         return trimmed[(key.Length + 1)..].Trim();
+    }
+
+    /// <summary>
+    /// Parses an inline YAML flow mapping: { key: value, key2: value2 }
+    /// Returns null if the line does not contain a flow mapping.
+    /// </summary>
+    private static Dictionary<string, string>? TryParseFlowMapping(string line, string key)
+    {
+        var value = TryGetLineValue(line, key, allowSequencePrefix: false);
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        value = value.Trim();
+        if (!value.StartsWith('{') || !value.EndsWith('}')) return null;
+
+        // Empty mapping: {}
+        var inner = value[1..^1].Trim();
+        if (inner.Length == 0)
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var entries = SplitFlowMappingEntries(inner);
+        foreach (var entry in entries)
+        {
+            var colonIdx = entry.IndexOf(':');
+            if (colonIdx < 0) continue;
+            var entryKey = entry[..colonIdx].Trim();
+            var entryValue = entry[(colonIdx + 1)..].Trim().Trim('"', '\'');
+            if (entryKey.Length > 0)
+                result[entryKey] = entryValue;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Splits flow mapping entries by comma, respecting simple quoting.
+    /// </summary>
+    private static string[] SplitFlowMappingEntries(string inner)
+    {
+        var entries = new List<string>();
+        var depth = 0;
+        var inQuote = false;
+        var start = 0;
+        for (var i = 0; i < inner.Length; i++)
+        {
+            var c = inner[i];
+            if (c == '"' && !inQuote) { inQuote = true; continue; }
+            if (c == '"' && inQuote) { inQuote = false; continue; }
+            if (inQuote) continue;
+            if (c is '{' or '[') depth++;
+            else if (c is '}' or ']') depth--;
+            else if (c == ',' && depth == 0)
+            {
+                entries.Add(inner[start..i]);
+                start = i + 1;
+            }
+        }
+        entries.Add(inner[start..]);
+        return entries.ToArray();
     }
 
     private static IReadOnlyList<string> ParseInlineListOrScalar(string value)

@@ -119,7 +119,11 @@ public sealed partial class GitHubActionsBasicAnalyzer : IRepositoryAnalyzer
             CheckShellInjection(content, relativePath, findings);
 
             var parseResult = GitHubWorkflowParser.Parse(content);
-            parseWarnings.AddRange(parseResult.Warnings);
+            // Prefix parser warnings with the repository-relative path.
+            foreach (var w in parseResult.Warnings)
+            {
+                parseWarnings.Add($"{relativePath}: {w}");
+            }
             if (parseResult.Model is not null)
             {
                 var semanticFindings = GitHubActionsSemanticChecks.RunAll(content, relativePath, parseResult.Model);
