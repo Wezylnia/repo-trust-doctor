@@ -355,12 +355,49 @@ public sealed class GitHubActionsSemanticRuleTests
         var findings1 = await ScanAsync(fixture);
         var findings2 = await ScanAsync(fixture);
 
-        Assert.Equal(findings1.Count, findings2.Count);
-        for (var i = 0; i < findings1.Count; i++)
-        {
-            Assert.Equal(findings1[i].RuleId, findings2[i].RuleId);
-            Assert.Equal(findings1[i].Fingerprint, findings2[i].Fingerprint);
-        }
+        var semantic1 = findings1.Where(f => f.RuleId == "TRUST-GHA019").ToList();
+        var semantic2 = findings2.Where(f => f.RuleId == "TRUST-GHA019").ToList();
+
+        Assert.Single(semantic1);
+        Assert.Single(semantic2);
+        Assert.Equal(semantic1[0].Fingerprint, semantic2[0].Fingerprint);
+        Assert.False(string.IsNullOrWhiteSpace(semantic1[0].IdentityKey));
+        Assert.Equal(semantic1[0].IdentityKey, semantic2[0].IdentityKey);
+    }
+
+    [Fact]
+    public async Task GHA020_GHA021_GHA022_EmitIdentityKeys()
+    {
+        using var fixture = CreateWorkflow("ci.yml", """
+        name: ci
+        on: [pull_request]
+        jobs:
+          validate:
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm test
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - name: Security scan
+                continue-on-error: true
+                run: echo scan
+          release:
+            needs: validate
+            if: always()
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/cache@v4
+                with:
+                  key: pr-${{ github.event.pull_request.title }}
+              - run: npm publish
+        """);
+
+        var findings = await ScanAsync(fixture);
+
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA020" && !string.IsNullOrWhiteSpace(f.IdentityKey));
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA021" && !string.IsNullOrWhiteSpace(f.IdentityKey));
+        Assert.Contains(findings, f => f.RuleId == "TRUST-GHA022" && !string.IsNullOrWhiteSpace(f.IdentityKey));
     }
 
     private static TemporaryRepository CreateWorkflow(string fileName, string content)

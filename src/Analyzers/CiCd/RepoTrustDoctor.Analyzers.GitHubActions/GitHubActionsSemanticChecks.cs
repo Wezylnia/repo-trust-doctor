@@ -75,7 +75,8 @@ internal static class GitHubActionsSemanticChecks
                     relativePath,
                     $"Validation job '{job.Name}' has continue-on-error: true.",
                     job.StartLine,
-                    Confidence.High);
+                    Confidence.High,
+                    identityKey: $"gha020|{relativePath}|job|{job.Name}");
             }
 
             foreach (var step in job.Steps)
@@ -95,7 +96,8 @@ internal static class GitHubActionsSemanticChecks
                     relativePath,
                     $"Validation step '{step.Name}' in job '{job.Name}' has continue-on-error: true.",
                     step.StartLine,
-                    Confidence.High);
+                    Confidence.High,
+                    identityKey: $"gha020|{relativePath}|step|{job.Name}|{step.Name}");
                 }
             }
         }
@@ -130,7 +132,8 @@ internal static class GitHubActionsSemanticChecks
                         relativePath,
                         $"Release job '{job.Name}' uses if: always() and depends on validation jobs. It may publish after a failed dependency.",
                         job.StartLine,
-                        Confidence.Medium);
+                        Confidence.Medium,
+                        identityKey: $"gha021|{relativePath}|{job.Name}");
                 }
             }
         }
@@ -210,7 +213,8 @@ internal static class GitHubActionsSemanticChecks
                         relativePath,
                         $"Cache key or restore-keys contains untrusted event data in a cache step: {field}",
                         i + 1,
-                        Confidence.Medium);
+                        Confidence.Medium,
+                        identityKey: $"gha022|{relativePath}|{i + 1}|{field}");
                     goto NextCacheStep;
                 }
             }
