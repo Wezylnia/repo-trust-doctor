@@ -37,7 +37,7 @@ internal static class TerraformLockfileChecks
         RequiredProvidersEvidence? evidence = null;
         foreach (var file in Directory
                      .EnumerateFiles(directoryPath, "*.tf", SearchOption.TopDirectoryOnly)
-                     .Where(RepositoryFileSystem.CanReadAsText)
+                     .Where(static file => RepositoryFileSystem.CanReadAsText(file))
                      .OrderBy(file => Path.GetRelativePath(repositoryPath, file), pathComparer))
         {
             var relativePath = Path.GetRelativePath(repositoryPath, file).Replace('\\', '/');
