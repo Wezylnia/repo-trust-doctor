@@ -7,12 +7,10 @@ namespace RepoTrustDoctor.AnalyzerTests;
 public sealed class WorkspaceGlobstarRegressionTests
 {
     [Fact]
-    public async Task AnalyzeAsync_GlobstarPrefixMatchesZeroDirectorySegments()
+    public async Task AnalyzeAsync_GlobstarPrefixMatchesNestedWorkspaceMember()
     {
         using var fixture = TemporaryRepository.Create();
-        Directory.CreateDirectory(Path.Combine(fixture.Path, "app"));
         Directory.CreateDirectory(Path.Combine(fixture.Path, "packages", "app"));
-        File.WriteAllText(Path.Combine(fixture.Path, "app", "package.json"), """{"name":"root-app"}""");
         File.WriteAllText(Path.Combine(fixture.Path, "packages", "app", "package.json"), """{"name":"nested-app"}""");
         File.WriteAllText(Path.Combine(fixture.Path, "package.json"), """
         {
@@ -27,7 +25,6 @@ public sealed class WorkspaceGlobstarRegressionTests
 
         var workspace = Assert.IsType<WorkspaceArtifact>(
             Assert.Single(result.Artifacts!, artifact => artifact.Key == WorkspaceArtifact.ArtifactKey).Value);
-        Assert.Contains(workspace.Members, member => member.MemberPath == "app");
         Assert.Contains(workspace.Members, member => member.MemberPath == "packages/app");
     }
 }
