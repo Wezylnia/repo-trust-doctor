@@ -27,7 +27,14 @@ internal sealed class NuGetVersionStringComparer : IComparer<string?>
             return false;
         }
 
-        var normalized = version.Trim().TrimStart('v');
+        var normalized = version.Trim();
+        if (normalized.Length > 1 &&
+            normalized[0] is 'v' or 'V' &&
+            char.IsDigit(normalized[1]))
+        {
+            normalized = normalized[1..];
+        }
+
         var metadataIndex = normalized.IndexOf('+', StringComparison.Ordinal);
         if (metadataIndex >= 0)
         {
@@ -37,9 +44,14 @@ internal sealed class NuGetVersionStringComparer : IComparer<string?>
         var prereleaseIndex = normalized.IndexOf('-', StringComparison.Ordinal);
         var releaseText = prereleaseIndex >= 0 ? normalized[..prereleaseIndex] : normalized;
         var prereleaseText = prereleaseIndex >= 0 ? normalized[(prereleaseIndex + 1)..] : string.Empty;
-        var release = new List<long>();
+        var releaseParts = releaseText.Split('.', StringSplitOptions.TrimEntries);
+        if (releaseParts.Length is < 1 or > 4 || releaseParts.Any(string.IsNullOrEmpty))
+        {
+            return false;
+        }
 
-        foreach (var part in releaseText.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        var release = new List<long>(releaseParts.Length);
+        foreach (var part in releaseParts)
         {
             if (!long.TryParse(part, out var number) || number < 0)
             {
@@ -49,14 +61,25 @@ internal sealed class NuGetVersionStringComparer : IComparer<string?>
             release.Add(number);
         }
 
-        if (release.Count == 0)
+        IReadOnlyList<string> prerelease = [];
+        if (prereleaseIndex >= 0)
         {
-            return false;
+            if (string.IsNullOrWhiteSpace(prereleaseText))
+            {
+                return false;
+            }
+
+            var prereleaseParts = prereleaseText.Split('.', StringSplitOptions.TrimEntries);
+            if (prereleaseParts.Any(part =>
+                    string.IsNullOrEmpty(part) ||
+                    part.Any(character => !char.IsAsciiLetterOrDigit(character) && character != '-')))
+            {
+                return false;
+            }
+
+            prerelease = prereleaseParts;
         }
 
-        IReadOnlyList<string> prerelease = string.IsNullOrWhiteSpace(prereleaseText)
-            ? []
-            : prereleaseText.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         key = new NuGetVersionKey(release, prerelease);
         return true;
     }
