@@ -5,7 +5,7 @@ namespace RepoTrustDoctor.Infrastructure.PackageRegistries;
 public static class PackageLicenseNormalizer
 {
     private const int MaxExpressionLength = 120;
-    private static readonly string[] PermissiveLicenses = ["MIT", "APACHE-2.0", "BSD-2-CLAUSE", "BSD-3-CLAUSE", "ISC"];
+    private static readonly string[] PermissiveLicenses = ["MIT-0", "MIT", "APACHE-2.0", "BSD-2-CLAUSE", "BSD-3-CLAUSE", "ISC"];
     private static readonly string[] CopyleftLicenses =
     [
         "AGPL-3.0-OR-LATER", "AGPL-3.0-ONLY", "AGPL-3.0",
@@ -74,9 +74,9 @@ public static class PackageLicenseNormalizer
                 return false;
             }
 
-            var beforeBoundary = index == 0 || !char.IsLetterOrDigit(expression[index - 1]);
+            var beforeBoundary = index == 0 || !IsLicenseIdCharacter(expression[index - 1]);
             var end = index + id.Length;
-            var afterBoundary = end >= expression.Length || !char.IsLetterOrDigit(expression[end]);
+            var afterBoundary = end >= expression.Length || !IsLicenseIdCharacter(expression[end]);
             if (beforeBoundary && afterBoundary)
             {
                 return true;
@@ -87,6 +87,9 @@ public static class PackageLicenseNormalizer
 
         return false;
     }
+
+    private static bool IsLicenseIdCharacter(char value) =>
+        char.IsLetterOrDigit(value) || value is '-' or '.';
 
     private static bool IsPermissiveAlternative(string expression) =>
         expression.Contains(" OR ", StringComparison.Ordinal) &&
