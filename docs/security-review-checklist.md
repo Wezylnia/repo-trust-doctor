@@ -61,3 +61,12 @@ Use this checklist for changes that touch repository intake, analysis, reporting
 - [ ] Do not run build scripts, tests, package lifecycle hooks, or repository tooling by default.
 - [ ] Any future execution mode must be explicit, isolated, resource-limited, and documented.
 - [ ] Prefer lower-confidence static findings over unsafe execution.
+
+## Suppression Configuration (.repo-trust.json)
+
+- [ ] Suppressions do not delete findings; they remain visible in all report formats.
+- [ ] Suppressions require a non-empty reason.
+- [ ] Expired suppressions are ignored.
+- [ ] Raw secrets must not be placed in suppression reasons.
+- [ ] Malformed .repo-trust.json produces warnings only, never crashes the scan.
+- [ ] Suppression config is read only from the repository root; no path traversal.

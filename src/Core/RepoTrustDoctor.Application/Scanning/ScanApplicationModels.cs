@@ -38,7 +38,10 @@ public sealed record ScanState(
             Result?.Modules.Count,
             Result?.Findings.Count,
             Result?.Score.Overall,
-            Result?.Score.Decision.Kind);
+            Result?.Score.Decision.Kind,
+            State == ScanLifecycleState.Completed ? $"/api/scans/{ScanId}/report?format=json" : null,
+            State == ScanLifecycleState.Completed ? $"/api/scans/{ScanId}/report?format=markdown" : null,
+            State == ScanLifecycleState.Completed ? $"/api/scans/{ScanId}/report?format=sarif" : null);
 
     public ScanProgressDto ToProgressDto()
     {

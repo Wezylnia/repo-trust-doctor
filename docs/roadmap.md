@@ -23,7 +23,7 @@ Current scans are static-only by default. The tool does not execute repository c
 | `v0.7.x` | Release trust | Release hygiene, artifact integrity, SBOM/provenance evidence |
 | `v0.8.x` | Deep code intelligence | Coverage import, code criticality, public API risk |
 | `v0.9.x` | History and comparison | Trust diff, historical trend, repository comparison, monitoring models |
-| `v1.0.x` | Stable public release | Current: stable contracts, API/worker hosts, React scan workbench, documented reports |
+| `v1.0.x` | Stable public release | v1.0.5: stable contracts, API/worker hosts, React scan workbench, dependency consistency, GitHub metadata, repo hygiene, suppression, structured evidence, documented reports |
 | `v0.7.2` | Java and Spring Boot support | Maven/Gradle inventory, Maven metadata/advisory lookup, Spring Boot Actuator exposure checks |
 | `v1.2.x` | More dependency ecosystems | Go, Rust, PHP, Ruby, Swift, Dart/Flutter, Elixir, and C/C++ package manager inventory |
 | `v1.3.x` | Monorepo and workspace intelligence | Better workspace grouping, package manager workspace support, per-project summaries |

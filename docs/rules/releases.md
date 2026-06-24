@@ -168,3 +168,70 @@ Why it matters: release automation should make artifact integrity evidence easy 
 Recommendation: add checksum, SBOM, provenance, or attestation generation to release workflows.
 
 Noise control: YAML comments are removed before publish and integrity evidence patterns are evaluated, so TODO comments do not satisfy the rule or create a false release signal.
+
+## TRUST-EVI010: SBOM Does Not Cover Direct Dependency Inventory
+
+- Category: Releases
+- Default severity: Medium
+- Default confidence: Medium
+
+Detects when the imported SBOM appears to cover fewer than 70% of the direct
+dependencies detected by the dependency inventory. This rule runs only when at
+least 10 direct dependencies have correlatable identities and at least one SBOM
+component has a valid package URL.
+
+Why it matters: an SBOM that covers only a fraction of direct dependencies may
+have been generated from a partial build graph and may not provide complete
+supply-chain visibility.
+
+Recommendation: regenerate the SBOM from the current build graph to include all
+direct dependencies. The message uses cautious wording and does not claim the
+SBOM is invalid or malicious.
+
+## TRUST-EVI011: Provenance Subject Does Not Contain a Digest
+
+- Category: Releases
+- Default severity: Medium
+- Default confidence: High
+
+Detects provenance subjects that do not include a SHA-256 or SHA-512 digest key.
+This rule does not verify digest values and does not claim artifact tampering.
+
+Why it matters: provenance without a cryptographic digest does not provide
+meaningful artifact integrity evidence.
+
+Recommendation: ensure provenance generation includes SHA-256 or SHA-512 digests
+for all subjects.
+
+## TRUST-EVI012: Provenance Repository Identity Differs From Target
+
+- Category: Releases
+- Default severity: Medium
+- Default confidence: Medium
+
+Detects when provenance metadata references a different repository than the
+scanned target. If the repository identity cannot be determined, this rule is
+not triggered.
+
+Why it matters: provenance generated for a different repository is not useful
+for verifying the current repository's artifacts.
+
+Recommendation: ensure provenance was generated for the current repository.
+
+## TRUST-EVI013: Evidence Contains Conflicting Component Identities
+
+- Category: Releases
+- Default severity: Low
+- Default confidence: High
+
+Detects when the same normalized package URL appears with conflicting component
+versions within a single imported evidence file. One aggregate finding is
+emitted per SBOM file.
+
+Why it matters: conflicting component versions in imported evidence may indicate
+a generation error or a merge artifact.
+
+Recommendation: review and reconcile conflicting component versions in imported
+evidence. RepoTrustDoctor does not perform cryptographic verification of SBOM or
+provenance in this release; these rules are evidence quality and correlation
+findings.

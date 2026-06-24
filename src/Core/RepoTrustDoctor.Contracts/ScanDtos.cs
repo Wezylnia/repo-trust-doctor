@@ -23,7 +23,10 @@ public sealed record ScanStatusResponse(
     int? ModuleCount,
     int? FindingCount,
     int? OverallScore,
-    FinalDecisionKind? Decision);
+    FinalDecisionKind? Decision,
+    string? ReportJsonUrl = null,
+    string? ReportMarkdownUrl = null,
+    string? ReportSarifUrl = null);
 
 public enum ScanLifecycleState
 {
