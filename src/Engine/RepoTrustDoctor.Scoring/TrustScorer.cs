@@ -39,6 +39,15 @@ public sealed class TrustScorer
         TrustProfile trustProfile,
         IReadOnlyCollection<ScanModule> modules)
     {
+        return ScoreScan(findings, trustProfile, modules, new Dictionary<string, object>());
+    }
+
+    public TrustScore ScoreScan(
+        IReadOnlyList<Finding> findings,
+        TrustProfile trustProfile,
+        IReadOnlyCollection<ScanModule> modules,
+        IReadOnlyDictionary<string, object> artifacts)
+    {
         var evaluatedCategories = modules
             .Where(module =>
                 module.Status is ModuleStatus.Completed or ModuleStatus.CompletedWithWarnings)
@@ -46,14 +55,15 @@ public sealed class TrustScorer
             .Distinct()
             .ToArray();
         var completeness = ScanCompletenessEvaluator.Evaluate(modules);
-        return BuildScore(findings, trustProfile, evaluatedCategories, completeness);
+        return BuildScore(findings, trustProfile, evaluatedCategories, completeness, artifacts);
     }
 
     private static TrustScore BuildScore(
         IReadOnlyList<Finding> findings,
         TrustProfile trustProfile,
         IReadOnlyCollection<AnalysisCategory> evaluatedCategories,
-        ScanCompletenessAssessment? completeness = null)
+        ScanCompletenessAssessment? completeness = null,
+        IReadOnlyDictionary<string, object>? artifacts = null)
     {
         completeness ??= ScanCompletenessAssessment.Complete;
         var normalizedProfile = TrustProfileCatalog.Normalize(trustProfile);
@@ -97,11 +107,13 @@ public sealed class TrustScorer
             overall = 100;
         }
 
-        var policyEvaluation = new TrustPolicyEvaluator().Evaluate(
+        var policyEvaluationContext = new PolicyEvaluationContext(
             findings,
-            policy,
             overall,
-            categoryScores);
+            categoryScores,
+            artifacts ?? new Dictionary<string, object>());
+
+        var policyEvaluation = new TrustPolicyEvaluator().Evaluate(policyEvaluationContext, policy);
 
         // Hard-cap only for explicit blocking policy risks, explicit blocking findings,
         // or critical evidence. Non-blocking High findings still affect the score and

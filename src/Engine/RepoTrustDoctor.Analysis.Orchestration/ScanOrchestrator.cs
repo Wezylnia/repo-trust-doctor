@@ -239,7 +239,7 @@ public sealed class ScanOrchestrator
             suppressedFindings.Add(suppression is not null ? finding with { Suppression = suppression } : finding);
         }
 
-        var score = scorer.ScoreScan(suppressedFindings, trustProfile, modules);
+        var score = scorer.ScoreScan(suppressedFindings, trustProfile, modules, context.Artifacts);
         var status = modules.Any(module => module.Status is
             ModuleStatus.CompletedWithWarnings or
             ModuleStatus.Failed or

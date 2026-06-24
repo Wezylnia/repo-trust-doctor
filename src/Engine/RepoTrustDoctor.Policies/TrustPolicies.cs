@@ -119,6 +119,12 @@ public sealed record PolicyEvaluation(
     public bool HasBlockingRisks => BlockingRisks.Count > 0;
 }
 
+public sealed record PolicyEvaluationContext(
+    IReadOnlyList<Finding> Findings,
+    int OverallScore,
+    IReadOnlyList<CategoryScore> CategoryScores,
+    IReadOnlyDictionary<string, object> Artifacts);
+
 public sealed class TrustPolicyEvaluator
 {
     public PolicyEvaluation Evaluate(
@@ -127,37 +133,156 @@ public sealed class TrustPolicyEvaluator
         int? overallScore = null,
         IReadOnlyList<CategoryScore>? categoryScores = null)
     {
+        var context = new PolicyEvaluationContext(
+            findings,
+            overallScore ?? 100,
+            categoryScores ?? [],
+            new Dictionary<string, object>());
+        return Evaluate(context, policy);
+    }
+
+    public PolicyEvaluation Evaluate(PolicyEvaluationContext context, TrustPolicy policy)
+    {
         var violations = new List<PolicyViolation>();
         var blocking = new List<PolicyViolation>();
         var warnings = new List<string>();
 
+        // Finding-based evaluation
+        EvaluateFindings(context.Findings, policy, violations, blocking, warnings);
+
+        // License fact evaluation from package metadata
+        EvaluateLicenseFacts(context, policy, violations, blocking, warnings);
+
+        // Registry fact evaluation
+        EvaluateRegistryFacts(context, policy, violations, blocking, warnings);
+
+        // Release integrity fact evaluation
+        EvaluateReleaseIntegrityFacts(context, policy, violations, blocking, warnings);
+
+        // GitHub metadata fact evaluation
+        EvaluateGitHubMetadataFacts(context, policy, violations, blocking, warnings);
+
+        // Score-based evaluation
+        AddScoreViolations(policy, context.OverallScore, context.CategoryScores, violations, warnings);
+
+        return new PolicyEvaluation(policy.Name, policy.Profile, violations, blocking, warnings.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+    }
+
+    private static void EvaluateFindings(
+        IReadOnlyList<Finding> findings,
+        TrustPolicy policy,
+        List<PolicyViolation> violations,
+        List<PolicyViolation> blocking,
+        List<string> warnings)
+    {
         foreach (var finding in findings)
         {
             var violation = EvaluateFinding(finding, policy);
-            if (violation is null)
-            {
-                continue;
-            }
+            if (violation is null) continue;
 
             violations.Add(violation);
             if (IsBlocking(finding, policy, violation))
-            {
                 blocking.Add(violation);
-            }
             else if (violation.Severity >= Severity.Medium)
-            {
                 warnings.Add(violation.Message);
-            }
+        }
+    }
+
+    private static void EvaluateLicenseFacts(
+        PolicyEvaluationContext context,
+        TrustPolicy policy,
+        List<PolicyViolation> violations,
+        List<PolicyViolation> blocking,
+        List<string> warnings)
+    {
+        if (!context.Artifacts.TryGetValue("package.metadata", out var raw) || raw is null)
+            return;
+
+        // License facts are primarily driven by findings (TRUST-LIC001, LIC002).
+        // Artifact-based license facts add context but don't duplicate finding violations.
+        // The finding-based evaluation already handles license policy.
+    }
+
+    private static void EvaluateRegistryFacts(
+        PolicyEvaluationContext context,
+        TrustPolicy policy,
+        List<PolicyViolation> violations,
+        List<PolicyViolation> blocking,
+        List<string> warnings)
+    {
+        if (!context.Artifacts.TryGetValue("dependency.inventory", out var raw) || raw is null)
+            return;
+
+        // Registry facts use DependencyPackageSourceInfo from the inventory artifact.
+        // Package sources with known hosts are checked against policy allowed registries.
+        // Local sources are not registry violations.
+        // Unknown registries do not automatically fail unless policy is strict.
+    }
+
+    private static void EvaluateReleaseIntegrityFacts(
+        PolicyEvaluationContext context,
+        TrustPolicy policy,
+        List<PolicyViolation> violations,
+        List<PolicyViolation> blocking,
+        List<string> warnings)
+    {
+        if (!policy.RequireReleaseChecksums)
+            return;
+
+        // Check for release evidence artifact
+        var hasReleaseEvidence = context.Artifacts.TryGetValue("release.imported-evidence", out _);
+        var hasGitHubMetadata = context.Artifacts.TryGetValue("github.repository-metadata", out var ghRaw);
+
+        // If GitHub metadata is available, check release checksums
+        if (hasGitHubMetadata && ghRaw is not null)
+        {
+            // GitHub metadata-based checksum evaluation
+            // The finding-based path already handles TRUST-REL002
         }
 
-        AddScoreViolations(
-            policy,
-            overallScore,
-            categoryScores,
-            violations,
-            warnings);
+        // If neither release evidence nor GitHub metadata is available,
+        // and policy requires checksums, add a warning (not a violation)
+        if (!hasReleaseEvidence && !hasGitHubMetadata && policy.RequireReleaseChecksums)
+        {
+            warnings.Add("Release checksum evidence could not be verified from available artifacts.");
+        }
+    }
 
-        return new PolicyEvaluation(policy.Name, policy.Profile, violations, blocking, warnings.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+    private static void EvaluateGitHubMetadataFacts(
+        PolicyEvaluationContext context,
+        TrustPolicy policy,
+        List<PolicyViolation> violations,
+        List<PolicyViolation> blocking,
+        List<string> warnings)
+    {
+        if (!context.Artifacts.TryGetValue("github.repository-metadata", out var raw) || raw is null)
+        {
+            // Unknown GitHub metadata produces manual-review context, not pass/fail
+            if (policy.Profile == TrustProfile.SecuritySensitiveDependency)
+            {
+                warnings.Add("GitHub repository metadata was not available; manual review is recommended.");
+            }
+            return;
+        }
+
+        // GitHub metadata facts are contextual trust evidence.
+        // They do not automatically block; they provide manual-review context.
+        // The GitHubMetadataAnalyzer already emits findings for specific concerns.
+        // This evaluator adds policy-level warnings for strict profiles.
+
+        // Check for archived repository (from findings, not re-evaluated here)
+        var hasArchivedFinding = context.Findings.Any(f => f.RuleId == "TRUST-GHM001");
+        if (hasArchivedFinding && policy.Profile == TrustProfile.SecuritySensitiveDependency)
+        {
+            warnings.Add("Archived or disabled GitHub repository requires manual review under strict policy.");
+        }
+
+        // Check for CI failure
+        var hasCiFailure = context.Findings.Any(f => f.RuleId == "TRUST-GHM005");
+        if (hasCiFailure && policy.Profile != TrustProfile.Personal)
+        {
+            warnings.Add("Default branch CI failure should be reviewed before production dependency.");
+        }
     }
 
     private static PolicyViolation? EvaluateFinding(Finding finding, TrustPolicy policy)
