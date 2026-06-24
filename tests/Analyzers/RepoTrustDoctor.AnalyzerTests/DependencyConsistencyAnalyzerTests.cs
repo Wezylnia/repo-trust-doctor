@@ -83,6 +83,156 @@ public sealed class DependencyConsistencyAnalyzerTests
         Assert.Equal(2, groups.Count);
     }
 
+    // --- TRUST-DEP052 Tests ---
+
+    [Fact]
+    public async Task DEP052_SamePackageExactVersion_NoFinding()
+    {
+        var inventory = CreateInventory([
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0", manifestPath: "sub/package.json")
+        ]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP052");
+    }
+
+    [Fact]
+    public async Task DEP052_TwoMajorVersions_ReportsFinding()
+    {
+        var inventory = CreateInventory([
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "2.0.0", manifestPath: "sub/package.json")
+        ]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP052");
+        Assert.NotEmpty(finding.Evidence);
+        Assert.False(string.IsNullOrWhiteSpace(finding.Recommendation.Message));
+        Assert.False(string.IsNullOrWhiteSpace(finding.IdentityKey));
+        Assert.Equal(Severity.Low, finding.Severity);
+    }
+
+    [Fact]
+    public async Task DEP052_ThreeMajorVersions_MediumSeverity()
+    {
+        var inventory = CreateInventory([
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "2.0.0", manifestPath: "sub-a/package.json"),
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "3.0.0", manifestPath: "sub-b/package.json")
+        ]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP052");
+        Assert.Equal(Severity.Medium, finding.Severity);
+    }
+
+    [Fact]
+    public async Task DEP052_DevelopmentDependency_NoFinding()
+    {
+        var inventory = CreateInventory([
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0", scope: DependencyScope.Development),
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "2.0.0", scope: DependencyScope.Development, manifestPath: "sub/package.json")
+        ]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP052");
+    }
+
+    [Fact]
+    public async Task DEP052_RangedVersion_Skipped()
+    {
+        var inventory = CreateInventory([
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "^1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "2.0.0", manifestPath: "sub/package.json")
+        ]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        // ^1.0.0 is a range, not parsed; only one exact version (2.0.0)
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP052");
+    }
+
+    [Fact]
+    public async Task DEP052_NpmScopedPackage_Normalized()
+    {
+        var inventory = CreateInventory([
+            CreatePackage(DependencyEcosystem.Npm, "@scope/mylib", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "@SCOPE/mylib", "2.0.0", manifestPath: "sub/package.json")
+        ]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP052");
+        Assert.Contains("dep052|npm|@scope/mylib", finding.IdentityKey);
+    }
+
+    [Fact]
+    public async Task DEP052_IdentityKey_StableUnderOrderChanges()
+    {
+        var inventory1 = CreateInventory([
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0"),
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "2.0.0", manifestPath: "sub/package.json")
+        ]);
+        var inventory2 = CreateInventory([
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "2.0.0", manifestPath: "sub/package.json"),
+            CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0")
+        ]);
+
+        var context1 = CreateContextWithInventory(inventory1);
+        var context2 = CreateContextWithInventory(inventory2);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result1 = await analyzer.AnalyzeAsync(context1, CancellationToken.None);
+        var result2 = await analyzer.AnalyzeAsync(context2, CancellationToken.None);
+
+        var key1 = result1.Findings.First(f => f.RuleId == "TRUST-DEP052").IdentityKey;
+        var key2 = result2.Findings.First(f => f.RuleId == "TRUST-DEP052").IdentityKey;
+        Assert.Equal(key1, key2);
+    }
+
+    [Fact]
+    public void ParseExactMajorVersion_ValidExact()
+    {
+        Assert.Equal(1, DependencyConsistencyAnalyzer.ParseExactMajorVersion("1.2.3"));
+        Assert.Equal(2, DependencyConsistencyAnalyzer.ParseExactMajorVersion("2.0.0"));
+        Assert.Equal(3, DependencyConsistencyAnalyzer.ParseExactMajorVersion("v3.1.0"));
+    }
+
+    [Fact]
+    public void ParseExactMajorVersion_RangesReturnNull()
+    {
+        Assert.Null(DependencyConsistencyAnalyzer.ParseExactMajorVersion("^1.0.0"));
+        Assert.Null(DependencyConsistencyAnalyzer.ParseExactMajorVersion("~2.1.0"));
+        Assert.Null(DependencyConsistencyAnalyzer.ParseExactMajorVersion(">=1.0.0"));
+        Assert.Null(DependencyConsistencyAnalyzer.ParseExactMajorVersion("[1.2.3]"));
+    }
+
+    [Fact]
+    public void ParseExactMajorVersion_NonVersionsReturnNull()
+    {
+        Assert.Null(DependencyConsistencyAnalyzer.ParseExactMajorVersion("latest"));
+        Assert.Null(DependencyConsistencyAnalyzer.ParseExactMajorVersion(""));
+        Assert.Null(DependencyConsistencyAnalyzer.ParseExactMajorVersion(null!));
+        Assert.Null(DependencyConsistencyAnalyzer.ParseExactMajorVersion("github:user/repo"));
+    }
+
     // --- Helpers ---
 
     private static AnalysisContext CreateContextWithInventory(DependencyInventoryArtifact inventory)

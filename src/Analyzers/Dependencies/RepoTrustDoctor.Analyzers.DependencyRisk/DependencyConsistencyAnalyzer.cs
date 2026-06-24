@@ -61,6 +61,66 @@ public sealed class DependencyConsistencyAnalyzer : IRepositoryAnalyzer
         var versionGroups = BuildVersionGroups(productionPackages);
         var sourceGroups = BuildSourceGroups(productionPackages);
 
+        var findings = new List<Finding>();
+
+        // TRUST-DEP052: major-version drift
+        foreach (var group in versionGroups)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var versionedPackages = group.Packages
+                .Where(p => !string.IsNullOrWhiteSpace(p.Version))
+                .Select(p => (Package: p, Major: ParseExactMajorVersion(p.Version!)))
+                .Where(x => x.Major.HasValue)
+                .ToArray();
+
+            if (versionedPackages.Length < 2)
+            {
+                continue;
+            }
+
+            var distinctMajors = versionedPackages
+                .Select(x => x.Major!.Value)
+                .Distinct()
+                .ToArray();
+
+            if (distinctMajors.Length < 2)
+            {
+                continue;
+            }
+
+            var distinctManifests = versionedPackages
+                .Select(x => x.Package.ManifestPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+
+            var severity = distinctMajors.Length >= 3 || distinctManifests >= 3
+                ? Severity.Medium
+                : Severity.Low;
+
+            var allExact = versionedPackages.All(x => true); // all have parsed majors, all are exact
+
+            var evidenceItems = versionedPackages
+                .Take(10)
+                .Select(x => new Evidence(
+                    "dependency-version",
+                    $"Package `{x.Package.Name}` version `{x.Package.Version}` (major {x.Major}) in `{x.Package.ManifestPath}`.",
+                    x.Package.ManifestPath))
+                .ToArray();
+
+            findings.Add(new Finding(
+                "TRUST-DEP052",
+                "Direct production dependency uses multiple major versions",
+                AnalysisCategory.Dependencies,
+                severity,
+                allExact ? Confidence.High : Confidence.Medium,
+                $"Package `{group.NormalizedName}` appears with {distinctMajors.Length} different major versions across the workspace.",
+                evidenceItems,
+                new Recommendation("Standardize on a single major version of this dependency across the workspace."),
+                IdentityKey: $"dep052|{group.Ecosystem.ToString().ToLowerInvariant()}|{group.NormalizedName.ToLowerInvariant()}"));
+        }
+
+        // TRUST-DEP053 and TRUST-DEP054 added in subsequent commits
+
         var artifact = new DependencyConsistencyArtifact(
             VersionGroups: versionGroups,
             SourceGroups: sourceGroups,
@@ -71,9 +131,8 @@ public sealed class DependencyConsistencyAnalyzer : IRepositoryAnalyzer
                 ["dependency.consistency.group.count"] = (versionGroups.Count + sourceGroups.Count).ToString()
             });
 
-        // No findings emitted in this shell commit; findings come in subsequent commits.
         return Task.FromResult(AnalyzerResult.Completed(
-            [],
+            findings,
             artifacts: [new AnalyzerArtifact(DependencyConsistencyArtifact.ArtifactKey, artifact)],
             metrics: artifact.Metrics));
     }
@@ -153,5 +212,58 @@ public sealed class DependencyConsistencyAnalyzer : IRepositoryAnalyzer
     {
         // PyPI: normalize separators: -, _, . are all treated equivalently for identity
         return name.Trim().ToLowerInvariant().Replace('-', '_').Replace('.', '_');
+    }
+
+    /// <summary>
+    /// Parses the major version from an exact semantic version string like "1.2.3".
+    /// Returns null for ranges, tags, Git refs, prerelease-only, or malformed versions.
+    /// </summary>
+    internal static int? ParseExactMajorVersion(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return null;
+        }
+
+        var trimmed = version.Trim();
+
+        // Skip ranges, tags, and non-exact specifiers
+        if (trimmed.StartsWith('^') || trimmed.StartsWith('~') || trimmed.StartsWith('>') ||
+            trimmed.StartsWith('<') || trimmed.StartsWith('=') || trimmed.StartsWith('[') ||
+            trimmed.StartsWith('*') || trimmed.StartsWith('x') || trimmed.StartsWith('X'))
+        {
+            return null;
+        }
+
+        // Skip common non-version strings
+        if (trimmed.Equals("latest", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("main", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("master", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains('/')) // Git refs
+        {
+            return null;
+        }
+
+        // Allow optional 'v' prefix
+        var versionPart = trimmed.StartsWith("v", StringComparison.OrdinalIgnoreCase)
+            ? trimmed[1..]
+            : trimmed;
+
+        // Split on . - +
+        var dotIndex = versionPart.IndexOf('.');
+        var dashIndex = versionPart.IndexOf('-');
+        var plusIndex = versionPart.IndexOf('+');
+        var firstDot = dotIndex >= 0 ? dotIndex : int.MaxValue;
+        if (dashIndex >= 0 && dashIndex < firstDot) firstDot = dashIndex;
+        if (plusIndex >= 0 && plusIndex < firstDot) firstDot = plusIndex;
+        if (firstDot == int.MaxValue) firstDot = -1;
+        var majorStr = firstDot > 0 ? versionPart[..firstDot] : versionPart;
+
+        if (int.TryParse(majorStr, out var major))
+        {
+            return major;
+        }
+
+        return null;
     }
 }
