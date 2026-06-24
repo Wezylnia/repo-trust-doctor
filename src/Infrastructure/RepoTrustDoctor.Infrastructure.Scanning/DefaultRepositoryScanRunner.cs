@@ -90,6 +90,7 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
             new DependencyInventoryAnalyzer(),
             new ReleaseEvidenceAnalyzer(),
             new EvidenceImportAnalyzer(),
+            new ReleaseIntegrityAnalyzer(),
             new CoverageImportAnalyzer(),
             new CodeCriticalityAnalyzer(),
             new CoverageCriticalityAnalyzer(),
