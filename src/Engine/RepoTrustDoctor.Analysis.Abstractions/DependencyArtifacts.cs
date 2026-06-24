@@ -67,3 +67,21 @@ public sealed record DependencyInventoryArtifact(
 {
     public const string ArtifactKey = "dependency.inventory";
 }
+
+public sealed record DependencyConsistencyArtifact(
+    IReadOnlyList<DependencyVersionGroup> VersionGroups,
+    IReadOnlyList<DependencySourceGroup> SourceGroups,
+    IReadOnlyDictionary<string, string> Metrics)
+{
+    public const string ArtifactKey = "dependency.consistency";
+}
+
+public sealed record DependencyVersionGroup(
+    DependencyEcosystem Ecosystem,
+    string NormalizedName,
+    IReadOnlyList<DependencyPackageInfo> Packages);
+
+public sealed record DependencySourceGroup(
+    DependencyEcosystem Ecosystem,
+    string NormalizedName,
+    IReadOnlyList<DependencyPackageInfo> Packages);

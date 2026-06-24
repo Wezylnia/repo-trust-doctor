@@ -99,7 +99,8 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
             new PackageFreshnessAnalyzer(),
             new DependencyVulnerabilityAnalyzer(osvClient),
             new DependencyLicenseAnalyzer(),
-            new PackageOriginAnalyzer()
+            new PackageOriginAnalyzer(),
+            new DependencyConsistencyAnalyzer()
         ];
     }
 
