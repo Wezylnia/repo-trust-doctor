@@ -36,6 +36,10 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         new("TRUST-REPO012", "README lacks quick start guidance", AnalysisCategory.RepositoryHealth, Severity.Low, Confidence.Medium, "The README file does not appear to contain a quick start or getting started section.", "Add a short quick start section that helps users try the project quickly."),
         new("TRUST-REPO013", "Documentation folder is missing", AnalysisCategory.RepositoryHealth, Severity.Info, Confidence.High, "The repository does not contain a docs folder.", "Add a docs folder for architecture, usage, configuration, or operations documentation as the project grows."),
         new("TRUST-REPO014", "README contains broken-looking local link", AnalysisCategory.RepositoryHealth, Severity.Low, Confidence.Medium, "The README contains a local Markdown link whose target was not found.", "Fix or remove broken README links so users can follow documentation reliably."),
+        new("TRUST-REPO020", "CODEOWNERS does not cover sensitive repository areas", AnalysisCategory.RepositoryHealth, Severity.Low, Confidence.Medium, "CODEOWNERS exists but important repository areas may not be covered.", "Add CODEOWNERS entries for CI, release, infrastructure, and package manifest paths."),
+        new("TRUST-REPO021", "SECURITY policy lacks vulnerability reporting instructions", AnalysisCategory.RepositoryHealth, Severity.Low, Confidence.Medium, "SECURITY.md exists but vulnerability reporting instructions were not observed.", "Add clear vulnerability reporting instructions to SECURITY.md."),
+        new("TRUST-REPO022", "SECURITY policy lacks supported version information", AnalysisCategory.RepositoryHealth, Severity.Low, Confidence.Medium, "SECURITY.md exists but supported version information was not observed.", "Document supported versions in SECURITY.md."),
+        new("TRUST-REPO023", "Toolchain version is not pinned", AnalysisCategory.RepositoryHealth, Severity.Low, Confidence.Medium, "A project ecosystem file exists but no toolchain version pinning was observed.", "Pin the toolchain version with .nvmrc, .node-version, .tool-versions, global.json, rust-toolchain.toml, or equivalent."),
     ];
 
     public async Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken)
@@ -60,6 +64,15 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
             CheckReadmeSections(content, readmePath, context.RepositoryPath, findings);
             CheckReadmeLocalLinks(content, readmePath, context.RepositoryPath, findings);
         }
+
+        // REP020: CODEOWNERS coverage of sensitive areas
+        CheckCodeownersCoverage(context.RepositoryPath, findings);
+
+        // REP021-REP022: SECURITY.md quality
+        CheckSecurityPolicyQuality(context.RepositoryPath, findings);
+
+        // REP023: Toolchain pinning
+        CheckToolchainPinning(context.RepositoryPath, findings);
 
         return AnalyzerResult.Completed(findings);
     }
@@ -283,4 +296,304 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
 
     [GeneratedRegex(@"\[[^\]]+\]\((?<target>[^)]+)\)")]
     private static partial Regex MarkdownLinkPattern();
+
+    // --- REP020: CODEOWNERS coverage ---
+
+    private static readonly string[] SensitivePaths =
+    [
+        ".github/workflows/", ".github/actions/", "Dockerfile", "docker-compose.yml",
+        "compose.yml", "k8s/", "deploy/", "charts/", "terraform/", "infra/",
+        "src/", "package.json", "*.csproj", "*.sln", "*.slnx"
+    ];
+
+    private static void CheckCodeownersCoverage(string root, List<Finding> findings)
+    {
+        var codeownersPath = FindCodeownersPath(root);
+        if (codeownersPath is null)
+        {
+            return; // REP006 already covers missing CODEOWNERS
+        }
+
+        if (!RepositoryFileSystem.CanReadAsText(codeownersPath))
+        {
+            return;
+        }
+
+        var content = File.ReadAllText(codeownersPath);
+        var ownedPatterns = ParseCodeownersPatterns(content);
+
+        var uncoveredSensitive = SensitivePaths
+            .Where(sensitive =>
+            {
+                var exists = sensitive.Contains('*')
+                    ? Directory.GetFiles(root, sensitive, SearchOption.AllDirectories).Length > 0 ||
+                      Directory.GetDirectories(root, sensitive.TrimEnd('*'), SearchOption.AllDirectories).Length > 0
+                    : File.Exists(Path.Combine(root, sensitive)) || Directory.Exists(Path.Combine(root, sensitive));
+
+                if (!exists) return false;
+
+                return !ownedPatterns.Any(owned => PathMatchesCodeownersPattern(sensitive, owned));
+            })
+            .Take(10)
+            .ToArray();
+
+        if (uncoveredSensitive.Length > 0)
+        {
+            var ciUncovered = uncoveredSensitive.Any(p =>
+                p.Contains("workflows", StringComparison.OrdinalIgnoreCase) ||
+                p.Contains("Dockerfile", StringComparison.OrdinalIgnoreCase) ||
+                p.Contains("docker-compose", StringComparison.OrdinalIgnoreCase));
+
+            findings.Add(new Finding(
+                "TRUST-REPO020",
+                "CODEOWNERS does not cover sensitive repository areas",
+                AnalysisCategory.RepositoryHealth,
+                ciUncovered ? Severity.Medium : Severity.Low,
+                Confidence.Medium,
+                "CODEOWNERS exists but important repository areas may not be covered.",
+                [new Evidence("codeowners-coverage", $"Uncovered sensitive paths: {string.Join(", ", uncoveredSensitive)}", Path.GetRelativePath(root, codeownersPath))],
+                new Recommendation("Add CODEOWNERS entries for CI, release, infrastructure, and package manifest paths."),
+                IdentityKey: "rep020|codeowners-sensitive-coverage"));
+        }
+    }
+
+    private static string? FindCodeownersPath(string root)
+    {
+        var paths = new[] { ".github/CODEOWNERS", "CODEOWNERS" };
+        foreach (var p in paths)
+        {
+            var full = Path.Combine(root, p);
+            if (File.Exists(full)) return full;
+        }
+        return null;
+    }
+
+    private static HashSet<string> ParseCodeownersPatterns(string content)
+    {
+        var patterns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in content.Split('\n', '\r'))
+        {
+            var trimmed = line.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith('#'))
+            {
+                continue;
+            }
+
+            // CODEOWNERS format: pattern @owner1 @owner2 ...
+            var firstSpace = trimmed.IndexOf(' ');
+            if (firstSpace > 0)
+            {
+                var pattern = trimmed[..firstSpace].Trim();
+                if (!string.IsNullOrWhiteSpace(pattern) && pattern != "*")
+                {
+                    patterns.Add(pattern);
+                }
+            }
+        }
+        return patterns;
+    }
+
+    private static bool PathMatchesCodeownersPattern(string sensitivePath, string codeownersPattern)
+    {
+        // Simple prefix matching
+        return sensitivePath.StartsWith(codeownersPattern.TrimEnd('*', '/'), StringComparison.OrdinalIgnoreCase) ||
+               codeownersPattern.TrimEnd('*', '/').StartsWith(sensitivePath.TrimEnd('*', '/'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    // --- REP021-REP022: SECURITY.md quality ---
+
+    private static void CheckSecurityPolicyQuality(string root, List<Finding> findings)
+    {
+        var securityPath = FindSecurityPath(root);
+        if (securityPath is null)
+        {
+            return; // REP003 already covers missing SECURITY.md
+        }
+
+        if (!RepositoryFileSystem.CanReadAsText(securityPath))
+        {
+            return;
+        }
+
+        var content = File.ReadAllText(securityPath);
+        var relativePath = Path.GetRelativePath(root, securityPath);
+
+        // REP021: Reporting instructions
+        var reportingTokens = new[]
+        {
+            "email", "security advisory", "GitHub Security Advisory",
+            "security contact", "disclosure", "report a vulnerability"
+        };
+        var hasReporting = reportingTokens.Any(t => content.Contains(t, StringComparison.OrdinalIgnoreCase)) ||
+                          ContainsEmailLike(content);
+
+        if (!hasReporting)
+        {
+            findings.Add(new Finding(
+                "TRUST-REPO021",
+                "SECURITY policy lacks vulnerability reporting instructions",
+                AnalysisCategory.RepositoryHealth,
+                Severity.Low,
+                Confidence.Medium,
+                "SECURITY.md exists but vulnerability reporting instructions were not observed.",
+                [new Evidence("security-policy", "No vulnerability reporting instructions found in SECURITY.md.", relativePath)],
+                new Recommendation("Add clear vulnerability reporting instructions to SECURITY.md."),
+                IdentityKey: "rep021|security-policy-reporting"));
+        }
+
+        // REP022: Supported versions
+        var versionTokens = new[]
+        {
+            "supported versions", "currently supported", "security updates"
+        };
+        var hasVersionInfo = versionTokens.Any(t => content.Contains(t, StringComparison.OrdinalIgnoreCase)) ||
+                            ContainsVersionTable(content);
+
+        if (!hasVersionInfo)
+        {
+            findings.Add(new Finding(
+                "TRUST-REPO022",
+                "SECURITY policy lacks supported version information",
+                AnalysisCategory.RepositoryHealth,
+                Severity.Low,
+                Confidence.Medium,
+                "SECURITY.md exists but supported version information was not observed.",
+                [new Evidence("security-policy", "No supported version information found in SECURITY.md.", relativePath)],
+                new Recommendation("Document supported versions in SECURITY.md."),
+                IdentityKey: "rep022|security-policy-supported-versions"));
+        }
+    }
+
+    private static string? FindSecurityPath(string root)
+    {
+        var paths = new[] { "SECURITY.md", ".github/SECURITY.md" };
+        foreach (var p in paths)
+        {
+            var full = Path.Combine(root, p);
+            if (File.Exists(full)) return full;
+        }
+        return null;
+    }
+
+    private static bool ContainsEmailLike(string content)
+    {
+        // Simple heuristic: contains something@something
+        return Regex.IsMatch(content, @"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b");
+    }
+
+    private static bool ContainsVersionTable(string content)
+    {
+        // Simple heuristic: markdown table with version-like cells
+        return content.Contains("|", StringComparison.Ordinal) &&
+               (content.Contains("version", StringComparison.OrdinalIgnoreCase) ||
+                Regex.IsMatch(content, @"\|\s*\d+\.\d+"));
+    }
+
+    // --- REP023: Toolchain version pinning ---
+
+    private static void CheckToolchainPinning(string root, List<Finding> findings)
+    {
+        // Node.js: package.json exists but no version pin
+        if (Directory.GetFiles(root, "package.json", SearchOption.AllDirectories)
+                .Any(f => !f.Contains("node_modules", StringComparison.OrdinalIgnoreCase)))
+        {
+            var hasNodePin = new[] { ".nvmrc", ".node-version", ".tool-versions", "mise.toml" }
+                .Any(f => File.Exists(Path.Combine(root, f)));
+            // packageManager field in package.json also counts
+            if (!hasNodePin)
+            {
+                findings.Add(new Finding(
+                    "TRUST-REPO023",
+                    "Toolchain version is not pinned",
+                    AnalysisCategory.RepositoryHealth,
+                    Severity.Low,
+                    Confidence.Medium,
+                    "A Node.js project exists but no Node version pinning was observed.",
+                    [new Evidence("toolchain", "No .nvmrc, .node-version, .tool-versions, mise.toml, or packageManager field found.")],
+                    new Recommendation("Pin the Node.js version with .nvmrc, .node-version, .tool-versions, or mise.toml."),
+                    IdentityKey: "rep023|npm"));
+            }
+        }
+
+        // .NET: csproj/sln exists but no global.json
+        if (Directory.GetFiles(root, "*.csproj", SearchOption.AllDirectories).Length > 0 ||
+            Directory.GetFiles(root, "*.sln", SearchOption.AllDirectories).Length > 0 ||
+            Directory.GetFiles(root, "*.slnx", SearchOption.AllDirectories).Length > 0)
+        {
+            if (!File.Exists(Path.Combine(root, "global.json")))
+            {
+                findings.Add(new Finding(
+                    "TRUST-REPO023",
+                    "Toolchain version is not pinned",
+                    AnalysisCategory.RepositoryHealth,
+                    Severity.Low,
+                    Confidence.Medium,
+                    "A .NET project exists but no global.json was found.",
+                    [new Evidence("toolchain", "No global.json found at repository root.")],
+                    new Recommendation("Pin the .NET SDK version with a global.json file."),
+                    IdentityKey: "rep023|dotnet"));
+            }
+        }
+
+        // Rust: Cargo.toml exists but no rust-toolchain.toml
+        if (Directory.GetFiles(root, "Cargo.toml", SearchOption.AllDirectories).Length > 0)
+        {
+            var hasRustPin = new[] { "rust-toolchain.toml", ".tool-versions", "mise.toml" }
+                .Any(f => File.Exists(Path.Combine(root, f)));
+            if (!hasRustPin)
+            {
+                findings.Add(new Finding(
+                    "TRUST-REPO023",
+                    "Toolchain version is not pinned",
+                    AnalysisCategory.RepositoryHealth,
+                    Severity.Low,
+                    Confidence.Medium,
+                    "A Rust project exists but no toolchain version pinning was observed.",
+                    [new Evidence("toolchain", "No rust-toolchain.toml, .tool-versions, or mise.toml found.")],
+                    new Recommendation("Pin the Rust toolchain version with rust-toolchain.toml or .tool-versions."),
+                    IdentityKey: "rep023|cargo"));
+            }
+        }
+
+        // Python: pyproject.toml/requirements.txt exists but no .python-version
+        if (Directory.GetFiles(root, "pyproject.toml", SearchOption.AllDirectories).Length > 0 ||
+            Directory.GetFiles(root, "requirements.txt", SearchOption.AllDirectories).Length > 0)
+        {
+            var hasPythonPin = new[] { ".python-version", ".tool-versions", "mise.toml" }
+                .Any(f => File.Exists(Path.Combine(root, f)));
+            if (!hasPythonPin)
+            {
+                findings.Add(new Finding(
+                    "TRUST-REPO023",
+                    "Toolchain version is not pinned",
+                    AnalysisCategory.RepositoryHealth,
+                    Severity.Low,
+                    Confidence.Medium,
+                    "A Python project exists but no Python version pinning was observed.",
+                    [new Evidence("toolchain", "No .python-version, .tool-versions, or mise.toml found.")],
+                    new Recommendation("Pin the Python version with .python-version or .tool-versions."),
+                    IdentityKey: "rep023|python"));
+            }
+        }
+
+        // Ruby: Gemfile exists but no .ruby-version
+        if (Directory.GetFiles(root, "Gemfile", SearchOption.AllDirectories).Length > 0)
+        {
+            var hasRubyPin = new[] { ".ruby-version", ".tool-versions", "mise.toml" }
+                .Any(f => File.Exists(Path.Combine(root, f)));
+            if (!hasRubyPin)
+            {
+                findings.Add(new Finding(
+                    "TRUST-REPO023",
+                    "Toolchain version is not pinned",
+                    AnalysisCategory.RepositoryHealth,
+                    Severity.Low,
+                    Confidence.Medium,
+                    "A Ruby project exists but no Ruby version pinning was observed.",
+                    [new Evidence("toolchain", "No .ruby-version, .tool-versions, or mise.toml found.")],
+                    new Recommendation("Pin the Ruby version with .ruby-version or .tool-versions."),
+                    IdentityKey: "rep023|ruby"));
+            }
+        }
+    }
 }
