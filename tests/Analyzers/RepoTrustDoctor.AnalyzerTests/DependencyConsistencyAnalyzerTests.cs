@@ -233,6 +233,109 @@ public sealed class DependencyConsistencyAnalyzerTests
         Assert.Null(DependencyConsistencyAnalyzer.ParseExactMajorVersion("github:user/repo"));
     }
 
+    // --- TRUST-DEP053 Tests ---
+
+    [Fact]
+    public async Task DEP053_RegistryVsGit_ReportsFinding()
+    {
+        var pkg1 = CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0");
+        var pkg2 = CreatePackageWithMetadata(DependencyEcosystem.Npm, "mylib", "1.0.0",
+            new Dictionary<string, string> { ["sourceKind"] = "git" }, manifestPath: "sub/package.json");
+
+        var inventory = CreateInventory([pkg1, pkg2]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP053");
+        Assert.NotEmpty(finding.Evidence);
+        Assert.False(string.IsNullOrWhiteSpace(finding.Recommendation.Message));
+        Assert.False(string.IsNullOrWhiteSpace(finding.IdentityKey));
+        Assert.Contains("dep053|npm|mylib", finding.IdentityKey);
+    }
+
+    [Fact]
+    public async Task DEP053_RegistryVsPath_ReportsFinding()
+    {
+        var pkg1 = CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0");
+        var pkg2 = CreatePackageWithMetadata(DependencyEcosystem.Npm, "mylib", "1.0.0",
+            new Dictionary<string, string> { ["sourceKind"] = "path" }, manifestPath: "sub/package.json");
+
+        var inventory = CreateInventory([pkg1, pkg2]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP053");
+    }
+
+    [Fact]
+    public async Task DEP053_RegistryVsRegistry_NoFinding()
+    {
+        var pkg1 = CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0");
+        var pkg2 = CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0", manifestPath: "sub/package.json");
+
+        var inventory = CreateInventory([pkg1, pkg2]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP053");
+    }
+
+    [Fact]
+    public async Task DEP053_UnknownSource_NoFinding()
+    {
+        var pkg1 = CreatePackageWithMetadata(DependencyEcosystem.Npm, "mylib", "1.0.0",
+            new Dictionary<string, string> { ["sourceKind"] = "registry" });
+        var pkg2 = CreatePackageWithMetadata(DependencyEcosystem.Npm, "mylib", "1.0.0",
+            new Dictionary<string, string> { ["sourceKind"] = "unknown" }, manifestPath: "sub/package.json");
+
+        var inventory = CreateInventory([pkg1, pkg2]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        // unknown vs registry should not trigger by default
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP053");
+    }
+
+    [Fact]
+    public async Task DEP053_WorkspaceSource_NormalizedToPath()
+    {
+        var pkg1 = CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0");
+        var pkg2 = CreatePackageWithMetadata(DependencyEcosystem.Npm, "mylib", "1.0.0",
+            new Dictionary<string, string> { ["sourceKind"] = "workspace" }, manifestPath: "sub/package.json");
+
+        var inventory = CreateInventory([pkg1, pkg2]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        // workspace is treated as path; should report
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-DEP053");
+    }
+
+    [Fact]
+    public void GetSourceKind_DefaultsToRegistry()
+    {
+        var pkg = CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0");
+        Assert.Equal("registry", DependencyConsistencyAnalyzer.GetSourceKind(pkg));
+    }
+
+    [Fact]
+    public void GetSourceKind_ReadsMetadata()
+    {
+        var pkg = CreatePackageWithMetadata(DependencyEcosystem.Npm, "mylib", "1.0.0",
+            new Dictionary<string, string> { ["sourceKind"] = "git" });
+        Assert.Equal("git", DependencyConsistencyAnalyzer.GetSourceKind(pkg));
+    }
+
     // --- Helpers ---
 
     private static AnalysisContext CreateContextWithInventory(DependencyInventoryArtifact inventory)
@@ -267,4 +370,24 @@ public sealed class DependencyConsistencyAnalyzerTests
             IsDirect: isDirect,
             IsVersionPinned: true,
             IsPrerelease: false);
+
+    private static DependencyPackageInfo CreatePackageWithMetadata(
+        DependencyEcosystem ecosystem,
+        string name,
+        string version,
+        IReadOnlyDictionary<string, string> metadata,
+        DependencyScope scope = DependencyScope.Production,
+        string manifestPath = "package.json",
+        bool isDirect = true) =>
+        new(
+            ecosystem,
+            name,
+            version,
+            scope,
+            manifestPath,
+            LockfilePath: null,
+            IsDirect: isDirect,
+            IsVersionPinned: true,
+            IsPrerelease: false,
+            Metadata: metadata);
 }

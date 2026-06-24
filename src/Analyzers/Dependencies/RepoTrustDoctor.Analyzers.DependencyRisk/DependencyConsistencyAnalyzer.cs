@@ -119,7 +119,53 @@ public sealed class DependencyConsistencyAnalyzer : IRepositoryAnalyzer
                 IdentityKey: $"dep052|{group.Ecosystem.ToString().ToLowerInvariant()}|{group.NormalizedName.ToLowerInvariant()}"));
         }
 
-        // TRUST-DEP053 and TRUST-DEP054 added in subsequent commits
+        // TRUST-DEP053: source-kind drift
+        foreach (var group in sourceGroups)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sourceKinds = group.Packages
+                .Select(p => GetSourceKind(p))
+                .Where(k => k is not null)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (sourceKinds.Length < 2)
+            {
+                continue;
+            }
+
+            // Only report if we have a meaningful difference (e.g., registry vs git)
+            var hasRegistry = sourceKinds.Any(k => k!.Equals("registry", StringComparison.OrdinalIgnoreCase));
+            var hasNonRegistry = sourceKinds.Any(k =>
+                k!.Equals("git", StringComparison.OrdinalIgnoreCase) ||
+                k!.Equals("path", StringComparison.OrdinalIgnoreCase));
+
+            if (!hasRegistry || !hasNonRegistry)
+            {
+                continue;
+            }
+
+            var evidenceItems = group.Packages
+                .Take(10)
+                .Select(p => new Evidence(
+                    "dependency-source",
+                    $"Package `{p.Name}` resolved from source kind `{GetSourceKind(p) ?? "unknown"}` in `{p.ManifestPath}`.",
+                    p.ManifestPath))
+                .ToArray();
+
+            findings.Add(new Finding(
+                "TRUST-DEP053",
+                "Package source differs across workspace projects",
+                AnalysisCategory.Dependencies,
+                Severity.Medium,
+                Confidence.Medium,
+                $"Package `{group.NormalizedName}` appears to be resolved from different source kinds across workspace projects.",
+                evidenceItems,
+                new Recommendation("Review whether differing package sources are intentional and avoid mixing registry and non-registry sources for the same package."),
+                IdentityKey: $"dep053|{group.Ecosystem.ToString().ToLowerInvariant()}|{group.NormalizedName.ToLowerInvariant()}"));
+        }
+
+        // TRUST-DEP054 added in subsequent commits
 
         var artifact = new DependencyConsistencyArtifact(
             VersionGroups: versionGroups,
@@ -265,5 +311,25 @@ public sealed class DependencyConsistencyAnalyzer : IRepositoryAnalyzer
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Extracts the source kind from dependency package metadata.
+    /// Returns "registry", "git", "path", or null if unknown.
+    /// </summary>
+    internal static string? GetSourceKind(DependencyPackageInfo package)
+    {
+        if (package.Metadata?.TryGetValue("sourceKind", out var kind) == true &&
+            !string.IsNullOrWhiteSpace(kind))
+        {
+            if (kind.Equals("workspace", StringComparison.OrdinalIgnoreCase))
+            {
+                return "path"; // Treat workspace sources as local
+            }
+            return kind.ToLowerInvariant();
+        }
+
+        // Default: assume registry source if not specified
+        return "registry";
     }
 }
