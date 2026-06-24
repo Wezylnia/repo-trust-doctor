@@ -165,7 +165,46 @@ public sealed class DependencyConsistencyAnalyzer : IRepositoryAnalyzer
                 IdentityKey: $"dep053|{group.Ecosystem.ToString().ToLowerInvariant()}|{group.NormalizedName.ToLowerInvariant()}"));
         }
 
-        // TRUST-DEP054 added in subsequent commits
+        // TRUST-DEP054: direct dependency missing from lockfile
+        foreach (var package in directPackages)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!IsLockfileSupportedEcosystem(package.Ecosystem))
+            {
+                continue;
+            }
+
+            // Check if the package has lockfile resolution metadata
+            var resolution = GetLockfileResolution(package);
+            if (resolution != "missing")
+            {
+                continue;
+            }
+
+            // Skip transitive or development-only
+            if (!package.IsDirect)
+            {
+                continue;
+            }
+
+            var ecosystem = package.Ecosystem.ToString().ToLowerInvariant();
+            var normalizedName = NormalizePackageName(package.Ecosystem, package.Name);
+
+            findings.Add(new Finding(
+                "TRUST-DEP054",
+                "Direct dependency is not represented by the detected lockfile",
+                AnalysisCategory.Dependencies,
+                Severity.Medium,
+                Confidence.High,
+                $"Direct dependency `{package.Name}` is not represented by the detected lockfile for `{package.ManifestPath}`.",
+                [new Evidence(
+                    "lockfile-coverage",
+                    $"Package `{package.Name}` version `{package.Version ?? "(unknown)"}` in `{package.ManifestPath}` was not found in the applicable lockfile.",
+                    package.ManifestPath)],
+                new Recommendation("Run the package manager install or restore command to update the lockfile and commit the result."),
+                IdentityKey: $"dep054|{ecosystem}|{normalizedName}|{package.ManifestPath.ToLowerInvariant()}"));
+        }
 
         var artifact = new DependencyConsistencyArtifact(
             VersionGroups: versionGroups,
@@ -332,4 +371,44 @@ public sealed class DependencyConsistencyAnalyzer : IRepositoryAnalyzer
         // Default: assume registry source if not specified
         return "registry";
     }
+
+    /// <summary>
+    /// Determines the lockfile resolution state for a direct dependency.
+    /// Returns "resolved", "missing", "not-applicable", or "unknown".
+    /// </summary>
+    internal static string GetLockfileResolution(DependencyPackageInfo package)
+    {
+        // If package has explicit lockfileResolution metadata, use it
+        if (package.Metadata?.TryGetValue("lockfileResolution", out var resolution) == true &&
+            !string.IsNullOrWhiteSpace(resolution))
+        {
+            return resolution.ToLowerInvariant();
+        }
+
+        // If the ecosystem doesn't support lockfile resolution, return not-applicable
+        if (!IsLockfileSupportedEcosystem(package.Ecosystem))
+        {
+            return "not-applicable";
+        }
+
+        // If there's no lockfile path recorded for this package, it's missing from lockfile
+        if (string.IsNullOrWhiteSpace(package.LockfilePath))
+        {
+            return "missing";
+        }
+
+        // A lockfile path exists; consider it resolved
+        return "resolved";
+    }
+
+    /// <summary>
+    /// Returns true for ecosystems that support reliable lockfile resolution.
+    /// </summary>
+    internal static bool IsLockfileSupportedEcosystem(DependencyEcosystem ecosystem) =>
+        ecosystem is
+            DependencyEcosystem.Npm or
+            DependencyEcosystem.NuGet or
+            DependencyEcosystem.Cargo or
+            DependencyEcosystem.Composer or
+            DependencyEcosystem.Ruby;
 }

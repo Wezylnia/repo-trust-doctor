@@ -336,6 +336,113 @@ public sealed class DependencyConsistencyAnalyzerTests
         Assert.Equal("git", DependencyConsistencyAnalyzer.GetSourceKind(pkg));
     }
 
+    // --- TRUST-DEP054 Tests ---
+
+    [Fact]
+    public async Task DEP054_LockfileResolved_NoFinding()
+    {
+        var pkg = CreatePackageWithLockfile(DependencyEcosystem.Npm, "mylib", "1.0.0",
+            lockfilePath: "package-lock.json");
+        var inventory = CreateInventory([pkg]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP054");
+    }
+
+    [Fact]
+    public async Task DEP054_LockfileMissing_ReportsFinding()
+    {
+        var pkg = CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0");
+        // LockfilePath is null by default → lockfileResolution will be "missing"
+        var inventory = CreateInventory([pkg]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-DEP054");
+        Assert.NotEmpty(finding.Evidence);
+        Assert.False(string.IsNullOrWhiteSpace(finding.Recommendation.Message));
+        Assert.False(string.IsNullOrWhiteSpace(finding.IdentityKey));
+        Assert.Contains("dep054|npm|mylib|", finding.IdentityKey, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DEP054_TransitiveDependency_NoFinding()
+    {
+        var pkg = CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0", isDirect: false);
+        var inventory = CreateInventory([pkg]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP054");
+    }
+
+    [Fact]
+    public async Task DEP054_UnsupportedEcosystem_NoFinding()
+    {
+        var pkg = CreatePackage(DependencyEcosystem.Python, "mylib", "1.0.0");
+        var inventory = CreateInventory([pkg]);
+        var context = CreateContextWithInventory(inventory);
+        var analyzer = new DependencyConsistencyAnalyzer();
+
+        var result = await analyzer.AnalyzeAsync(context, CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-DEP054");
+    }
+
+    [Fact]
+    public void GetLockfileResolution_WithLockfilePath_Resolved()
+    {
+        var pkg = CreatePackageWithLockfile(DependencyEcosystem.Npm, "mylib", "1.0.0", lockfilePath: "package-lock.json");
+        Assert.Equal("resolved", DependencyConsistencyAnalyzer.GetLockfileResolution(pkg));
+    }
+
+    [Fact]
+    public void GetLockfileResolution_WithoutLockfilePath_Missing()
+    {
+        var pkg = CreatePackage(DependencyEcosystem.Npm, "mylib", "1.0.0");
+        Assert.Equal("missing", DependencyConsistencyAnalyzer.GetLockfileResolution(pkg));
+    }
+
+    [Fact]
+    public void GetLockfileResolution_UnsupportedEcosystem_NotApplicable()
+    {
+        var pkg = CreatePackage(DependencyEcosystem.Python, "mylib", "1.0.0");
+        Assert.Equal("not-applicable", DependencyConsistencyAnalyzer.GetLockfileResolution(pkg));
+    }
+
+    [Fact]
+    public void GetLockfileResolution_ExplicitMetadata_Overrides()
+    {
+        var pkg = CreatePackageWithMetadata(DependencyEcosystem.Npm, "mylib", "1.0.0",
+            new Dictionary<string, string> { ["lockfileResolution"] = "not-applicable" });
+        Assert.Equal("not-applicable", DependencyConsistencyAnalyzer.GetLockfileResolution(pkg));
+    }
+
+    [Fact]
+    public void IsLockfileSupportedEcosystem_SupportedEcosystems()
+    {
+        Assert.True(DependencyConsistencyAnalyzer.IsLockfileSupportedEcosystem(DependencyEcosystem.Npm));
+        Assert.True(DependencyConsistencyAnalyzer.IsLockfileSupportedEcosystem(DependencyEcosystem.NuGet));
+        Assert.True(DependencyConsistencyAnalyzer.IsLockfileSupportedEcosystem(DependencyEcosystem.Cargo));
+        Assert.True(DependencyConsistencyAnalyzer.IsLockfileSupportedEcosystem(DependencyEcosystem.Composer));
+        Assert.True(DependencyConsistencyAnalyzer.IsLockfileSupportedEcosystem(DependencyEcosystem.Ruby));
+    }
+
+    [Fact]
+    public void IsLockfileSupportedEcosystem_UnsupportedEcosystems()
+    {
+        Assert.False(DependencyConsistencyAnalyzer.IsLockfileSupportedEcosystem(DependencyEcosystem.Python));
+        Assert.False(DependencyConsistencyAnalyzer.IsLockfileSupportedEcosystem(DependencyEcosystem.Maven));
+        Assert.False(DependencyConsistencyAnalyzer.IsLockfileSupportedEcosystem(DependencyEcosystem.Go));
+    }
+
     // --- Helpers ---
 
     private static AnalysisContext CreateContextWithInventory(DependencyInventoryArtifact inventory)
@@ -390,4 +497,23 @@ public sealed class DependencyConsistencyAnalyzerTests
             IsVersionPinned: true,
             IsPrerelease: false,
             Metadata: metadata);
+
+    private static DependencyPackageInfo CreatePackageWithLockfile(
+        DependencyEcosystem ecosystem,
+        string name,
+        string version,
+        string lockfilePath,
+        DependencyScope scope = DependencyScope.Production,
+        string manifestPath = "package.json",
+        bool isDirect = true) =>
+        new(
+            ecosystem,
+            name,
+            version,
+            scope,
+            manifestPath,
+            LockfilePath: lockfilePath,
+            IsDirect: isDirect,
+            IsVersionPinned: true,
+            IsPrerelease: false);
 }
