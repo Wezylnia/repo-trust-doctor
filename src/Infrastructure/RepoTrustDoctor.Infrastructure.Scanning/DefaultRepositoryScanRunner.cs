@@ -75,6 +75,7 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
         return
         [
             new RepositoryHealthAnalyzer(),
+            new GitHubMetadataAnalyzer(),
             new WorkspaceAnalyzer(),
             new GitHubActionsBasicAnalyzer(),
             new GitLabCiAnalyzer(),
