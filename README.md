@@ -13,7 +13,7 @@ The project is intentionally evidence-based: analyzers produce findings with rul
 
 ## What It Checks Today
 
-The current `v1.0.5` development line focuses on local, static repository trust signals across 12 package ecosystems, CI/CD pipeline security, infrastructure-as-code checks, and deep code intelligence:
+The current `v0.9.5` development line focuses on local, static repository trust signals across 12 package ecosystems, CI/CD pipeline security, infrastructure-as-code checks, and deep code intelligence:
 
 - repository health files such as README, LICENSE, SECURITY.md, contributing docs, CODEOWNERS, templates, and changelog,
 - GitHub Actions workflow risks such as broad permissions, `pull_request_target`, unpinned actions, shell pipe execution, checkout credential persistence, and advanced hardening rules,
@@ -37,9 +37,9 @@ The current `v1.0.5` development line focuses on local, static repository trust 
 
 ## Current Status
 
-This repository is at the `v1.0.5` development milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
+This repository is at the `v0.9.5` development milestone. It is a stable static repository trust platform intended for local repository trust review, repository hardening, CI gates, analyzer development, dependency inventory review, policy-aware scoring, release trust review, deep code intelligence, trust change review, API/worker-hosted scan flows, and local React-backed scan review.
 
-Key capabilities in `v1.0.5`:
+Key capabilities in `v0.9.5`:
 
 - **Dependency consistency**: workspace-wide checks for major-version drift, source-kind drift, and lockfile representation gaps.
 - **GitHub metadata and maintenance freshness**: archived/disabled status, inactivity, release activity, checksum evidence, CI status, branch protection, dependency update automation, and issue/PR backlog signals.
@@ -48,7 +48,7 @@ Key capabilities in `v1.0.5`:
 - **Suppression support**: `.repo-trust.json` at the repository root can suppress known findings by rule ID, path, or identity key with required reasons and optional expiration.
 - **API health contract**: `/health` returns product name, version, API compatibility version, and allowed web origins.
 
-Implemented through `v1.0.5`:
+Implemented through `v0.9.5`:
 
 - a clean .NET solution structure,
 - pure domain models,

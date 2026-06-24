@@ -42,7 +42,6 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
   const [healthError, setHealthError] = useState<string | null>(null);
   const pollTimer = useRef<number | null>(null);
 
-  // Last submitted values for retry
   const lastRequest = useRef<{ repository: string; depth: string; trustProfile: string } | null>(null);
 
   const canCancel = scanId !== null && status !== null && !isTerminalScanState(status.state);
@@ -57,18 +56,19 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
     };
   }, []);
 
-  // Health check on mount
+  const refreshHealth = async () => {
+    try {
+      const h = await checkHealth(apiBaseUrl);
+      setHealth(h);
+      setHealthError(null);
+    } catch {
+      setHealth(null);
+      setHealthError(`API is unreachable at ${apiBaseUrl}. Ensure the backend is running.`);
+    }
+  };
+
   useEffect(() => {
-    const check = async () => {
-      try {
-        const h = await checkHealth(apiBaseUrl);
-        setHealth(h);
-        setHealthError(null);
-      } catch {
-        setHealthError(`API is unreachable at ${apiBaseUrl}. Ensure the backend is running.`);
-      }
-    };
-    void check();
+    void refreshHealth();
   }, []);
 
   const pollScan = async (nextScanId: string) => {
@@ -90,24 +90,28 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
     }
   };
 
-  const submitScan = async (event: FormEvent) => {
-    event.preventDefault();
+  const startSubmittedScan = async (request: { repository: string; depth: string; trustProfile: string }) => {
     setIsSubmitting(true);
     setError(null);
     setStatus(null);
     setScanId(null);
 
-    lastRequest.current = { repository, depth, trustProfile };
+    if (pollTimer.current !== null) {
+      window.clearTimeout(pollTimer.current);
+      pollTimer.current = null;
+    }
+
+    lastRequest.current = request;
 
     try {
-      const target = buildGitHubRepositoryUrl(repository);
-      const started = await startScan({ apiBaseUrl, repository, depth, trustProfile });
+      const target = buildGitHubRepositoryUrl(request.repository);
+      const started = await startScan({ apiBaseUrl, ...request });
       setScanId(started.scanId);
       setStatus({
         scanId: started.scanId,
         target,
-        depth,
-        trustProfile,
+        depth: request.depth,
+        trustProfile: request.trustProfile,
         state: started.status
       });
       await pollScan(started.scanId);
@@ -118,14 +122,18 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
     }
   };
 
+  const submitScan = async (event: FormEvent) => {
+    event.preventDefault();
+    await startSubmittedScan({ repository, depth, trustProfile });
+  };
+
   const retryScan = async () => {
     if (!lastRequest.current) return;
-    setRepository(lastRequest.current.repository);
-    setDepth(lastRequest.current.depth);
-    setTrustProfile(lastRequest.current.trustProfile);
-
-    const fakeEvent = { preventDefault: () => {} } as FormEvent;
-    await submitScan(fakeEvent);
+    const request = lastRequest.current;
+    setRepository(request.repository);
+    setDepth(request.depth);
+    setTrustProfile(request.trustProfile);
+    await startSubmittedScan(request);
   };
 
   const requestCancel = async () => {
@@ -164,7 +172,7 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
       {healthError ? (
         <div className="error-message api-offline">
           <p>{healthError}</p>
-          <button type="button" className="button" onClick={() => window.location.reload()}>
+          <button type="button" className="button" onClick={() => void refreshHealth()}>
             <RefreshCw size={14} aria-hidden="true" /> Retry
           </button>
         </div>
@@ -251,7 +259,7 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
             </div>
           </dl>
 
-          {isTerminal && status.reportJsonUrl ? (
+          {isTerminal && status.reportJsonUrl && status.reportMarkdownUrl && status.reportSarifUrl ? (
             <div className="export-actions">
               <span className="export-label">Download report:</span>
               <a href={`${apiBaseUrl}${status.reportJsonUrl}`} className="button secondary" download>

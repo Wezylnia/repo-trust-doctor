@@ -6,7 +6,7 @@ The roadmap is intentionally conservative. Each milestone should leave the proje
 
 ## Current Release
 
-`v1.0.5` is a stable static scanner and local platform focused on repository documentation quality, GitHub Actions and GitLab CI security, Docker/Compose/Kubernetes hygiene, secret quick scanning, structured dependency inventory across npm, NuGet, Python, Maven, Gradle, Go, Cargo, Composer, Ruby, Dart/Pub, Elixir/Hex, SwiftPM, and C/C++ package manager evidence, Spring Boot configuration signals, dependency risk intelligence, policy-aware scoring, SARIF output, release and imported evidence review, deep code intelligence, trust history/diff, deterministic reports, CI gate options, API/worker-hosted scan flows, a local React scan workbench, multi-language public API extractors, static import/dependency graphs, and framework route detection.
+`v0.9.5` is a stable static scanner and local platform focused on repository documentation quality, GitHub Actions and GitLab CI security, Docker/Compose/Kubernetes hygiene, secret quick scanning, structured dependency inventory across npm, NuGet, Python, Maven, Gradle, Go, Cargo, Composer, Ruby, Dart/Pub, Elixir/Hex, SwiftPM, and C/C++ package manager evidence, Spring Boot configuration signals, dependency risk intelligence, policy-aware scoring, SARIF output, release and imported evidence review, deep code intelligence, trust history/diff, deterministic reports, CI gate options, API/worker-hosted scan flows, a local React scan workbench, multi-language public API extractors, static import/dependency graphs, and framework route detection.
 
 Current scans are static-only by default. The tool does not execute repository code, install packages, run tests, run builds, or build containers as part of a scan.
 
@@ -23,7 +23,7 @@ Current scans are static-only by default. The tool does not execute repository c
 | `v0.7.x` | Release trust | Release hygiene, artifact integrity, SBOM/provenance evidence |
 | `v0.8.x` | Deep code intelligence | Coverage import, code criticality, public API risk |
 | `v0.9.x` | History and comparison | Trust diff, historical trend, repository comparison, monitoring models |
-| `v1.0.x` | Stable public release | v1.0.5: stable contracts, API/worker hosts, React scan workbench, dependency consistency, GitHub metadata, repo hygiene, suppression, structured evidence, documented reports |
+| `v1.0.x` | Stable public release | v0.9.5: stable contracts, API/worker hosts, React scan workbench, dependency consistency, GitHub metadata, repo hygiene, suppression, structured evidence, documented reports |
 | `v0.7.2` | Java and Spring Boot support | Maven/Gradle inventory, Maven metadata/advisory lookup, Spring Boot Actuator exposure checks |
 | `v1.2.x` | More dependency ecosystems | Go, Rust, PHP, Ruby, Swift, Dart/Flutter, Elixir, and C/C++ package manager inventory |
 | `v1.3.x` | Monorepo and workspace intelligence | Better workspace grouping, package manager workspace support, per-project summaries |
@@ -538,11 +538,11 @@ Remaining post-1.0 candidates:
 - hosted notification providers,
 - branch/tag comparison commands that run scans into temporary reports.
 
-## v1.0.5: React Workbench Update
+## v0.9.5: React Workbench Update
 
 Goal: make the React app feel like a serious operational scan console.
 
-Delivered in `v1.0.5`:
+Delivered in `v0.9.5`:
 
 - the web app opens on the backend scan flow by default,
 - completed API scans automatically load into the report workspace,

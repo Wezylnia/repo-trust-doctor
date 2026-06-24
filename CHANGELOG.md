@@ -2,7 +2,7 @@
 
 All notable changes to Repository Trust Doctor are documented here.
 
-## Unreleased (v1.0.5)
+## v0.9.5 - 2026-06-24
 
 This release adds dependency consistency checks, GitHub metadata and maintenance
 freshness analysis, repository hygiene improvements, structured evidence

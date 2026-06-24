@@ -11,9 +11,9 @@ namespace RepoTrustDoctor.UnitTests;
 public sealed class ReleaseContractTests
 {
     [Fact]
-    public void ProductVersion_Equals_OnePointZeroPointFive()
+    public void ProductVersion_Equals_ZeroPointNinePointFive()
     {
-        Assert.Equal("1.0.5", ProductInfo.Version);
+        Assert.Equal("0.9.5", ProductInfo.Version);
     }
 
     [Fact]
