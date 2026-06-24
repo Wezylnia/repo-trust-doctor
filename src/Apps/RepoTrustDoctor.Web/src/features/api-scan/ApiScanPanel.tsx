@@ -1,14 +1,16 @@
-import { Play, RefreshCw, Square } from 'lucide-react';
+import { Download, Play, RefreshCw, Square, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { RepositoryScan } from '../../domain/report';
 import {
   cancelScan,
+  checkHealth,
   buildGitHubRepositoryUrl,
   getScanReport,
   getScanStatus,
   isTerminalScanState,
   normalizeGitHubRepositoryInput,
   startScan,
+  type HealthResponse,
   type ScanStatusResponse
 } from './apiScanClient';
 
@@ -36,9 +38,16 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
   const [status, setStatus] = useState<ScanStatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [healthError, setHealthError] = useState<string | null>(null);
   const pollTimer = useRef<number | null>(null);
 
+  // Last submitted values for retry
+  const lastRequest = useRef<{ repository: string; depth: string; trustProfile: string } | null>(null);
+
   const canCancel = scanId !== null && status !== null && !isTerminalScanState(status.state);
+  const isTerminal = status !== null && isTerminalScanState(status.state);
+  const canRetry = isTerminal && lastRequest.current !== null;
 
   useEffect(() => {
     return () => {
@@ -46,6 +55,20 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
         window.clearTimeout(pollTimer.current);
       }
     };
+  }, []);
+
+  // Health check on mount
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const h = await checkHealth(apiBaseUrl);
+        setHealth(h);
+        setHealthError(null);
+      } catch {
+        setHealthError(`API is unreachable at ${apiBaseUrl}. Ensure the backend is running.`);
+      }
+    };
+    void check();
   }, []);
 
   const pollScan = async (nextScanId: string) => {
@@ -74,6 +97,8 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
     setStatus(null);
     setScanId(null);
 
+    lastRequest.current = { repository, depth, trustProfile };
+
     try {
       const target = buildGitHubRepositoryUrl(repository);
       const started = await startScan({ apiBaseUrl, repository, depth, trustProfile });
@@ -91,6 +116,16 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const retryScan = async () => {
+    if (!lastRequest.current) return;
+    setRepository(lastRequest.current.repository);
+    setDepth(lastRequest.current.depth);
+    setTrustProfile(lastRequest.current.trustProfile);
+
+    const fakeEvent = { preventDefault: () => {} } as FormEvent;
+    await submitScan(fakeEvent);
   };
 
   const requestCancel = async () => {
@@ -112,8 +147,28 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
           <h2>Scan repository</h2>
           <span>GitHub repository scan</span>
         </div>
-        {status ? <span className={`state-token ${status.state.toLowerCase()}`}>{status.state}</span> : null}
+        <div className="panel-heading-right">
+          {health ? (
+            <span className="health-indicator connected" title={`API ${health.version} connected`}>
+              <Wifi size={14} aria-hidden="true" /> {health.version}
+            </span>
+          ) : healthError ? (
+            <span className="health-indicator disconnected" title={healthError}>
+              <WifiOff size={14} aria-hidden="true" /> Offline
+            </span>
+          ) : null}
+          {status ? <span className={`state-token ${status.state.toLowerCase()}`}>{status.state}</span> : null}
+        </div>
       </div>
+
+      {healthError ? (
+        <div className="error-message api-offline">
+          <p>{healthError}</p>
+          <button type="button" className="button" onClick={() => window.location.reload()}>
+            <RefreshCw size={14} aria-hidden="true" /> Retry
+          </button>
+        </div>
+      ) : null}
 
       <form className="scan-form" onSubmit={(event) => void submitScan(event)}>
         <label>
@@ -124,13 +179,14 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
               value={repository}
               onChange={(event) => setRepository(normalizeGitHubRepositoryInput(event.target.value))}
               placeholder="owner/repo"
+              disabled={isSubmitting}
             />
           </div>
         </label>
         <div className="field-grid">
           <label>
             <span>Depth</span>
-            <select value={depth} onChange={(event) => setDepth(event.target.value)}>
+            <select value={depth} onChange={(event) => setDepth(event.target.value)} disabled={isSubmitting}>
               {depths.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
@@ -140,7 +196,7 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
           </label>
           <label>
             <span>Profile</span>
-            <select value={trustProfile} onChange={(event) => setTrustProfile(event.target.value)}>
+            <select value={trustProfile} onChange={(event) => setTrustProfile(event.target.value)} disabled={isSubmitting}>
               {profiles.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
@@ -151,36 +207,65 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
         </div>
 
         <div className="scan-actions">
-          <button type="submit" className="button" disabled={isSubmitting || !repository.trim()}>
-            {isSubmitting ? <RefreshCw size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
-            Start scan
-          </button>
-          <button type="button" className="button secondary" disabled={!canCancel} onClick={() => void requestCancel()}>
-            <Square size={16} aria-hidden="true" />
-            Cancel
-          </button>
+          {!canRetry ? (
+            <>
+              <button type="submit" className="button" disabled={isSubmitting || !repository.trim() || healthError !== null}>
+                {isSubmitting ? <RefreshCw size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
+                Start scan
+              </button>
+              <button type="button" className="button secondary" disabled={!canCancel} onClick={() => void requestCancel()}>
+                <Square size={16} aria-hidden="true" />
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button type="button" className="button" onClick={() => void retryScan()}>
+              <RefreshCw size={16} aria-hidden="true" /> Scan again
+            </button>
+          )}
         </div>
       </form>
 
       {status ? (
-        <dl className="scan-status-grid">
-          <div>
-            <dt>Scan ID</dt>
-            <dd>{status.scanId}</dd>
-          </div>
-          <div>
-            <dt>Score</dt>
-            <dd>{status.overallScore ?? 'Pending'}</dd>
-          </div>
-          <div>
-            <dt>Modules</dt>
-            <dd>{status.moduleCount ?? 'Pending'}</dd>
-          </div>
-          <div>
-            <dt>Findings</dt>
-            <dd>{status.findingCount ?? 'Pending'}</dd>
-          </div>
-        </dl>
+        <>
+          <dl className="scan-status-grid">
+            <div>
+              <dt>Scan ID</dt>
+              <dd>{status.scanId}</dd>
+            </div>
+            <div>
+              <dt>Score</dt>
+              <dd>{status.overallScore ?? 'Pending'}</dd>
+            </div>
+            <div>
+              <dt>Decision</dt>
+              <dd>{status.decision ?? 'Pending'}</dd>
+            </div>
+            <div>
+              <dt>Modules</dt>
+              <dd>{status.moduleCount ?? 'Pending'}</dd>
+            </div>
+            <div>
+              <dt>Findings</dt>
+              <dd>{status.findingCount ?? 'Pending'}</dd>
+            </div>
+          </dl>
+
+          {isTerminal && status.reportJsonUrl ? (
+            <div className="export-actions">
+              <span className="export-label">Download report:</span>
+              <a href={`${apiBaseUrl}${status.reportJsonUrl}`} className="button secondary" download>
+                <Download size={14} aria-hidden="true" /> JSON
+              </a>
+              <a href={`${apiBaseUrl}${status.reportMarkdownUrl}`} className="button secondary" download>
+                <Download size={14} aria-hidden="true" /> Markdown
+              </a>
+              <a href={`${apiBaseUrl}${status.reportSarifUrl}`} className="button secondary" download>
+                <Download size={14} aria-hidden="true" /> SARIF
+              </a>
+            </div>
+          ) : null}
+        </>
       ) : null}
 
       {error ? <div className="error-message">{error}</div> : null}

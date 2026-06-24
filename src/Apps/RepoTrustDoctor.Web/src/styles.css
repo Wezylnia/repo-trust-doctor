@@ -1166,3 +1166,55 @@ textarea {
 .ecosystem-row span:last-child {
   font-weight: 700;
 }
+
+/* Health indicator */
+.health-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.health-indicator.connected {
+  color: var(--color-success, #16a34a);
+  background: var(--color-success-bg, #dcfce7);
+}
+.health-indicator.disconnected {
+  color: var(--color-error, #dc2626);
+  background: var(--color-error-bg, #fee2e2);
+}
+
+.panel-heading-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Export actions */
+.export-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  flex-wrap: wrap;
+}
+.export-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 4px;
+}
+
+/* API offline error */
+.api-offline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.api-offline p {
+  margin: 0;
+  flex: 1;
+}

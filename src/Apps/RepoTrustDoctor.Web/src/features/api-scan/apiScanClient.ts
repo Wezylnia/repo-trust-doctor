@@ -24,6 +24,25 @@ export interface ScanStatusResponse {
   findingCount?: number | null;
   overallScore?: number | null;
   decision?: string | null;
+  reportJsonUrl?: string | null;
+  reportMarkdownUrl?: string | null;
+  reportSarifUrl?: string | null;
+}
+
+export interface HealthResponse {
+  product: string;
+  version: string;
+  apiCompatibilityVersion: string;
+  status: string;
+  allowedWebOrigins: string[];
+}
+
+export async function checkHealth(apiBaseUrl: string): Promise<HealthResponse> {
+  const response = await fetch(`${normalizeApiBaseUrl(apiBaseUrl)}/health`);
+  if (!response.ok) {
+    throw new Error(`Health check failed with ${response.status}.`);
+  }
+  return await response.json() as HealthResponse;
 }
 
 export function normalizeApiBaseUrl(value: string): string {
