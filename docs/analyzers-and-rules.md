@@ -418,6 +418,10 @@ Checksum files, signatures, SBOM/provenance files, and workflow integrity steps 
 | TRUST-EVI007 | SBOM appears potentially incomplete | Low | Medium |
 | TRUST-EVI008 | SBOM package URL is malformed | Low | High |
 | TRUST-EVI009 | Evidence metadata target differs from scanned repo | Medium | Medium |
+| TRUST-EVI010 | SBOM does not cover direct dependency inventory | Medium | Medium |
+| TRUST-EVI011 | Provenance subject does not contain a digest | Medium | High |
+| TRUST-EVI012 | Provenance repository identity differs from target | Medium | Medium |
+| TRUST-EVI013 | Evidence contains conflicting component identities | Low | High |
 
 ---
 

@@ -45,11 +45,21 @@ var app = builder.Build();
 
 app.UseCors("LocalWeb");
 
-app.MapGet("/health", () => Results.Ok(new
+app.MapGet("/health", (IConfiguration configuration) =>
 {
-    status = "ok",
-    version = ProductInfo.Version
-})).AllowAnonymous();
+    var localWebOrigins = configuration
+        .GetSection("RepoTrustDoctor:WebOrigins")
+        .Get<string[]>() ?? ["http://localhost:5174", "http://127.0.0.1:5174"];
+
+    return Results.Ok(new
+    {
+        product = ProductInfo.Name,
+        version = ProductInfo.Version,
+        apiCompatibilityVersion = "1",
+        status = "ok",
+        allowedWebOrigins = localWebOrigins
+    });
+}).AllowAnonymous();
 
 app.MapPost("/api/scans", async (StartScanRequest request, ScanCoordinator coordinator, CancellationToken cancellationToken) =>
 {

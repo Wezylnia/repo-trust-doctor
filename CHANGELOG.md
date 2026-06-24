@@ -26,6 +26,18 @@ across the product.
   (TRUST-REP020), SECURITY.md vulnerability reporting and supported version
   quality (TRUST-REP021, TRUST-REP022), and toolchain version pinning
   (TRUST-REP023) across Node.js, .NET, Rust, Python, and Ruby ecosystems.
+- **Structured Evidence Correlation**: SBOM and provenance files are parsed
+  into structured artifacts (ImportedEvidenceArtifact). A new release integrity
+  analyzer adds SBOM dependency coverage (TRUST-EVI010), provenance digest
+  checks (TRUST-EVI011), repository identity correlation (TRUST-EVI012), and
+  conflicting component detection (TRUST-EVI013).
+- **Repository Suppression Engine**: `.repo-trust.json` at the repository root
+  can suppress known findings by rule ID, path, or identity key. Suppressions
+  require a reason, support optional expiration dates, and never delete
+  findings. Expired suppressions are ignored; malformed config produces
+  warnings only.
+- **API Health Endpoint**: `/health` now returns product name, version, API
+  compatibility version, and allowed web origins.
 
 ## v0.8.7 - 2026-06-15
 
