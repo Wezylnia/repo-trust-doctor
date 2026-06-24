@@ -229,7 +229,17 @@ public sealed class ScanOrchestrator
 
         var completed = DateTimeOffset.UtcNow;
         var fingerprintedFindings = FindingIdentity.AddFingerprints(findings);
-        var score = scorer.ScoreScan(fingerprintedFindings, trustProfile, modules);
+
+        // Load and apply suppression configuration
+        var suppressionEngine = FindingSuppressionEngine.Load(repositoryPath);
+        var suppressedFindings = new List<Finding>();
+        foreach (var finding in fingerprintedFindings)
+        {
+            var suppression = suppressionEngine.FindActiveSuppression(finding);
+            suppressedFindings.Add(suppression is not null ? finding with { Suppression = suppression } : finding);
+        }
+
+        var score = scorer.ScoreScan(suppressedFindings, trustProfile, modules);
         var status = modules.Any(module => module.Status is
             ModuleStatus.CompletedWithWarnings or
             ModuleStatus.Failed or
@@ -249,7 +259,7 @@ public sealed class ScanOrchestrator
             started,
             completed,
             modules,
-            fingerprintedFindings,
+            suppressedFindings,
             score,
             context.Artifacts);
     }

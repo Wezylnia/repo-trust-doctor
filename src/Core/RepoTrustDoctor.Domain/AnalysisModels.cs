@@ -86,6 +86,14 @@ public sealed record Evidence(
 
 public sealed record Recommendation(string Message);
 
+public sealed record FindingSuppression(
+    string RuleId,
+    string? Path,
+    string? IdentityKey,
+    string Reason,
+    string? Owner,
+    DateOnly? ExpiresOn);
+
 public sealed record Finding(
     string RuleId,
     string Title,
@@ -98,7 +106,10 @@ public sealed record Finding(
     bool IsBlocking = false,
     IReadOnlyList<string>? Tags = null,
     string? Fingerprint = null,
-    string? IdentityKey = null);
+    string? IdentityKey = null)
+{
+    public FindingSuppression? Suppression { get; init; }
+}
 
 public sealed record ScanWarning(
     ScanWarningKind Kind,
