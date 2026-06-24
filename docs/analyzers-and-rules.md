@@ -63,6 +63,30 @@ Analyzers implement `IRepositoryAnalyzer` and produce `Finding` records with rul
 | TRUST-REPO012 | README lacks quick start guidance | Low | Medium |
 | TRUST-REPO013 | Documentation folder is missing | Info | High |
 | TRUST-REPO014 | README contains broken-looking local link | Low | Medium |
+| TRUST-REPO020 | CODEOWNERS does not cover sensitive repository areas | Low | Medium |
+| TRUST-REPO021 | SECURITY policy lacks vulnerability reporting instructions | Low | Medium |
+| TRUST-REPO022 | SECURITY policy lacks supported version information | Low | Medium |
+| TRUST-REPO023 | Toolchain version is not pinned | Low | Medium |
+
+### GitHub Repository Metadata
+
+**Analyzer:** `GitHubMetadataAnalyzer` (`github.metadata`)
+
+| Rule ID | Title | Severity | Confidence |
+|---------|-------|----------|------------|
+| TRUST-GHM001 | GitHub repository is archived or disabled | High | High |
+| TRUST-GHM002 | Repository appears inactive | Low | Medium |
+| TRUST-GHM003 | No recent release activity | Low | Medium |
+| TRUST-GHM004 | Latest release lacks checksum-like asset evidence | Low | Medium |
+| TRUST-GHM005 | Default branch CI is currently failing | Medium | High |
+| TRUST-GHM006 | Default branch protection evidence is missing or weak | Medium | Medium |
+| TRUST-GHM007 | Dependency update automation was not observed | Low | Medium |
+| TRUST-GHM008 | Stale open pull requests or issues may indicate maintenance backlog | Low | Low |
+
+GitHub metadata and maintenance freshness signals are contextual trust evidence.
+Popularity metrics (stars, forks, watchers) are context-only and never produce
+findings. Branch protection data may be unavailable due to API permissions;
+unknown data is represented as unknown, not as confirmed absence.
 
 ### Workspace Detection
 

@@ -16,6 +16,16 @@ across the product.
   drift (TRUST-DEP052), package source-kind drift (TRUST-DEP053), and lockfile
   representation gaps (TRUST-DEP054). The analyzer consumes the dependency
   inventory artifact and emits a structured consistency artifact.
+- **GitHub Metadata Analyzer**: repository maintenance freshness signals
+  (TRUST-GHM001 through TRUST-GHM008) covering archived/disabled status,
+  inactivity, release activity, checksum evidence, CI status, branch
+  protection, dependency update automation, and open issue/PR backlog.
+  Popularity metrics (stars, forks, watchers) are context-only and never
+  produce findings.
+- **Repository Hygiene Checks**: CODEOWNERS sensitive-area coverage
+  (TRUST-REP020), SECURITY.md vulnerability reporting and supported version
+  quality (TRUST-REP021, TRUST-REP022), and toolchain version pinning
+  (TRUST-REP023) across Node.js, .NET, Rust, Python, and Ruby ecosystems.
 
 ## v0.8.7 - 2026-06-15
 
