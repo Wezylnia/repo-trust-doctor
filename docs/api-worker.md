@@ -1,6 +1,6 @@
 # API And Worker
 
-Repository Trust Doctor `v1.0.0` includes local API and worker hosts built on the same application scan lifecycle as the CLI.
+Repository Trust Doctor `v1.0.5` includes local API and worker hosts built on the same application scan lifecycle as the CLI.
 
 The hosts are intentionally small. Analyzer composition lives in `RepoTrustDoctor.Infrastructure.Scanning`, scan lifecycle behavior lives in `RepoTrustDoctor.Application`, and the API only exposes scan operations.
 

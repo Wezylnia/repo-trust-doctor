@@ -46,7 +46,7 @@ npm test
 
 ## Next React Direction
 
-After `v1.1.0`, the React/backend scan experience should keep the same primary flow and deepen it:
+After `v1.0.5`, the React/backend scan experience should keep the same primary flow and deepen it:
 
 - richer live progress by module while scans are running,
 - API health and compatibility detection in the web app,

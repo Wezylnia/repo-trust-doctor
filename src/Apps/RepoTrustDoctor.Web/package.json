@@ -1,6 +1,6 @@
 {
   "name": "repo-trust-doctor-web",
-  "version": "0.9.0",
+  "version": "1.0.5",
   "private": true,
   "type": "module",
   "scripts": {

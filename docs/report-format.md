@@ -39,7 +39,7 @@ and automation.
 
 ## API Report Export
 
-`v1.0.0` exposes completed scan reports from the API host:
+`v1.0.5` exposes completed scan reports from the API host:
 
 ```text
 GET /api/scans/{scanId}/report?format=json
