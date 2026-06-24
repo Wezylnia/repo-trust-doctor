@@ -10,6 +10,13 @@ correlation, policy fact evaluation, repository suppression support, and
 API/Web usability polish. Version metadata and documentation are aligned
 across the product.
 
+### Added
+
+- **Dependency Consistency Analyzer**: workspace-wide checks for major-version
+  drift (TRUST-DEP052), package source-kind drift (TRUST-DEP053), and lockfile
+  representation gaps (TRUST-DEP054). The analyzer consumes the dependency
+  inventory artifact and emits a structured consistency artifact.
+
 ## v0.8.7 - 2026-06-15
 
 This bugfix release completes the current correctness review with stronger

@@ -690,3 +690,63 @@ Detects dynamic version declarations in Gradle `libs.versions.toml` `[plugins]` 
 Why it matters: plugin version drift can silently change build behavior.
 
 Recommendation: pin plugin versions to specific releases.
+
+## TRUST-DEP052: Direct Production Dependency Uses Multiple Major Versions
+
+- Category: Dependencies
+- Default severity: Low (Medium when 3+ major versions or manifests)
+- Default confidence: High
+
+Detects when the same direct production dependency is declared with different major
+versions across workspace projects. Only exact semver versions are compared; ranges,
+tags, Git references, and non-version strings are excluded.
+
+Why it matters: different major versions of the same package across a workspace can
+cause runtime conflicts, inconsistent behavior, and harder dependency management.
+
+Recommendation: standardize on a single major version of the dependency across the workspace.
+
+Noise control: development-only, optional, and peer dependencies are excluded.
+Version ranges and non-exact specifiers are excluded from comparison.
+
+## TRUST-DEP053: Package Source Differs Across Workspace Projects
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: Medium
+
+Detects when the same normalized package is resolved from different source kinds
+(registry, Git, path) across workspace projects. This rule does not compare
+different registry mirrors.
+
+Why it matters: mixing registry and non-registry sources for the same package can
+indicate intentional overrides, but it can also signal dependency confusion risk
+or inconsistent dependency management.
+
+Recommendation: review whether differing package sources are intentional and avoid
+mixing registry and non-registry sources for the same package. The finding uses
+cautious wording and does not claim dependency confusion is confirmed.
+
+Noise control: only reports when at least one package uses a registry source and
+at least one uses a non-registry source (Git or path). Workspace source references
+are treated as path sources.
+
+## TRUST-DEP054: Direct Dependency Is Not Represented by the Detected Lockfile
+
+- Category: Dependencies
+- Default severity: Medium
+- Default confidence: High
+
+Detects when a direct dependency declaration has no corresponding entry in the
+applicable lockfile. This rule runs only for ecosystems with reliable lockfile
+resolution: npm, NuGet, Cargo, Composer, and Ruby.
+
+Why it matters: a direct dependency missing from the lockfile may not be
+reproducibly installable and could indicate an out-of-date or incomplete lockfile.
+
+Recommendation: run the package manager install or restore command to update the
+lockfile and commit the result.
+
+Noise control: transitive dependencies, development-only dependencies, and
+ecosystems without reliable lockfile resolution are not reported. Does not trigger
+when no lockfile exists (existing lockfile-missing rules cover that case).

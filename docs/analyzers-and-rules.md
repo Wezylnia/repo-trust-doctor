@@ -283,6 +283,9 @@ For Cargo workspaces, member dependencies declared with `workspace = true` inher
 | TRUST-DEP049 | Ruby gem uses prerelease version | Low | High |
 | TRUST-DEP050 | Gradle version catalog uses dynamic dependency version | Medium | High |
 | TRUST-DEP051 | Gradle version catalog uses dynamic plugin version | Medium | High |
+| TRUST-DEP052 | Direct production dependency uses multiple major versions | Low | High |
+| TRUST-DEP053 | Package source differs across workspace projects | Medium | Medium |
+| TRUST-DEP054 | Direct dependency not represented by lockfile | Medium | High |
 
 ### Dependency Risk Intelligence
 
