@@ -38,3 +38,5 @@ The policy evaluator reads findings, category scores, the overall score, and the
 Only categories that were actually evaluated by completed analyzer modules are compared with category score thresholds. Unevaluated categories do not create synthetic policy failures.
 
 Policy evaluation does not execute repository code and does not change analyzer behavior.
+
+See [Scan Examples](../examples.md) for end-to-end commands that use each active profile and show when JSON, Markdown, or SARIF output is useful.

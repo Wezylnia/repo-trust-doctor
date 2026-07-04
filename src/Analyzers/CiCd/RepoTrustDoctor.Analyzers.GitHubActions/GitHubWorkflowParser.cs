@@ -478,7 +478,7 @@ internal static class GitHubWorkflowParser
         }
 
         var colonIndex = trimmed.IndexOf(':', StringComparison.Ordinal);
-        return colonIndex < 0 ? string.Empty : trimmed[..colonIndex].Trim();
+        return colonIndex < 0 ? string.Empty : trimmed[..colonIndex].Trim().Trim('"', '\'');
     }
 
     private static string? TryGetLineValue(string line, string key, bool allowSequencePrefix)

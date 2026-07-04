@@ -32,7 +32,8 @@ const categoryLabels: Record<string, string> = {
   Releases: 'Release provenance',
   Licenses: 'License risk',
   Codebase: 'Codebase maintainability',
-  Documentation: 'Documentation'
+  Documentation: 'Documentation',
+  Infrastructure: 'Infrastructure as code'
 };
 
 const decisionLabels: Record<string, string> = {
@@ -72,7 +73,7 @@ const areaDefinitions = [
     id: 'security',
     label: 'Security exposure',
     categories: ['Security'],
-    description: 'Secrets, known vulnerability signals, and security policy expectations.'
+    description: 'Secrets, sensitive files, credential exposure, and security policy expectations.'
   },
   {
     id: 'repository-health',
@@ -84,31 +85,37 @@ const areaDefinitions = [
     id: 'dependencies',
     label: 'Dependency and license risk',
     categories: ['Dependencies', 'Licenses'],
-    description: 'Dependency inventory, version pinning, package metadata, provenance, and licenses.'
+    description: 'Dependency inventory, version pinning, package metadata, vulnerabilities, package origins, and licenses.'
   },
   {
     id: 'automation',
     label: 'CI/CD workflow safety',
     categories: ['CiCd'],
-    description: 'Workflow permissions, pinned actions, artifact handling, and build runner risk.'
+    description: 'GitHub Actions, GitLab CI, Azure Pipelines, CircleCI, permissions, artifacts, and runner risk.'
   },
   {
     id: 'containers',
     label: 'Container hygiene',
     categories: ['Containers'],
-    description: 'Dockerfile hardening, runtime user, health checks, and build image practices.'
+    description: 'Dockerfiles, Compose services, Kubernetes manifests, runtime isolation, and image practices.'
+  },
+  {
+    id: 'infrastructure',
+    label: 'Infrastructure as code',
+    categories: ['Infrastructure'],
+    description: 'Terraform public exposure, IAM breadth, storage encryption, backend safety, and version constraints.'
   },
   {
     id: 'releases',
     label: 'Release readiness',
     categories: ['Releases'],
-    description: 'Release notes, artifacts, checksums, provenance, and reproducible delivery signals.'
+    description: 'Release notes, artifacts, checksums, SBOMs, provenance, and reproducible delivery signals.'
   },
   {
     id: 'codebase',
     label: 'Codebase maintainability',
     categories: ['Codebase'],
-    description: 'Public API surface, critical paths, coverage evidence, and risky implementation patterns.'
+    description: 'Public API surface, import graph centrality, routes, critical paths, coverage evidence, and risky implementation patterns.'
   }
 ];
 
@@ -166,7 +173,7 @@ export function explainFinding(finding: Finding): string {
   }
 
   if (finding.ruleId.startsWith('TRUST-REL')) {
-    return 'This finding affects release trust. Strong release evidence helps users verify what changed, where artifacts came from, and whether downloaded files match the published source.';
+    return 'This finding affects release trust. Release notes, checksums, SBOMs, provenance, package version alignment, and release workflow evidence help users verify what changed and where artifacts came from.';
   }
 
   if (finding.ruleId.startsWith('TRUST-WS')) {

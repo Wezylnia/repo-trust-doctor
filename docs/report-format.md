@@ -31,6 +31,8 @@ Each finding includes:
 
 Reports should be readable in Markdown and deterministic in JSON and SARIF.
 
+Markdown includes a `Top Recommended Actions` section that deduplicates recommendation text and orders representative findings by blocking status, severity, vulnerability/security/release category priority, confidence, rule ID, and first evidence location. The section is advisory only; it does not change scoring, policy decisions, JSON findings, or SARIF output.
+
 Markdown is optimized for human review. When a scan produces more than 100
 findings, the Markdown writer renders the first 100 sorted findings and states
 how many additional findings were omitted from that view. JSON and SARIF exports

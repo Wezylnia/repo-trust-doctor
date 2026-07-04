@@ -800,6 +800,28 @@ public sealed class SecretQuickScanAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_DocumentationPlaceholderSecrets_DoNotProduceContentFindings()
+    {
+        using var fixture = TemporaryRepository.Create();
+        Directory.CreateDirectory(Path.Combine(fixture.Path, "docs", "examples"));
+        File.WriteAllText(Path.Combine(fixture.Path, "docs", "examples", "configuration.md"), """
+        # Example configuration
+
+        ```text
+        GITHUB_TOKEN=ghp_placeholderplaceholderplaceholder123
+        AWS_ACCESS_KEY_ID=AKIA0000000000000000
+        Server=localhost;User Id=example;Password=changeme;
+        api_key=your-api-key-here-12345
+        ```
+        """);
+
+        var analyzer = new SecretQuickScanAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId is "TRUST-SECRET003" or "TRUST-SECRET004" or "TRUST-SECRET005" or "TRUST-SECRET012");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_GenericApiKeyPlaceholderCheckDoesNotSuppressEmbeddedTestSubstring()
     {
         using var fixture = TemporaryRepository.Create();

@@ -79,6 +79,7 @@ describe('report selectors', () => {
     expect(formatDecision('NeedsManualReview')).toBe('Needs manual review');
     expect(formatTrustProfile('SecuritySensitiveDependency')).toBe('Enterprise or security-sensitive');
     expect(formatCategory('RepositoryHealth')).toBe('Repository health');
+    expect(formatCategory('Infrastructure')).toBe('Infrastructure as code');
     expect(formatEvidenceKind('file-missing')).toBe('File missing');
   });
 
@@ -92,14 +93,18 @@ describe('report selectors', () => {
       modules: [
         { moduleId: 'repo', displayName: 'Repository Health', category: 'RepositoryHealth', status: 'Completed', findingsCount: 2 },
         { moduleId: 'secrets', displayName: 'Secret Quick Scan', category: 'Security', status: 'Completed', findingsCount: 0 },
-        { moduleId: 'docker', displayName: 'Docker Basic Checks', category: 'Containers', status: 'Completed', findingsCount: 1 }
+        { moduleId: 'dependency-risk', displayName: 'Dependency Risk', category: 'Dependencies', status: 'Completed', findingsCount: 1 },
+        { moduleId: 'docker', displayName: 'Docker Basic Checks', category: 'Containers', status: 'Completed', findingsCount: 1 },
+        { moduleId: 'terraform', displayName: 'Terraform Checks', category: 'Infrastructure', status: 'Completed', findingsCount: 1 }
       ],
       findings: [],
       score: {
         overall: 72,
         categories: [
           { category: 'RepositoryHealth', score: 56 },
-          { category: 'Containers', score: 70 }
+          { category: 'Dependencies', score: 74 },
+          { category: 'Containers', score: 70 },
+          { category: 'Infrastructure', score: 62 }
         ],
         decision: {
           kind: 'UseWithCaution',
@@ -113,6 +118,8 @@ describe('report selectors', () => {
     expect(areas.find((area) => area.id === 'repository-health')?.score).toBe(56);
     expect(areas.find((area) => area.id === 'security')?.score).toBe(100);
     expect(areas.find((area) => area.id === 'containers')?.score).toBe(70);
+    expect(areas.find((area) => area.id === 'infrastructure')?.score).toBe(62);
+    expect(areas.find((area) => area.id === 'dependencies')?.categories).toEqual(['Dependencies', 'Licenses']);
   });
 
   it('summarizes dependency and secret scan coverage without exposing raw metric keys', () => {
@@ -182,6 +189,8 @@ describe('report selectors', () => {
   it('adds richer finding explanations by rule family', () => {
     expect(explainFinding(finding('TRUST-VULN001', 'High', false))).toContain('vulnerability risk');
     expect(explainFinding(finding('TRUST-GHA005', 'Medium', false))).toContain('workflow safety');
+    expect(explainFinding(finding('TRUST-TF001', 'High', false))).toContain('Terraform infrastructure security');
+    expect(explainFinding(finding('TRUST-REL003', 'Medium', false))).toContain('SBOMs');
   });
 
   it('explains v1.6 hardening rules specifically', () => {

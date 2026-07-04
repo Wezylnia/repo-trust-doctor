@@ -211,17 +211,20 @@ public sealed class MarkdownReportWriter
 
     private static void AppendRecommendedActions(StringBuilder builder, RepositoryScan scan)
     {
-        var findings = JsonReportWriter.SortFindings(scan.Findings);
-        if (findings.Count == 0)
+        if (scan.Findings.Count == 0)
         {
             return;
         }
 
-        var actions = findings
-            .Select(finding => finding.Recommendation.Message)
-            .Where(message => !string.IsNullOrWhiteSpace(message))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        var representativeFindings = scan.Findings
+            .Where(finding => !string.IsNullOrWhiteSpace(finding.Recommendation.Message))
+            .GroupBy(finding => finding.Recommendation.Message, StringComparer.OrdinalIgnoreCase)
+            .Select(group => OrderFindingsByActionPriority(group).First())
+            .ToArray();
+
+        var actions = OrderFindingsByActionPriority(representativeFindings)
             .Take(5)
+            .Select(finding => finding.Recommendation.Message)
             .ToArray();
 
         if (actions.Length == 0)
@@ -235,6 +238,41 @@ public sealed class MarkdownReportWriter
         {
             builder.AppendLine($"- {MarkdownText.Inline(action)}");
         }
+    }
+
+    private static IOrderedEnumerable<Finding> OrderFindingsByActionPriority(IEnumerable<Finding> findings)
+    {
+        return findings
+            .OrderByDescending(finding => finding.IsBlocking)
+            .ThenByDescending(finding => finding.Severity)
+            .ThenBy(finding => GetRecommendedActionCategoryPriority(finding))
+            .ThenByDescending(finding => finding.Confidence)
+            .ThenBy(finding => finding.RuleId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(finding => finding.Evidence.FirstOrDefault()?.FilePath, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(finding => finding.Evidence.FirstOrDefault()?.LineNumber);
+    }
+
+    private static int GetRecommendedActionCategoryPriority(Finding finding)
+    {
+        if (finding.RuleId.StartsWith("TRUST-VULN", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        return finding.Category switch
+        {
+            AnalysisCategory.Security => 1,
+            AnalysisCategory.Releases => 2,
+            AnalysisCategory.Dependencies => 3,
+            AnalysisCategory.Licenses => 4,
+            AnalysisCategory.CiCd => 5,
+            AnalysisCategory.Containers => 6,
+            AnalysisCategory.Infrastructure => 7,
+            AnalysisCategory.Codebase => 8,
+            AnalysisCategory.RepositoryHealth => 9,
+            AnalysisCategory.Documentation => 10,
+            _ => 11
+        };
     }
 }
 

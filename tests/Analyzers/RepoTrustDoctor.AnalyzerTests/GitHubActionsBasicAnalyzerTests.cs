@@ -800,6 +800,31 @@ public sealed class GitHubActionsBasicAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_QuotedValidationJobNameSatisfiesPublishNeeds_NoGHA009()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "release.yml"), """
+        jobs:
+          "test":
+            runs-on: ubuntu-latest
+            steps:
+              - run: dotnet test
+          publish:
+            needs: test
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_PublishJobTransitivelyNeedsTest_NoGHA009()
     {
         using var fixture = TemporaryRepository.Create();
@@ -1031,5 +1056,37 @@ public sealed class GitHubActionsBasicAnalyzerTests
             CancellationToken.None);
 
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-GHA018");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ReusableWorkflowCallWithCommentsAndSpacing_DoesNotReportPrTargetExposure()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "reuse.yml"), """
+        name: reuse
+
+        on:
+          pull_request:
+
+        permissions:
+          contents: read
+
+        jobs:
+          call-shared:
+            # Reusable workflow call with spacing around inputs.
+            uses: ./.github/workflows/shared.yml
+            with:
+              target: ci
+            secrets: inherit
+        """);
+
+        var result = await new GitHubActionsBasicAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-GHA003");
+        Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-GHA015");
     }
 }

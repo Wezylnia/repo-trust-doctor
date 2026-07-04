@@ -601,7 +601,7 @@ meter {
 
 .area-score-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 8px;
   margin-top: 12px;
 }
@@ -609,7 +609,9 @@ meter {
 .area-score-card {
   display: grid;
   gap: 8px;
+  align-content: start;
   min-width: 0;
+  min-height: 178px;
   border: 1px solid #e1e5eb;
   border-left: 4px solid #98a2b3;
   border-radius: 4px;

@@ -184,6 +184,8 @@ Contributor help is very welcome. The project has scoped dependency intelligence
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, safety rules, validation commands, and pull request expectations. Use [Discussions](https://github.com/Wezylnia/repo-trust-doctor/discussions) for questions or help choosing an issue.
 
+For profile-specific scan commands and output examples, see [docs/examples.md](docs/examples.md).
+
 ## CLI
 
 The CLI supports local path scans and shallow cloning for public HTTP(S) Git repository URLs:

@@ -174,6 +174,29 @@ public sealed class ReportWriterTests
     }
 
     [Fact]
+    public void MarkdownReport_OrdersTopRecommendedActionsByRiskThenDeterministicTieBreakers()
+    {
+        var scan = CreateMinimalScan() with
+        {
+            Findings =
+            [
+                CreateFinding("TRUST-REPO001", Severity.High, AnalysisCategory.RepositoryHealth, recommendation: "Improve repository hygiene."),
+                CreateFinding("TRUST-SECRET002", Severity.High, AnalysisCategory.Security, filePath: "b.txt", recommendation: "Rotate exposed secret in b."),
+                CreateFinding("TRUST-SECRET001", Severity.High, AnalysisCategory.Security, filePath: "a.txt", recommendation: "Rotate exposed secret in a."),
+                CreateFinding("TRUST-REL001", Severity.Medium, AnalysisCategory.Releases, isBlocking: true, recommendation: "Fix blocking release evidence."),
+                CreateFinding("TRUST-DOC001", Severity.Low, AnalysisCategory.Documentation, recommendation: "Polish documentation.")
+            ]
+        };
+
+        var markdown = new MarkdownReportWriter().Write(scan);
+
+        AssertBefore(markdown, "Fix blocking release evidence.", "Rotate exposed secret in a.");
+        AssertBefore(markdown, "Rotate exposed secret in a.", "Rotate exposed secret in b.");
+        AssertBefore(markdown, "Rotate exposed secret in b.", "Improve repository hygiene.");
+        AssertBefore(markdown, "Improve repository hygiene.", "Polish documentation.");
+    }
+
+    [Fact]
     public void MarkdownReport_LimitsRenderedFindingsWithoutDroppingJsonFindings()
     {
         var findings = Enumerable
@@ -261,6 +284,15 @@ public sealed class ReportWriterTests
         Assert.Contains("Evidence \\| value \\#\\#\\# forged evidence", markdown);
         Assert.Contains("Fix \\| now \\# forged recommendation &lt;b&gt;", markdown);
         Assert.Contains("``src/`danger`.cs``", markdown);
+    }
+
+    private static void AssertBefore(string content, string earlier, string later)
+    {
+        var earlierIndex = content.IndexOf(earlier, StringComparison.Ordinal);
+        var laterIndex = content.IndexOf(later, StringComparison.Ordinal);
+        Assert.True(earlierIndex >= 0, $"Expected to find '{earlier}'.");
+        Assert.True(laterIndex >= 0, $"Expected to find '{later}'.");
+        Assert.True(earlierIndex < laterIndex, $"Expected '{earlier}' before '{later}'.");
     }
 
     [Fact]

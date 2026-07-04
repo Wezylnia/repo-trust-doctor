@@ -8,7 +8,8 @@ export function ScanIntro() {
         <h2>Evaluate a GitHub repository before you depend on it.</h2>
         <p>
           Repo Trust Doctor reviews public repository signals that are easy to miss during adoption:
-          security posture, dependency risk, release evidence, project maintenance, CI/CD safety, and container hygiene.
+          security posture, dependency risk, release evidence, project maintenance, CI/CD safety, infrastructure as code,
+          containers, and static code intelligence.
         </p>
       </div>
       <div className="intro-points" aria-label="Review focus areas">
@@ -22,7 +23,7 @@ export function ScanIntro() {
         </div>
         <div>
           <GitBranch size={18} aria-hidden="true" />
-          <span>Release, automation, and container signals</span>
+          <span>Release, automation, infrastructure, and code signals</span>
         </div>
       </div>
     </section>

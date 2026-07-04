@@ -21,7 +21,7 @@ type ViewMode = 'overview' | 'category';
 
 export function ReportViewer({ report }: { report: RepositoryScan }) {
   const [viewMode, setViewMode] = useState<ViewMode>('overview');
-  const [drillCategory, setDrillCategory] = useState<string | null>(null);
+  const [drilldown, setDrilldown] = useState<{ label: string; categories: string[] } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const filters = useFindingFilters(report.findings);
   const summary = useMemo(() => report.summary ?? summarizeFindings(report.findings), [report]);
@@ -30,9 +30,9 @@ export function ReportViewer({ report }: { report: RepositoryScan }) {
   const scanCoverage = useMemo(() => buildScanCoverage(report.modules), [report.modules]);
 
   const categoryFindings = useMemo(() => {
-    if (!drillCategory) return report.findings;
-    return report.findings.filter((f) => f.category === drillCategory);
-  }, [report.findings, drillCategory]);
+    if (!drilldown) return report.findings;
+    return report.findings.filter((f) => drilldown.categories.includes(f.category));
+  }, [report.findings, drilldown]);
 
   const selectedFinding = useMemo(() => {
     const pool = viewMode === 'category' ? categoryFindings : filters.filteredFindings;
@@ -41,18 +41,14 @@ export function ReportViewer({ report }: { report: RepositoryScan }) {
   }, [viewMode, categoryFindings, filters.filteredFindings, selectedId]);
 
   const handleCategoryClick = (areaLabel: string, categories: string[]) => {
-    if (categories.length === 1) {
-      setDrillCategory(categories[0]);
-    } else {
-      setDrillCategory(categories[0]);
-    }
+    setDrilldown({ label: areaLabel, categories });
     setViewMode('category');
     setSelectedId(null);
   };
 
   const handleBackToOverview = () => {
     setViewMode('overview');
-    setDrillCategory(null);
+    setDrilldown(null);
     setSelectedId(null);
   };
 
@@ -96,7 +92,10 @@ export function ReportViewer({ report }: { report: RepositoryScan }) {
                 <ArrowLeft size={15} aria-hidden="true" />
                 Back to overview
               </button>
-              <h2>{drillCategory ? formatCategory(drillCategory) : 'Category'} findings ({categoryFindings.length})</h2>
+              <h2>{drilldown ? drilldown.label : 'Category'} findings ({categoryFindings.length})</h2>
+              {drilldown && drilldown.categories.length > 1 ? (
+                <span>{drilldown.categories.map(formatCategory).join(', ')}</span>
+              ) : null}
             </div>
             <div className="finding-layout">
               <FindingList

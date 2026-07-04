@@ -36,6 +36,8 @@ Write a Markdown report for CI artifacts:
 dotnet run --project src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj -- scan . --format markdown --output reports/repo-trust.md --force
 ```
 
+For profile-specific local and CI examples, see [Scan Examples](examples.md).
+
 ## Exit Codes
 
 | Code | Meaning |

@@ -163,3 +163,28 @@ Run one active updater against a shared database. Other scanner instances can us
 | `FullOsvRefreshInterval` | 7 days | Maximum age before a full ecosystem reimport |
 
 The default OSV ecosystem list covers npm, NuGet, PyPI, Maven, Go, crates.io, Packagist, RubyGems, Pub, Hex, and SwiftURL.
+
+## Troubleshooting
+
+To confirm the SQLite cache is being used, inspect dependency metadata and vulnerability metrics in JSON or Markdown reports. Useful fields include:
+
+- `dependency.metadata.cache.hit.count`
+- `dependency.metadata.lookup.network.count`
+- `dependency.metadata.lookup.stale_used.count`
+- `dependency.metadata.lookup.attempted.count`
+- `dependency.metadata.lookup.returned.count`
+- `dependency.vulnerability.lookup.local.count`
+- `dependency.vulnerability.lookup.online.count`
+- `dependency.vulnerability.lookup.incomplete.count`
+
+Package metadata records expose `lookup.source`:
+
+- `sqlite` means a fresh local cache entry was used.
+- `network` means the scanner queried an allowlisted registry and may have updated SQLite.
+- `sqlite-stale` means an expired positive cache entry was used because refresh failed; this is a resilience fallback, not a confirmed fresh registry result.
+
+Slow-network scans usually show higher network lookup counts, timeout or rate-limit warnings, and lower returned counts than attempted counts. Offline scans should still use fresh SQLite entries and usable stale positive entries. If local OSV data is not ready, vulnerability checks use online OSV fallback when enabled; with fallback disabled, reports mark coverage incomplete instead of reporting an unverified clean result.
+
+For production hosts, enable background refresh only on the instance that owns the persistent database volume. Other API or worker instances should keep `BackgroundRefreshEnabled` disabled and reuse the same durable `DatabasePath`.
+
+Safe cleanup is limited to stopping scanner hosts and deleting the configured SQLite database when you intentionally want to rebuild local intelligence from scratch. Do not delete a shared production database while a refresh service or scan is active.
