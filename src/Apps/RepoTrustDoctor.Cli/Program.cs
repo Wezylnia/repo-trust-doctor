@@ -58,6 +58,11 @@ internal static partial class CliProgram
             return await RunDiffAsync(args, cancellationToken);
         }
 
+        if (string.Equals(args[0], "benchmark", StringComparison.OrdinalIgnoreCase))
+        {
+            return await RunBenchmarkAsync(args, cancellationToken);
+        }
+
         if (!string.Equals(args[0], "scan", StringComparison.OrdinalIgnoreCase))
         {
             Console.Error.WriteLine($"Unknown command: {args[0]}");
@@ -299,6 +304,7 @@ internal static partial class CliProgram
         Usage:
           repo-trust-doctor scan <path-or-url> [options]
           repo-trust-doctor diff <before.json> <after.json> [options]
+          repo-trust-doctor benchmark <path-or-url> [options]
 
         Options:
           --format console|json|markdown|md|sarif
@@ -314,6 +320,12 @@ internal static partial class CliProgram
           --format console|json|markdown|md   Diff report format (default: console)
           --output <file>                     Write diff report to file instead of stdout
           --force                             Overwrite existing diff report file
+
+        Benchmark options:
+          --iterations <count>                Measured scans (default: 5)
+          --warmup <count>                    Warm-up scans (default: 1)
+          --depth fast|standard|deep          Scan depth (default: standard)
+          --profile <name>                    Trust profile (default: ProductionDependency)
 
         Supported profiles:
           Personal, ProductionDependency, SecuritySensitiveDependency

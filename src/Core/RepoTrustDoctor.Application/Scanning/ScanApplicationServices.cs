@@ -296,7 +296,17 @@ public sealed class ScanJobProcessor(IScanStore store, IRepositoryScanRunner run
             store.TryUpdate(job.ScanId, current => current with { State = ScanLifecycleState.PreparingRepository, StatusMessage = "Preparing repository." });
             store.TryUpdate(job.ScanId, current => current with { State = MapRunningState(job.Options.Depth), StatusMessage = "Running analyzers." });
 
-            var scan = await runner.RunAsync(job.Options, linkedCancellation.Token);
+            var executionOptions = job.Options with
+            {
+                Progress = progress => store.TryUpdate(job.ScanId, current => current with
+                {
+                    State = progress.State,
+                    StatusMessage = progress.StatusMessage,
+                    ProgressModules = progress.Modules ?? current.ProgressModules,
+                    ProgressTotalModuleCount = Math.Max(progress.TotalModuleCount, current.ProgressTotalModuleCount)
+                })
+            };
+            var scan = await runner.RunAsync(executionOptions, linkedCancellation.Token);
             store.TryUpdate(job.ScanId, current => current with
             {
                 State = ScanLifecycleState.Completed,

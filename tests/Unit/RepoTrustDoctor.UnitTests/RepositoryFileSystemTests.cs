@@ -103,6 +103,37 @@ public sealed class RepositoryFileSystemTests
     }
 
     [Fact]
+    public void FileIndexProvidesStableMetadataAndClassification()
+    {
+        using var repository = TemporaryDirectory.Create();
+        WriteFile(repository.Path, "tests/Fixture.cs", "public class Fixture { }");
+
+        using var index = RepositoryFileSystem.UseFileIndex(repository.Path);
+        var entry = Assert.Single(RepositoryFileSystem.EnumerateFileEntries(repository.Path, "*.cs"));
+
+        Assert.Equal("tests/Fixture.cs", entry.RelativePath);
+        Assert.Equal(".cs", entry.Extension);
+        Assert.True(entry.Length > 0);
+        Assert.True(entry.Classification.HasAny(RepositoryPathClassification.Test));
+    }
+
+    [Fact]
+    public async Task FileIndexCachesBoundedSourceTextForSnapshotConsistency()
+    {
+        using var repository = TemporaryDirectory.Create();
+        WriteFile(repository.Path, "src/App.cs", "first version");
+        var path = Path.Combine(repository.Path, "src", "App.cs");
+
+        using var index = RepositoryFileSystem.UseFileIndex(repository.Path);
+        var first = await RepositoryFileSystem.ReadAllTextAsync(path, CancellationToken.None);
+        File.WriteAllText(path, "second version");
+        var second = await RepositoryFileSystem.ReadAllTextAsync(path, CancellationToken.None);
+
+        Assert.Equal("first version", first);
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
     public void EnumerateFilesSkipsDirectorySymlinks()
     {
         using var repository = TemporaryDirectory.Create();

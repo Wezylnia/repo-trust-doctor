@@ -37,6 +37,24 @@ export interface HealthResponse {
   allowedWebOrigins: string[];
 }
 
+export interface ScanProgressResponse {
+  scanId: string;
+  state: string;
+  updatedAt: string;
+  modules: Array<{
+    moduleId: string;
+    displayName: string;
+    category: string;
+    status: string;
+    findingsCount: number;
+    statusMessage?: string | null;
+  }>;
+  completedModuleCount: number;
+  totalModuleCount: number;
+  statusMessage?: string | null;
+  completionRatio: number;
+}
+
 export async function checkHealth(apiBaseUrl: string): Promise<HealthResponse> {
   const response = await fetch(`${normalizeApiBaseUrl(apiBaseUrl)}/health`);
   if (!response.ok) {
@@ -95,6 +113,15 @@ export async function getScanStatus(apiBaseUrl: string, scanId: string): Promise
   }
 
   return await response.json() as ScanStatusResponse;
+}
+
+export async function getScanProgress(apiBaseUrl: string, scanId: string): Promise<ScanProgressResponse> {
+  const response = await fetch(`${normalizeApiBaseUrl(apiBaseUrl)}/api/scans/${scanId}/progress`);
+  if (!response.ok) {
+    throw new Error(await readApiError(response));
+  }
+
+  return await response.json() as ScanProgressResponse;
 }
 
 export async function getScanReport(apiBaseUrl: string, scanId: string): Promise<RepositoryScan> {

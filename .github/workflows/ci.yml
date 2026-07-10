@@ -31,6 +31,13 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/Apps/RepoTrustDoctor.Web/package-lock.json
+
       - name: Restore
         run: dotnet restore RepoTrustDoctor.slnx --locked-mode
 
@@ -42,3 +49,45 @@ jobs:
 
       - name: CLI smoke test
         run: dotnet run --project src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj --configuration Release -- scan . --format console
+
+      - name: Install web dependencies
+        working-directory: src/Apps/RepoTrustDoctor.Web
+        run: npm ci
+
+      - name: Test web workbench
+        working-directory: src/Apps/RepoTrustDoctor.Web
+        run: npm test
+
+      - name: Build web workbench
+        working-directory: src/Apps/RepoTrustDoctor.Web
+        run: npm run build
+
+  web-visual:
+    name: web-visual
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/Apps/RepoTrustDoctor.Web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: src/Apps/RepoTrustDoctor.Web
+        run: npm ci
+
+      - name: Install browser
+        working-directory: src/Apps/RepoTrustDoctor.Web
+        run: npx playwright install chromium
+
+      - name: Test workbench layouts
+        working-directory: src/Apps/RepoTrustDoctor.Web
+        run: npm run test:visual

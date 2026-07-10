@@ -79,14 +79,9 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!RepositoryFileSystem.CanReadAsText(file))
-            {
-                continue;
-            }
-
             var relativePath = ToRepoRelative(context.RepositoryPath, file);
-
-            var text = await File.ReadAllTextAsync(file, cancellationToken);
+            var text = await RepositoryFileSystem.ReadAllTextAsync(file, cancellationToken);
+            if (text is null) continue;
             var extension = Path.GetExtension(file).ToLowerInvariant();
             var imports = ParseImports(text, extension, relativePath, fileIndex);
 
@@ -240,9 +235,10 @@ public sealed partial class ImportGraphAnalyzer : IRepositoryAnalyzer
             Tags: ["codebase", "import-graph", "coverage"]);
 
     private static IEnumerable<string> EnumerateSourceFiles(string root) =>
-        RepositoryFileSystem.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-            .Where(file => SourceExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
-            .Where(file => !IsLowSignalSource(root, file));
+        RepositoryFileSystem.EnumerateFileEntries(root, "*", SearchOption.AllDirectories)
+            .Where(entry => SourceExtensions.Contains(entry.Extension, StringComparer.OrdinalIgnoreCase))
+            .Where(entry => !RepositoryPathClassifier.IsNonProductionEvidencePath(entry.RelativePath))
+            .Select(entry => entry.FullPath);
 
     private static bool IsLowSignalSource(string root, string filePath)
     {

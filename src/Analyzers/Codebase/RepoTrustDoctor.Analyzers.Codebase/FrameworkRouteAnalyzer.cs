@@ -96,11 +96,6 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!RepositoryFileSystem.CanReadAsText(file))
-            {
-                continue;
-            }
-
             var extension = Path.GetExtension(file);
             var matchingFrameworks = GetMatchingFrameworks(extension);
             if (matchingFrameworks.Count == 0)
@@ -108,7 +103,8 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
                 continue;
             }
 
-            var text = await File.ReadAllTextAsync(file, cancellationToken);
+            var text = await RepositoryFileSystem.ReadAllTextAsync(file, cancellationToken);
+            if (text is null) continue;
             var relativePath = Path.GetRelativePath(context.RepositoryPath, file).Replace('\\', '/');
 
             foreach (var framework in matchingFrameworks)
@@ -244,13 +240,18 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
     }
 
     private static IEnumerable<string> EnumerateSourceFiles(string root) =>
-        RepositoryFileSystem.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-            .Where(file => !IsTestSource(root, file))
-            .Where(file =>
-            {
-                var ext = Path.GetExtension(file);
-                return Frameworks.Any(fw => fw.Extensions.Contains(ext, StringComparer.OrdinalIgnoreCase));
-            });
+        RepositoryFileSystem.EnumerateFileEntries(root, "*", SearchOption.AllDirectories)
+            .Where(entry => !entry.Classification.HasAny(
+                RepositoryPathClassification.Test |
+                RepositoryPathClassification.Fixture |
+                RepositoryPathClassification.Example |
+                RepositoryPathClassification.Documentation |
+                RepositoryPathClassification.Generated |
+                RepositoryPathClassification.Template |
+                RepositoryPathClassification.Benchmark |
+                RepositoryPathClassification.AnalyzerImplementation))
+            .Where(entry => Frameworks.Any(fw => fw.Extensions.Contains(entry.Extension, StringComparer.OrdinalIgnoreCase)))
+            .Select(entry => entry.FullPath);
 
     private static List<FrameworkDefinition> GetMatchingFrameworks(string extension) =>
         Frameworks
@@ -360,4 +361,3 @@ public sealed partial class FrameworkRouteAnalyzer : IRepositoryAnalyzer
     }
 
 }
-

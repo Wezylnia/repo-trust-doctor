@@ -6,7 +6,15 @@ namespace RepoTrustDoctor.Application.Scanning;
 public sealed record ScanRequestOptions(
     string Target,
     AnalysisDepth Depth,
-    TrustProfile TrustProfile);
+    TrustProfile TrustProfile,
+    Action<ScanExecutionProgress>? Progress = null,
+    bool UseIncrementalCache = true);
+
+public sealed record ScanExecutionProgress(
+    ScanLifecycleState State,
+    string StatusMessage,
+    IReadOnlyList<ScanModule>? Modules = null,
+    int TotalModuleCount = 0);
 
 public sealed record ScanJob(
     Guid ScanId,
@@ -22,7 +30,9 @@ public sealed record ScanState(
     DateTimeOffset? CompletedAt = null,
     RepositoryScan? Result = null,
     string? StatusMessage = null,
-    CancellationTokenSource? Cancellation = null)
+    CancellationTokenSource? Cancellation = null,
+    IReadOnlyList<ScanModule>? ProgressModules = null,
+    int ProgressTotalModuleCount = 0)
 {
     public ScanStatusResponse ToStatusResponse() =>
         new(
@@ -45,7 +55,8 @@ public sealed record ScanState(
 
     public ScanProgressDto ToProgressDto()
     {
-        var modules = Result?.Modules
+        var sourceModules = Result?.Modules ?? ProgressModules ?? [];
+        var modules = sourceModules
             .Select(module => new ScanModuleProgressDto(
                 module.ModuleId,
                 module.DisplayName,
@@ -69,7 +80,7 @@ public sealed record ScanState(
             UpdatedAt,
             modules,
             completedModules,
-            modules.Length,
+            Result?.Modules.Count ?? Math.Max(ProgressTotalModuleCount, modules.Length),
             StatusMessage);
     }
 }

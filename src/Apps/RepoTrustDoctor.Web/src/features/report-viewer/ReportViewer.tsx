@@ -15,6 +15,8 @@ import { FindingDetail } from './components/FindingDetail';
 import { FindingList } from './components/FindingList';
 import { ReportSidebar } from './components/ReportSidebar';
 import { ScanCoveragePanel } from './components/ScanCoveragePanel';
+import { NextStepsPanel } from './components/NextStepsPanel';
+import { TechnicalDetailsPanel } from './components/TechnicalDetailsPanel';
 import { useFindingFilters } from './useFindingFilters';
 
 type ViewMode = 'overview' | 'category';
@@ -54,33 +56,37 @@ export function ReportViewer({ report }: { report: RepositoryScan }) {
 
   return (
     <section className="workspace" aria-label="Loaded report">
-      <ReportSidebar report={report} summary={summary} dependencyInventory={dependencyInventory} />
+      <div className="report-header-grid">
+        <ReportSidebar report={report} summary={summary} />
+        <DecisionPanel report={report} />
+        <NextStepsPanel report={report} />
+      </div>
       <section className="content">
         {viewMode === 'overview' ? (
           <>
-            <div className="report-overview">
-              <DecisionPanel report={report} />
-              <CategoryScoreTable
-                report={report}
-                onCategoryClick={handleCategoryClick}
-              />
-            </div>
+            <CategoryScoreTable report={report} onCategoryClick={handleCategoryClick} />
             <ScanCoveragePanel coverage={scanCoverage} />
+            <TechnicalDetailsPanel report={report} dependencyInventory={dependencyInventory} />
             <FilterToolbar
               categories={filters.categories}
               category={filters.category}
               query={filters.query}
               severity={filters.severity}
+              actionableOnly={filters.actionableOnly}
+              groupRepeated={filters.groupRepeated}
               onCategoryChange={filters.setCategory}
               onClear={filters.clearFilters}
               onQueryChange={filters.setQuery}
               onSeverityChange={filters.setSeverity}
+              onActionableOnlyChange={filters.setActionableOnly}
+              onGroupRepeatedChange={filters.setGroupRepeated}
             />
             <div className="finding-layout">
               <FindingList
                 findings={filters.filteredFindings}
                 selectedFinding={selectedFinding}
                 onSelectFinding={(finding) => setSelectedId(finding.fingerprint ?? finding.ruleId)}
+                groupRepeated={filters.groupRepeated}
               />
               <FindingDetail finding={selectedFinding} />
             </div>

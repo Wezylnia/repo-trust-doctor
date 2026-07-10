@@ -69,9 +69,10 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
     {
         var symbols = new SortedSet<string>(StringComparer.Ordinal);
         var extensions = new[] { ".cs", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".go", ".rs" };
-        var sourceFiles = RepositoryFileSystem.EnumerateFiles(context.RepositoryPath, "*", SearchOption.AllDirectories)
-            .Where(file => extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
-            .Where(file => !IsLowSignalSource(context.RepositoryPath, file))
+        var sourceFiles = RepositoryFileSystem.EnumerateFileEntries(context.RepositoryPath, "*", SearchOption.AllDirectories)
+            .Where(entry => extensions.Contains(entry.Extension, StringComparer.OrdinalIgnoreCase))
+            .Where(entry => !RepositoryPathClassifier.IsNonProductionEvidencePath(entry.RelativePath))
+            .Select(entry => entry.FullPath)
             .ToArray();
         var selection = CodebaseFileSelection.Select(context.RepositoryPath, sourceFiles, maxAnalyzedSourceFiles);
         var files = selection.Files;
@@ -80,23 +81,8 @@ public sealed partial class PublicApiAnalyzer : IRepositoryAnalyzer
         foreach (var file in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!RepositoryFileSystem.CanReadAsText(file))
-            {
-                unreadableSourceFileCount++;
-                continue;
-            }
-
-            string text;
-            try
-            {
-                text = await File.ReadAllTextAsync(file, cancellationToken);
-            }
-            catch (IOException)
-            {
-                unreadableSourceFileCount++;
-                continue;
-            }
-            catch (UnauthorizedAccessException)
+            var text = await RepositoryFileSystem.ReadAllTextAsync(file, cancellationToken);
+            if (text is null)
             {
                 unreadableSourceFileCount++;
                 continue;

@@ -1,8 +1,19 @@
+using System.Collections.Concurrent;
+
 namespace RepoTrustDoctor.Analysis.Abstractions;
+
+public sealed record RepositoryFileEntry(
+    string FullPath,
+    string RelativePath,
+    string Extension,
+    long Length,
+    DateTimeOffset LastWriteTimeUtc,
+    RepositoryPathClassification Classification);
 
 public static class RepositoryFileSystem
 {
     public const long DefaultMaxReadableFileBytes = 512 * 1024;
+    public const long DefaultMaxCachedTextBytes = 64L * 1024 * 1024;
 
     private static readonly string[] ExcludedDirectoryNames =
     [
@@ -46,6 +57,47 @@ public static class RepositoryFileSystem
         }
 
         return EnumerateFilesUncached(fullRoot, searchPattern, searchOption);
+    }
+
+    public static IEnumerable<RepositoryFileEntry> EnumerateFileEntries(
+        string root,
+        string searchPattern = "*",
+        SearchOption searchOption = SearchOption.AllDirectories)
+    {
+        var fullRoot = Path.GetFullPath(root);
+        if (ActiveIndex.Value?.TryEnumerateFileEntries(fullRoot, searchPattern, searchOption, out var entries) == true)
+        {
+            return entries;
+        }
+
+        return EnumerateFilesUncached(fullRoot, searchPattern, searchOption)
+            .Select(file => CreateFileEntry(fullRoot, file));
+    }
+
+    public static async ValueTask<string?> ReadAllTextAsync(
+        string filePath,
+        CancellationToken cancellationToken,
+        long maxBytes = DefaultMaxReadableFileBytes)
+    {
+        var fullPath = Path.GetFullPath(filePath);
+        if (!CanReadAsText(fullPath, maxBytes))
+        {
+            return null;
+        }
+
+        if (ActiveIndex.Value?.Contains(fullPath) == true)
+        {
+            return await ActiveIndex.Value.ReadAllTextAsync(fullPath, maxBytes, cancellationToken);
+        }
+
+        try
+        {
+            return await File.ReadAllTextAsync(fullPath, cancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     public static IDisposable UseFileIndex(string repositoryRoot)
@@ -167,10 +219,40 @@ public static class RepositoryFileSystem
     public static bool IsExcludedDirectoryName(string directoryName) =>
         ExcludedDirectoryNames.Contains(directoryName, StringComparer.OrdinalIgnoreCase);
 
+    private static RepositoryFileEntry CreateFileEntry(string repositoryRoot, string filePath)
+    {
+        try
+        {
+            var info = new FileInfo(filePath);
+            var relativePath = Path.GetRelativePath(repositoryRoot, filePath).Replace('\\', '/');
+            return new RepositoryFileEntry(
+                filePath,
+                relativePath,
+                info.Extension,
+                info.Exists ? info.Length : 0,
+                info.Exists ? info.LastWriteTimeUtc : DateTimeOffset.MinValue,
+                RepositoryPathClassifier.Classify(relativePath));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            var relativePath = Path.GetRelativePath(repositoryRoot, filePath).Replace('\\', '/');
+            return new RepositoryFileEntry(
+                filePath,
+                relativePath,
+                Path.GetExtension(filePath),
+                0,
+                DateTimeOffset.MinValue,
+                RepositoryPathClassifier.Classify(relativePath));
+        }
+    }
+
     private sealed class RepositoryFileIndex
     {
         private readonly string repositoryRoot;
         private readonly Lazy<IReadOnlyList<string>> files;
+        private readonly Lazy<IReadOnlyList<RepositoryFileEntry>> entries;
+        private readonly ConcurrentDictionary<TextCacheKey, Lazy<Task<CachedText>>> textCache = new();
+        private long cachedTextBytes;
 
         public RepositoryFileIndex(string repositoryRoot)
         {
@@ -178,7 +260,12 @@ public static class RepositoryFileSystem
             files = new Lazy<IReadOnlyList<string>>(
                 () => EnumerateFilesUncached(this.repositoryRoot, "*", SearchOption.AllDirectories).ToArray(),
                 LazyThreadSafetyMode.ExecutionAndPublication);
+            entries = new Lazy<IReadOnlyList<RepositoryFileEntry>>(
+                () => files.Value.Select(file => CreateFileEntry(this.repositoryRoot, file)).ToArray(),
+                LazyThreadSafetyMode.ExecutionAndPublication);
         }
+
+        public bool Contains(string fullPath) => IsSameOrChildPath(fullPath, repositoryRoot);
 
         public bool TryEnumerateFiles(
             string root,
@@ -205,6 +292,74 @@ public static class RepositoryFileSystem
             return true;
         }
 
+        public bool TryEnumerateFileEntries(
+            string root,
+            string searchPattern,
+            SearchOption searchOption,
+            out IEnumerable<RepositoryFileEntry> indexedEntries)
+        {
+            var normalizedRoot = TrimTrailingDirectorySeparators(root);
+            if (!IsSameOrChildPath(normalizedRoot, repositoryRoot))
+            {
+                indexedEntries = [];
+                return false;
+            }
+
+            if (!Directory.Exists(normalizedRoot))
+            {
+                indexedEntries = [];
+                return true;
+            }
+
+            indexedEntries = entries.Value
+                .Where(entry => IsInsideRequestedRoot(entry.FullPath, normalizedRoot, searchOption))
+                .Where(entry => MatchesSearchPattern(entry.FullPath, searchPattern));
+            return true;
+        }
+
+        public async ValueTask<string?> ReadAllTextAsync(
+            string fullPath,
+            long maxBytes,
+            CancellationToken cancellationToken)
+        {
+            var key = new TextCacheKey(fullPath, maxBytes);
+            var lazy = textCache.GetOrAdd(
+                key,
+                cacheKey => new Lazy<Task<CachedText>>(
+                    () => LoadTextAsync(cacheKey),
+                    LazyThreadSafetyMode.ExecutionAndPublication));
+            var cached = await lazy.Value.WaitAsync(cancellationToken);
+            if (!cached.Keep)
+            {
+                textCache.TryRemove(key, out _);
+            }
+
+            return cached.Text;
+        }
+
+        private async Task<CachedText> LoadTextAsync(TextCacheKey key)
+        {
+            string? text;
+            try
+            {
+                text = await File.ReadAllTextAsync(key.FullPath, CancellationToken.None);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return new CachedText(null, Keep: false);
+            }
+
+            var bytes = checked((long)text.Length * sizeof(char));
+            var total = Interlocked.Add(ref cachedTextBytes, bytes);
+            if (total <= DefaultMaxCachedTextBytes)
+            {
+                return new CachedText(text, Keep: true);
+            }
+
+            Interlocked.Add(ref cachedTextBytes, -bytes);
+            return new CachedText(text, Keep: false);
+        }
+
         private static bool IsInsideRequestedRoot(string file, string root, SearchOption searchOption)
         {
             if (searchOption == SearchOption.TopDirectoryOnly)
@@ -216,6 +371,10 @@ public static class RepositoryFileSystem
 
             return IsSameOrChildPath(file, root);
         }
+
+        private readonly record struct TextCacheKey(string FullPath, long MaxBytes);
+
+        private sealed record CachedText(string? Text, bool Keep);
     }
 
     private sealed class FileIndexScope(RepositoryFileIndex? previous) : IDisposable

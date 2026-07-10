@@ -9,18 +9,21 @@ namespace RepoTrustDoctor.Analysis.Orchestration;
 public sealed class ScanOrchestrator
 {
     public const string ToolVersion = ProductInfo.Version;
+    public static readonly int DefaultMaxConcurrentAnalyzers = Math.Clamp(Environment.ProcessorCount, 2, 4);
 
     private readonly IReadOnlyList<IRepositoryAnalyzer> analyzers;
     private readonly AnalyzerExecutor executor;
     private readonly TrustScorer scorer;
     private readonly AnalyzerExecutionSafety maximumExecutionSafety;
     private readonly IReadOnlyDictionary<string, string> artifactProducers;
+    private readonly int maxConcurrentAnalyzers;
 
     public ScanOrchestrator(
         IEnumerable<IRepositoryAnalyzer> analyzers,
         AnalyzerExecutor executor,
         TrustScorer scorer,
-        AnalyzerExecutionSafety maximumExecutionSafety = AnalyzerExecutionSafety.NetworkLookup)
+        AnalyzerExecutionSafety maximumExecutionSafety = AnalyzerExecutionSafety.NetworkLookup,
+        int? maxConcurrentAnalyzers = null)
     {
         var analyzerList = analyzers.ToArray();
         var byId = BuildAnalyzerIdMap(analyzerList);
@@ -31,6 +34,11 @@ public sealed class ScanOrchestrator
         this.executor = executor;
         this.scorer = scorer;
         this.maximumExecutionSafety = maximumExecutionSafety;
+        this.maxConcurrentAnalyzers = maxConcurrentAnalyzers ?? DefaultMaxConcurrentAnalyzers;
+        if (this.maxConcurrentAnalyzers < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxConcurrentAnalyzers), "Maximum analyzer concurrency must be at least one.");
+        }
     }
 
     private static IReadOnlyDictionary<string, IRepositoryAnalyzer> BuildAnalyzerIdMap(
@@ -190,42 +198,99 @@ public sealed class ScanOrchestrator
         string repositoryPath,
         AnalysisDepth depth,
         TrustProfile trustProfile,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<IReadOnlyList<ScanModule>, int>? progress = null)
     {
         var started = DateTimeOffset.UtcNow;
         var context = new AnalysisContext(target, repositoryPath, depth);
-        var modules = new List<ScanModule>();
-        var findings = new List<Finding>();
+        var executions = new Dictionary<string, AnalyzerExecutionResult>(StringComparer.OrdinalIgnoreCase);
+        var skippedModules = new Dictionary<string, ScanModule>(StringComparer.OrdinalIgnoreCase);
         var moduleStatuses = new Dictionary<string, ModuleStatus>(StringComparer.OrdinalIgnoreCase);
+        var eligibleAnalyzers = analyzers
+            .Where(analyzer => analyzer.MinimumDepth <= depth)
+            .ToArray();
+        var eligibleAnalyzerIds = eligibleAnalyzers
+            .Select(analyzer => analyzer.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var remaining = new List<IRepositoryAnalyzer>(eligibleAnalyzers);
 
         using var fileIndex = RepositoryFileSystem.UseFileIndex(repositoryPath);
-        foreach (var analyzer in analyzers.Where(analyzer => analyzer.MinimumDepth <= depth))
+        while (remaining.Count > 0)
         {
-            if (TryGetBlockedDependency(analyzer, moduleStatuses, out var blockedDependency))
+            var skippedThisPass = remaining
+                .Where(analyzer =>
+                    TryGetBlockedDependency(analyzer, moduleStatuses, out _) ||
+                    analyzer.ExecutionSafety > maximumExecutionSafety)
+                .ToArray();
+
+            foreach (var analyzer in skippedThisPass)
             {
-                var skipped = CreateSkippedModule(
-                    analyzer,
-                    $"Required analyzer '{blockedDependency}' did not complete successfully.");
-                modules.Add(skipped);
+                ScanModule skipped;
+                if (TryGetBlockedDependency(analyzer, moduleStatuses, out var blockedDependency))
+                {
+                    skipped = CreateSkippedModule(
+                        analyzer,
+                        $"Required analyzer '{blockedDependency}' did not complete successfully.");
+                }
+                else
+                {
+                    skipped = CreateSkippedModule(
+                        analyzer,
+                        $"Analyzer requires {analyzer.ExecutionSafety} execution safety but the scan allows {maximumExecutionSafety}.");
+                }
+
+                skippedModules[analyzer.Id] = skipped;
                 moduleStatuses[analyzer.Id] = skipped.Status;
+                remaining.Remove(analyzer);
+            }
+
+            // A newly skipped producer can block a dependent that was not blocked at the start of this pass.
+            // Re-evaluate dependencies before scheduling another analyzer.
+            if (skippedThisPass.Length > 0)
+            {
+                progress?.Invoke(BuildProgressModules(eligibleAnalyzers, executions, skippedModules), eligibleAnalyzers.Length);
                 continue;
             }
 
-            if (analyzer.ExecutionSafety > maximumExecutionSafety)
+            var runnable = remaining
+                .Where(analyzer => !HasPendingEligibleDependency(analyzer, eligibleAnalyzerIds, moduleStatuses))
+                .Take(maxConcurrentAnalyzers)
+                .ToArray();
+
+            if (runnable.Length == 0)
             {
-                var skipped = CreateSkippedModule(
-                    analyzer,
-                    $"Analyzer requires {analyzer.ExecutionSafety} execution safety but the scan allows {maximumExecutionSafety}.");
-                modules.Add(skipped);
-                moduleStatuses[analyzer.Id] = skipped.Status;
-                continue;
+                throw new InvalidOperationException("Analyzer scheduling could not resolve a runnable analyzer.");
             }
 
-            var execution = await executor.ExecuteAsync(analyzer, context, cancellationToken);
-            modules.Add(execution.Module);
-            moduleStatuses[analyzer.Id] = execution.Module.Status;
-            findings.AddRange(execution.Result.Findings);
+            // A wave contains only analyzers whose declared producers have completed. Artifacts are committed
+            // after the wave in deterministic analyzer order, so readers never observe a partial producer result.
+            var completedWave = await Task.WhenAll(runnable.Select(analyzer =>
+                executor.ExecuteAsync(analyzer, context, cancellationToken, commitArtifacts: false)));
+
+            foreach (var execution in completedWave)
+            {
+                foreach (var artifact in execution.Result.Artifacts ?? [])
+                {
+                    context.AddArtifact(artifact);
+                }
+
+                executions[execution.Analyzer.Id] = execution;
+                moduleStatuses[execution.Analyzer.Id] = execution.Module.Status;
+                remaining.Remove(execution.Analyzer);
+            }
+
+            progress?.Invoke(BuildProgressModules(eligibleAnalyzers, executions, skippedModules), eligibleAnalyzers.Length);
         }
+
+        var modules = eligibleAnalyzers
+            .Select(analyzer => executions.TryGetValue(analyzer.Id, out var execution)
+                ? execution.Module
+                : skippedModules[analyzer.Id])
+            .ToArray();
+        var findings = eligibleAnalyzers
+            .Where(analyzer => executions.ContainsKey(analyzer.Id))
+            .SelectMany(analyzer => executions[analyzer.Id].Result.Findings)
+            .ToList();
 
         var completed = DateTimeOffset.UtcNow;
         var fingerprintedFindings = FindingIdentity.AddFingerprints(findings);
@@ -284,6 +349,36 @@ public sealed class ScanOrchestrator
         blockedDependency = null;
         return false;
     }
+
+    private bool HasPendingEligibleDependency(
+        IRepositoryAnalyzer analyzer,
+        IReadOnlySet<string> eligibleAnalyzerIds,
+        IReadOnlyDictionary<string, ModuleStatus> moduleStatuses)
+    {
+        foreach (var dependency in analyzer.DependsOn)
+        {
+            var resolvedId = ResolveDependency(dependency, artifactProducers);
+            if (resolvedId is not null &&
+                eligibleAnalyzerIds.Contains(resolvedId) &&
+                !moduleStatuses.ContainsKey(resolvedId))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IReadOnlyList<ScanModule> BuildProgressModules(
+        IReadOnlyList<IRepositoryAnalyzer> eligibleAnalyzers,
+        IReadOnlyDictionary<string, AnalyzerExecutionResult> executions,
+        IReadOnlyDictionary<string, ScanModule> skippedModules) =>
+        eligibleAnalyzers
+            .Where(analyzer => executions.ContainsKey(analyzer.Id) || skippedModules.ContainsKey(analyzer.Id))
+            .Select(analyzer => executions.TryGetValue(analyzer.Id, out var execution)
+                ? execution.Module
+                : skippedModules[analyzer.Id])
+            .ToArray();
 
     private static ScanModule CreateSkippedModule(IRepositoryAnalyzer analyzer, string reason)
     {

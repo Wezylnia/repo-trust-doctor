@@ -51,6 +51,55 @@ public sealed class DefaultRepositoryScanRunnerTests
         Assert.Equal(2, analyzer.CallCount);
     }
 
+    [Fact]
+    public async Task RunAsync_ReusesCompletedScanForTheSameCleanRevision()
+    {
+        using var fixture = TemporaryDirectory.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), "# cache fixture");
+        RunGit(fixture.Path, "init");
+        RunGit(fixture.Path, "config", "user.email", "cache-test@example.test");
+        RunGit(fixture.Path, "config", "user.name", "Cache Test");
+        RunGit(fixture.Path, "add", ".");
+        RunGit(fixture.Path, "-c", "commit.gpgsign=false", "commit", "-m", "fixture");
+
+        var analyzer = new CountingAnalyzer();
+        var runner = new DefaultRepositoryScanRunner([analyzer]);
+        var options = new ScanRequestOptions(
+            fixture.Path,
+            AnalysisDepth.Fast,
+            TrustProfile.ProductionDependency);
+
+        await runner.RunAsync(options, CancellationToken.None);
+        var cached = await runner.RunAsync(options, CancellationToken.None);
+
+        Assert.Equal(1, analyzer.CallCount);
+        Assert.True(Assert.IsType<bool>(cached.Artifacts!["scan.cache.hit"]));
+    }
+
+    private static void RunGit(string workingDirectory, params string[] arguments)
+    {
+        using var process = new System.Diagnostics.Process
+        {
+            StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                WorkingDirectory = workingDirectory,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }
+        };
+        foreach (var argument in arguments)
+        {
+            process.StartInfo.ArgumentList.Add(argument);
+        }
+
+        process.Start();
+        process.WaitForExit();
+        Assert.True(process.ExitCode == 0, process.StandardError.ReadToEnd());
+    }
+
     private sealed class CountingAnalyzer : IRepositoryAnalyzer
     {
         public int CallCount { get; private set; }

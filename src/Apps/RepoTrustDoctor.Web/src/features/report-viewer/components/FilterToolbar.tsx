@@ -6,10 +6,14 @@ interface FilterToolbarProps {
   category: string;
   query: string;
   severity: string;
+  actionableOnly: boolean;
+  groupRepeated: boolean;
   onCategoryChange: (value: string) => void;
   onClear: () => void;
   onQueryChange: (value: string) => void;
   onSeverityChange: (value: string) => void;
+  onActionableOnlyChange: (value: boolean) => void;
+  onGroupRepeatedChange: (value: boolean) => void;
 }
 
 export function FilterToolbar({
@@ -17,10 +21,14 @@ export function FilterToolbar({
   category,
   query,
   severity,
+  actionableOnly,
+  groupRepeated,
   onCategoryChange,
   onClear,
   onQueryChange,
-  onSeverityChange
+  onSeverityChange,
+  onActionableOnlyChange,
+  onGroupRepeatedChange
 }: FilterToolbarProps) {
   return (
     <div className="toolbar" aria-label="Finding filters">
@@ -46,6 +54,14 @@ export function FilterToolbar({
           </option>
         ))}
       </select>
+      <label className="filter-toggle">
+        <input type="checkbox" checked={actionableOnly} onChange={(event) => onActionableOnlyChange(event.target.checked)} />
+        Actionable only
+      </label>
+      <label className="filter-toggle">
+        <input type="checkbox" checked={groupRepeated} onChange={(event) => onGroupRepeatedChange(event.target.checked)} />
+        Group repeated
+      </label>
       <button type="button" className="icon-button" onClick={onClear} aria-label="Clear filters" title="Clear filters">
         <X size={16} aria-hidden="true" />
       </button>

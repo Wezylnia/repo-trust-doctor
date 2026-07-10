@@ -13,6 +13,7 @@ public sealed class RepositoryWorkspace : IDisposable
 
     private const int MaxGitOutputChars = 8192;
     private static readonly TimeSpan CloneTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan RemoteHeadTimeout = TimeSpan.FromSeconds(30);
 
     private readonly bool ownsDirectory;
 
@@ -81,6 +82,51 @@ public sealed class RepositoryWorkspace : IDisposable
         }
     }
 
+    public static async Task<string?> TryResolveRemoteHeadAsync(
+        string repositoryUrl,
+        CancellationToken cancellationToken)
+    {
+        using var remoteHeadCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        remoteHeadCts.CancelAfter(RemoteHeadTimeout);
+        try
+        {
+            var uri = await ValidateRepositoryUrlAsync(repositoryUrl, remoteHeadCts.Token);
+            var output = await RunGitAsync(["ls-remote", "--exit-code", uri.AbsoluteUri, "HEAD"], remoteHeadCts.Token);
+            var hash = output.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            return hash is { Length: 40 } && hash.All(Uri.IsHexDigit) ? hash.ToLowerInvariant() : null;
+        }
+        catch (OperationCanceledException) when (remoteHeadCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
+        {
+            return null;
+        }
+    }
+
+    public static async Task<string?> TryResolveCleanLocalHeadAsync(
+        string repositoryPath,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var fullPath = System.IO.Path.GetFullPath(repositoryPath);
+            var status = await RunGitAsync(["-C", fullPath, "status", "--porcelain", "--untracked-files=normal"], cancellationToken);
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                return null;
+            }
+
+            var head = (await RunGitAsync(["-C", fullPath, "rev-parse", "HEAD"], cancellationToken)).Trim();
+            return head is { Length: 40 } && head.All(Uri.IsHexDigit) ? head.ToLowerInvariant() : null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or DirectoryNotFoundException)
+        {
+            return null;
+        }
+    }
+
     public void Dispose()
     {
         if (ownsDirectory)
@@ -128,7 +174,7 @@ public sealed class RepositoryWorkspace : IDisposable
         return uri;
     }
 
-    private static async Task RunGitAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private static async Task<string> RunGitAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
@@ -167,8 +213,10 @@ public sealed class RepositoryWorkspace : IDisposable
         {
             var output = string.Join(Environment.NewLine, [standardOutputTask.Result.Trim(), standardErrorTask.Result.Trim()])
                 .Trim();
-            throw new InvalidOperationException($"git clone failed with exit code {process.ExitCode}: {output}");
+            throw new InvalidOperationException($"git command failed with exit code {process.ExitCode}: {output}");
         }
+
+        return standardOutputTask.Result;
     }
 
     private static async Task<string> ReadBoundedAsync(

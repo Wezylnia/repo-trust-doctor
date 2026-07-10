@@ -236,4 +236,19 @@ public sealed class RepositoryHealthAnalyzerTests
 
         Assert.DoesNotContain(result.Findings, finding => finding.RuleId == "TRUST-REPO014");
     }
+
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotTreatIgnoredNodeModulesAsTheRepositoryToolchain()
+    {
+        using var fixture = TemporaryRepository.Create();
+        File.WriteAllText(Path.Combine(fixture.Path, "README.md"), "# Project\n\nInstallation and usage.");
+        var nestedDependency = Path.Combine(fixture.Path, "node_modules", "example");
+        Directory.CreateDirectory(nestedDependency);
+        File.WriteAllText(Path.Combine(nestedDependency, "package.json"), "{}");
+
+        var analyzer = new RepositoryHealthAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(result.Findings, finding => finding.IdentityKey == "rep023|npm");
+    }
 }

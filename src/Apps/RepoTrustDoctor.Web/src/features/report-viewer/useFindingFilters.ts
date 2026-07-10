@@ -6,6 +6,8 @@ export function useFindingFilters(findings: Finding[]) {
   const [query, setQuery] = useState('');
   const [severity, setSeverity] = useState('All');
   const [category, setCategory] = useState('All');
+  const [actionableOnly, setActionableOnly] = useState(false);
+  const [groupRepeated, setGroupRepeated] = useState(true);
 
   const categories = useMemo(() => ['All', ...Array.from(new Set(findings.map((finding) => finding.category))).sort()], [findings]);
 
@@ -15,6 +17,7 @@ export function useFindingFilters(findings: Finding[]) {
     return findings
       .filter((finding) => severity === 'All' || finding.severity === severity)
       .filter((finding) => category === 'All' || finding.category === category)
+      .filter((finding) => !actionableOnly || finding.isBlocking || finding.severity !== 'Info')
       .filter((finding) => {
         if (!normalizedQuery) return true;
         return [
@@ -41,21 +44,27 @@ export function useFindingFilters(findings: Finding[]) {
         if (severityDelta !== 0) return severityDelta;
         return left.ruleId.localeCompare(right.ruleId);
       });
-  }, [category, findings, query, severity]);
+  }, [actionableOnly, category, findings, query, severity]);
 
   return {
     categories,
     category,
+    actionableOnly,
     filteredFindings,
+    groupRepeated,
     query,
     severity,
     setCategory,
+    setActionableOnly,
+    setGroupRepeated,
     setQuery,
     setSeverity,
     clearFilters: () => {
       setQuery('');
       setSeverity('All');
       setCategory('All');
+      setActionableOnly(false);
+      setGroupRepeated(true);
     }
   };
 }

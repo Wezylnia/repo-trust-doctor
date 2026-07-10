@@ -20,6 +20,11 @@ internal sealed class TemporaryDirectory : IDisposable
     {
         if (Directory.Exists(Path))
         {
+            foreach (var file in Directory.EnumerateFiles(Path, "*", SearchOption.AllDirectories))
+            {
+                File.SetAttributes(file, FileAttributes.Normal);
+            }
+
             Directory.Delete(Path, recursive: true);
         }
     }

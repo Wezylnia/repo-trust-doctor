@@ -1,29 +1,29 @@
 const profileGuide = [
   [
-    'Personal project',
-    'Use this for experiments, learning projects, prototypes, or tools that do not protect production data. Findings still appear, but the final judgment is less strict.'
+    '1. Name the repository',
+    'Paste owner/repository. We scan the public GitHub source through your local API.'
   ],
   [
-    'Production dependency',
-    'Use this when the repository may become a library, service, tool, image, or build input that another production system depends on.'
+    '2. Choose the decision context',
+    'Select the risk level that matches how you plan to use it. Production and security-sensitive profiles require stronger evidence.'
   ],
   [
-    'Enterprise or security-sensitive',
-    'Use this for organization-wide adoption, authentication, cryptography, authorization, secret handling, infrastructure control, or other high-impact code.'
+    '3. Review the recommendation',
+    'Start with the decision and next steps, then inspect evidence or export a team-ready report.'
   ]
 ];
 
 const depthGuide = [
-  ['Fast scan', 'Broad repository, dependency, CI/CD, secret, container, infrastructure, and release checks with bounded file scanning.'],
-  ['Standard scan', 'The default review depth for adoption decisions that need more complete static evidence.'],
-  ['Deep scan', 'Adds deeper code intelligence such as public API, import graph, routes, critical paths, and imported coverage evidence.']
+  ['Fast', 'A quick first look when you need an initial signal.'],
+  ['Standard', 'Recommended for most adoption decisions: broader evidence without deep code analysis.'],
+  ['Deep', 'For high-impact decisions: adds API, route, import graph, critical-code, and coverage evidence.']
 ];
 
 export function ScanGuide() {
   return (
     <aside className="scan-guide" aria-label="Scan option guide">
       <section>
-        <h2>Profile guide</h2>
+        <h2>From repository to decision</h2>
         <div className="guide-list">
           {profileGuide.map(([title, description]) => (
             <div className="guide-row" key={title}>
@@ -34,7 +34,7 @@ export function ScanGuide() {
         </div>
       </section>
       <section>
-        <h2>Depth guide</h2>
+        <h2>Choose enough evidence</h2>
         <div className="guide-list">
           {depthGuide.map(([title, description]) => (
             <div className="guide-row" key={title}>

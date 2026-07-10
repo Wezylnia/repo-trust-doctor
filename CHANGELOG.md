@@ -39,6 +39,20 @@ across the product.
 - **API Health Endpoint**: `/health` now returns product name, version, API
   compatibility version, and allowed web origins.
 
+### Changed
+
+- Reworked the React workbench around an adoption decision: a demo report,
+  live module progress, prioritized next steps, full-width report sections,
+  grouped/actionable finding filters, and collapsible technical details.
+- Added desktop and mobile Playwright visual regression coverage for the scan
+  and report workspaces.
+- Scheduled independent analyzers in bounded dependency waves and added a
+  shared enriched file index with a bounded per-scan source text cache.
+- Added safe 30-second completed-scan reuse for identical clean Git revisions;
+  dirty local worktrees and benchmark runs bypass the cache.
+- Added a CLI `benchmark` command with median, P95, min/max, and analyzer timing
+  output for repeatable performance validation.
+
 ## v0.8.7 - 2026-06-15
 
 This bugfix release completes the current correctness review with stronger
@@ -261,7 +275,7 @@ This release corrects the React product flow so users scan a GitHub repository d
 - The React UI no longer exposes arbitrary local path scanning.
 - Default backend scans remain static-only.
 
-## v1.0.5 - 2026-06-11
+## v0.6.5 - 2026-06-11
 
 This release improves the React experience from a secondary JSON viewer into a local backend-backed trust workbench.
 
@@ -280,7 +294,7 @@ This release improves the React experience from a secondary JSON viewer into a l
 - The web app opens on the scan flow by default instead of asking users to import JSON first.
 - The UI language now treats saved JSON as an artifact fallback, not the primary report flow.
 - The visual design is flatter, denser, and more operations-focused.
-- README, roadmap, and web UI docs now describe the React/backend scan direction and `v1.1.0` follow-up plan.
+- README, roadmap, and web UI docs now describe the React/backend scan direction and the `v0.7.0` follow-up plan.
 
 ### Security
 

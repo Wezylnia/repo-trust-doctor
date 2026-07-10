@@ -113,6 +113,20 @@ package without fallback and return the same advisory aliases as the API.
 
 Measure analyzer performance with a solo run before treating a concurrent-run timeout as an algorithmic regression. Parallel scans are still useful for cancellation and resource-contention validation, but registry latency, disk contention, and CPU pressure make their wall-clock durations unsuitable as a stable baseline.
 
+### Analyzer Wave Scheduling
+
+The scan orchestrator runs independent analyzers in bounded dependency waves. A maximum of two to four analyzer modules execute at once; consumers wait for declared artifact producers, and artifacts are committed only between waves. This preserves finding/report order and prevents a consumer from observing partial evidence.
+
+When assessing a performance change, record both total scan wall time and the sum of module durations. A module-duration sum larger than wall time is expected when independent work overlaps. Compare cold and warm cache runs separately, use the same repository revision and scan profile, and diff the resulting reports to confirm that the optimization has not changed findings, fingerprints, module coverage, or the final decision.
+
+Use the CLI benchmark command for repeatable analyzer timings. It disables short-lived completed-scan reuse while leaving the normal dependency metadata caches available, and reports wall-clock median, P95, min/max, and the slowest analyzer medians:
+
+```text
+dotnet run --project src/Apps/RepoTrustDoctor.Cli -- benchmark .repo-trust/corpus/fastapi --iterations 5 --warmup 1 --depth deep --profile production
+```
+
+After an optimization, export a JSON report from the same absolute target and compare it with the previous baseline using `repo-trust-doctor diff`. A performance improvement is not accepted if the score, decision, findings, or coverage change unexpectedly.
+
 ## Rule Distribution Diffs
 
 Summarize a current report directory:

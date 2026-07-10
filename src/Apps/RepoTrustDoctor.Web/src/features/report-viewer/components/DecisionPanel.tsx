@@ -19,7 +19,7 @@ export function DecisionPanel({ report }: { report: RepositoryScan }) {
               : <AlertTriangle size={18} aria-hidden="true" />}
             <h2>{formatDecision(report.score.decision.kind)}</h2>
           </div>
-          <span className="score-caption">Overall trust score</span>
+          <span className="score-caption">Recommendation for this risk profile</span>
         </div>
       </div>
       {hasBlockingReason ? (

@@ -30,3 +30,4 @@ review.md
 node_modules/
 dist/
 *.tsbuildinfo
+output/playwright/

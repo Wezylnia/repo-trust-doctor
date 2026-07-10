@@ -325,10 +325,7 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         var uncoveredSensitive = SensitivePaths
             .Where(sensitive =>
             {
-                var exists = sensitive.Contains('*')
-                    ? Directory.GetFiles(root, sensitive, SearchOption.AllDirectories).Length > 0 ||
-                      Directory.GetDirectories(root, sensitive.TrimEnd('*'), SearchOption.AllDirectories).Length > 0
-                    : File.Exists(Path.Combine(root, sensitive)) || Directory.Exists(Path.Combine(root, sensitive));
+                var exists = SensitivePathExists(root, sensitive);
 
                 if (!exists) return false;
 
@@ -366,6 +363,22 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
             if (File.Exists(full)) return full;
         }
         return null;
+    }
+
+    private static bool SensitivePathExists(string root, string sensitivePath)
+    {
+        if (sensitivePath.Contains('*'))
+        {
+            return RepositoryFileSystem.EnumerateFiles(root, sensitivePath).Any();
+        }
+
+        if (string.Equals(sensitivePath, "package.json", StringComparison.OrdinalIgnoreCase))
+        {
+            return RepositoryFileSystem.EnumerateFiles(root, sensitivePath).Any();
+        }
+
+        return File.Exists(Path.Combine(root, sensitivePath)) ||
+               Directory.Exists(Path.Combine(root, sensitivePath));
     }
 
     private static HashSet<string> ParseCodeownersPatterns(string content)
@@ -494,8 +507,7 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
     private static void CheckToolchainPinning(string root, List<Finding> findings)
     {
         // Node.js: package.json exists but no version pin
-        if (Directory.GetFiles(root, "package.json", SearchOption.AllDirectories)
-                .Any(f => !f.Contains("node_modules", StringComparison.OrdinalIgnoreCase)))
+        if (RepositoryFileSystem.EnumerateFiles(root, "package.json").Any())
         {
             var hasNodePin = new[] { ".nvmrc", ".node-version", ".tool-versions", "mise.toml" }
                 .Any(f => File.Exists(Path.Combine(root, f)));
@@ -516,9 +528,9 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         }
 
         // .NET: csproj/sln exists but no global.json
-        if (Directory.GetFiles(root, "*.csproj", SearchOption.AllDirectories).Length > 0 ||
-            Directory.GetFiles(root, "*.sln", SearchOption.AllDirectories).Length > 0 ||
-            Directory.GetFiles(root, "*.slnx", SearchOption.AllDirectories).Length > 0)
+        if (RepositoryFileSystem.EnumerateFiles(root, "*.csproj").Any() ||
+            RepositoryFileSystem.EnumerateFiles(root, "*.sln").Any() ||
+            RepositoryFileSystem.EnumerateFiles(root, "*.slnx").Any())
         {
             if (!File.Exists(Path.Combine(root, "global.json")))
             {
@@ -536,7 +548,7 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         }
 
         // Rust: Cargo.toml exists but no rust-toolchain.toml
-        if (Directory.GetFiles(root, "Cargo.toml", SearchOption.AllDirectories).Length > 0)
+        if (RepositoryFileSystem.EnumerateFiles(root, "Cargo.toml").Any())
         {
             var hasRustPin = new[] { "rust-toolchain.toml", ".tool-versions", "mise.toml" }
                 .Any(f => File.Exists(Path.Combine(root, f)));
@@ -556,8 +568,8 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         }
 
         // Python: pyproject.toml/requirements.txt exists but no .python-version
-        if (Directory.GetFiles(root, "pyproject.toml", SearchOption.AllDirectories).Length > 0 ||
-            Directory.GetFiles(root, "requirements.txt", SearchOption.AllDirectories).Length > 0)
+        if (RepositoryFileSystem.EnumerateFiles(root, "pyproject.toml").Any() ||
+            RepositoryFileSystem.EnumerateFiles(root, "requirements.txt").Any())
         {
             var hasPythonPin = new[] { ".python-version", ".tool-versions", "mise.toml" }
                 .Any(f => File.Exists(Path.Combine(root, f)));
@@ -577,7 +589,7 @@ public sealed partial class RepositoryHealthAnalyzer : IRepositoryAnalyzer
         }
 
         // Ruby: Gemfile exists but no .ruby-version
-        if (Directory.GetFiles(root, "Gemfile", SearchOption.AllDirectories).Length > 0)
+        if (RepositoryFileSystem.EnumerateFiles(root, "Gemfile").Any())
         {
             var hasRubyPin = new[] { ".ruby-version", ".tool-versions", "mise.toml" }
                 .Any(f => File.Exists(Path.Combine(root, f)));

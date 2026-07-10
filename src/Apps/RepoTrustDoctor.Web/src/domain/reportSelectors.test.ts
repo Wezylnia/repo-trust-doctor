@@ -7,6 +7,8 @@ import {
   formatCategory,
   formatDecision,
   formatEvidenceKind,
+  formatRepositoryTarget,
+  formatStatus,
   formatTrustProfile,
   getDependencyInventory,
   recommendationText,
@@ -81,6 +83,8 @@ describe('report selectors', () => {
     expect(formatCategory('RepositoryHealth')).toBe('Repository health');
     expect(formatCategory('Infrastructure')).toBe('Infrastructure as code');
     expect(formatEvidenceKind('file-missing')).toBe('File missing');
+    expect(formatStatus('CompletedWithWarnings')).toBe('Complete with notes');
+    expect(formatRepositoryTarget('https://github.com/fastapi/fastapi')).toBe('fastapi/fastapi');
   });
 
   it('builds area scores from explicit scores and completed module categories', () => {

@@ -102,12 +102,8 @@ public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         foreach (var file in analyzedFiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!RepositoryFileSystem.CanReadAsText(file))
-            {
-                continue;
-            }
-
-            var text = await File.ReadAllTextAsync(file, cancellationToken);
+            var text = await RepositoryFileSystem.ReadAllTextAsync(file, cancellationToken);
+            if (text is null) continue;
             var analyzed = CodeCriticalityInspector.Analyze(context.RepositoryPath, file, text);
             if (analyzed.Score >= 30 ||
                 analyzed.Reasons.Contains(CodeCriticalityReason.CommandExecution) ||
@@ -248,9 +244,10 @@ public sealed class CodeCriticalityAnalyzer : IRepositoryAnalyzer
         groups.Sum(group => group.Length);
 
     private static IEnumerable<string> EnumerateSourceFiles(string root) =>
-        RepositoryFileSystem.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-            .Where(file => SourceExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
-            .Where(file => !IsTestSource(root, file));
+        RepositoryFileSystem.EnumerateFileEntries(root, "*", SearchOption.AllDirectories)
+            .Where(entry => SourceExtensions.Contains(entry.Extension, StringComparer.OrdinalIgnoreCase))
+            .Where(entry => !RepositoryPathClassifier.IsNonProductionEvidencePath(entry.RelativePath))
+            .Select(entry => entry.FullPath);
 
     private static int GetSourcePriority(string root, string filePath)
     {

@@ -224,6 +224,68 @@ public sealed class AnalyzerInfrastructureTests
     }
 
     [Fact]
+    public async Task ScanOrchestrator_RunsIndependentAnalyzersInTheSameBoundedWave()
+    {
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var bothStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = 0;
+        var analyzerA = new WaveAnalyzer("analyzer-a", [], async (_, token) =>
+        {
+            if (Interlocked.Increment(ref started) == 2)
+            {
+                bothStarted.TrySetResult();
+            }
+
+            await bothStarted.Task.WaitAsync(token);
+            return AnalyzerResult.Completed([]);
+        });
+        var analyzerB = new WaveAnalyzer("analyzer-b", [], async (_, token) =>
+        {
+            if (Interlocked.Increment(ref started) == 2)
+            {
+                bothStarted.TrySetResult();
+            }
+
+            await bothStarted.Task.WaitAsync(token);
+            return AnalyzerResult.Completed([]);
+        });
+        var orchestrator = new ScanOrchestrator(
+            [analyzerA, analyzerB],
+            new AnalyzerExecutor(),
+            new TrustScorer(),
+            maxConcurrentAnalyzers: 2);
+
+        var scan = await orchestrator.RunAsync(".", ".", AnalysisDepth.Fast, TrustProfile.Personal, cancellation.Token);
+
+        Assert.All(scan.Modules, module => Assert.Equal(ModuleStatus.Completed, module.Status));
+        Assert.Equal(["analyzer-a", "analyzer-b"], scan.Modules.Select(module => module.ModuleId));
+    }
+
+    [Fact]
+    public async Task ScanOrchestrator_CommitsArtifactsBeforeSchedulingTheirConsumers()
+    {
+        var producer = new WaveAnalyzer("producer", [], (_, _) => Task.FromResult(AnalyzerResult.Completed(
+            [],
+            [new AnalyzerArtifact("test.artifact", "ready")])));
+        var consumerSawArtifact = false;
+        var consumer = new WaveAnalyzer("consumer", ["test.artifact"], (context, _) =>
+        {
+            consumerSawArtifact = context.TryGetArtifact<string>("test.artifact", out var value) && value == "ready";
+            return Task.FromResult(AnalyzerResult.Completed([]));
+        });
+        var orchestrator = new ScanOrchestrator(
+            [consumer, producer],
+            new AnalyzerExecutor(),
+            new TrustScorer(),
+            maxConcurrentAnalyzers: 2);
+
+        var scan = await orchestrator.RunAsync(".", ".", AnalysisDepth.Fast, TrustProfile.Personal, CancellationToken.None);
+
+        Assert.True(consumerSawArtifact);
+        Assert.Equal(["producer", "consumer"], scan.Modules.Select(module => module.ModuleId));
+    }
+
+    [Fact]
     public async Task ScanOrchestrator_SkipsAnalyzersAboveAllowedExecutionSafety()
     {
         var unsafeAnalyzer = new FakeAnalyzerWithRule(
@@ -501,5 +563,35 @@ public sealed class AnalyzerInfrastructureTests
                     [new Evidence("test", "mismatch")],
                     new Recommendation("Review."))
             ]));
+    }
+
+    private sealed class WaveAnalyzer : IRepositoryAnalyzer
+    {
+        private readonly string id;
+        private readonly IReadOnlyCollection<string> dependsOn;
+        private readonly Func<AnalysisContext, CancellationToken, Task<AnalyzerResult>> execute;
+
+        public WaveAnalyzer(
+            string id,
+            IReadOnlyCollection<string> dependsOn,
+            Func<AnalysisContext, CancellationToken, Task<AnalyzerResult>> execute)
+        {
+            this.id = id;
+            this.dependsOn = dependsOn;
+            this.execute = execute;
+        }
+
+        public string Id => id;
+        public string DisplayName => id;
+        public AnalysisCategory Category => AnalysisCategory.RepositoryHealth;
+        public AnalysisDepth MinimumDepth => AnalysisDepth.Fast;
+        public IReadOnlyCollection<string> DependsOn => dependsOn;
+        public IReadOnlyCollection<string> ProducesArtifacts => id == "producer" ? ["test.artifact"] : [];
+        public AnalyzerExecutionSafety ExecutionSafety => AnalyzerExecutionSafety.StaticOnly;
+        public TimeSpan Timeout => TimeSpan.FromMilliseconds(500);
+        public IReadOnlyCollection<RuleMetadata> Rules => [];
+
+        public Task<AnalyzerResult> AnalyzeAsync(AnalysisContext context, CancellationToken cancellationToken) =>
+            execute(context, cancellationToken);
     }
 }

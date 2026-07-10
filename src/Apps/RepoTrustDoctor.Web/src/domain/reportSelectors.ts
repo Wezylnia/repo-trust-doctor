@@ -132,7 +132,30 @@ export function formatTrustProfile(value: string): string {
 }
 
 export function formatStatus(value: string): string {
-  return splitIdentifier(value);
+  const labels: Record<string, string> = {
+    Completed: 'Complete',
+    CompletedWithWarnings: 'Complete with notes',
+    Waiting: 'Waiting to start',
+    Running: 'In progress',
+    Failed: 'Could not complete',
+    TimedOut: 'Timed out',
+    Cancelled: 'Cancelled',
+    Fast: 'Fast',
+    Standard: 'Standard',
+    Deep: 'Deep',
+    High: 'High',
+    Medium: 'Medium',
+    Low: 'Low'
+  };
+
+  return labels[value] ?? splitIdentifier(value);
+}
+
+export function formatRepositoryTarget(value: string): string {
+  return value
+    .replace(/^https?:\/\/github\.com\//i, '')
+    .replace(/\.git$/i, '')
+    .replace(/\/$/, '') || value;
 }
 
 export function formatEvidenceKind(value: string): string {

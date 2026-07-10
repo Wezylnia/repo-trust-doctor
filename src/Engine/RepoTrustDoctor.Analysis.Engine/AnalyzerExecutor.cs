@@ -16,7 +16,8 @@ public sealed class AnalyzerExecutor
     public async Task<AnalyzerExecutionResult> ExecuteAsync(
         IRepositoryAnalyzer analyzer,
         AnalysisContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool commitArtifacts = true)
     {
         var started = DateTimeOffset.UtcNow;
         var stopwatch = Stopwatch.StartNew();
@@ -29,9 +30,12 @@ public sealed class AnalyzerExecutor
             var analysisTask = analyzer.AnalyzeAsync(context, linkedCts.Token);
             var result = await analysisTask.WaitAsync(analyzer.Timeout, cancellationToken);
 
-            foreach (var artifact in result.Artifacts ?? [])
+            if (commitArtifacts)
             {
-                context.AddArtifact(artifact);
+                foreach (var artifact in result.Artifacts ?? [])
+                {
+                    context.AddArtifact(artifact);
+                }
             }
 
             stopwatch.Stop();

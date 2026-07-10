@@ -65,6 +65,18 @@ Scoring -> Infrastructure
 
 Analyzers detect evidence and emit structured findings. They do not calculate final scores, make profile-specific decisions, or directly call other analyzers. Reusable data flows through artifacts in the analysis context.
 
+## Analyzer Scheduling
+
+The orchestrator executes independent analyzers in bounded dependency waves (two to four analyzers, based on available CPU). An analyzer that consumes an artifact does not start until its declared producer has completed. Results and artifacts are committed after each wave in deterministic analyzer order, so concurrent execution cannot expose a partial artifact or reorder report findings.
+
+This keeps large-repository scans responsive without relaxing scan budgets, dropping checks, or changing evidence rules. Analyzer-level concurrency remains bounded separately for high-volume work such as secret content scans and advisory lookups.
+
+## Shared Repository Snapshot
+
+Each scan builds one lazy file index containing normalized paths, size, timestamps, extensions, and file classification. Source analyzers share a bounded, asynchronous text snapshot cache instead of reading the same source file independently. The cache is scoped to the scan and capped at 64 MiB; files still retain their existing per-analyzer size and classification limits.
+
+For a clean Git revision, the shared scan runner can reuse an identical completed result for 30 seconds when the target, revision, depth, profile, tool version, and analyzer set all match. Dirty local worktrees are never cached. Remote reuse first resolves the public repository HEAD with a bounded `git ls-remote` call. Benchmark runs disable this result cache.
+
 The dependency inventory analyzer follows this rule with an orchestration class and per-ecosystem collectors for npm, NuGet, Python, Java/Maven/Gradle, and Spring Boot configuration. New package ecosystems should be added as new collectors plus focused tests, not as large branches inside the orchestrator.
 
 ## Scan Modes
@@ -73,7 +85,7 @@ The dependency inventory analyzer follows this rule with an orchestration class 
 - `Standard`: dependency, vulnerability, license, package metadata, workflow, and release checks.
 - `Deep`: coverage, code criticality, public API, history, and comparison checks.
 
-`v1.1` ships static-only local/API/worker scanning with dependency inventory support for npm, NuGet, Python, Maven, Gradle, and Spring Boot configuration signals.
+`v0.9.5` supports static-only local/API/worker scanning with dependency inventory across the documented package ecosystems and Spring Boot configuration signals.
 
 ## Application Scan Lifecycle
 

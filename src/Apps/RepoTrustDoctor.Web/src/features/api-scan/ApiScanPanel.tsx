@@ -1,11 +1,13 @@
 import { Download, Play, RefreshCw, Square, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { RepositoryScan } from '../../domain/report';
+import { formatDecision, formatStatus } from '../../domain/reportSelectors';
 import {
   cancelScan,
   checkHealth,
   buildGitHubRepositoryUrl,
   getScanReport,
+  getScanProgress,
   getScanStatus,
   isTerminalScanState,
   normalizeGitHubRepositoryInput,
@@ -13,9 +15,13 @@ import {
   type HealthResponse,
   type ScanStatusResponse
 } from './apiScanClient';
+import type { ScanProgressResponse } from './apiScanClient';
+import { ScanProgressTimeline } from './ScanProgressTimeline';
 
 interface ApiScanPanelProps {
   onReportLoaded: (report: RepositoryScan) => void;
+  repositorySuggestion: string | null;
+  onSuggestionUsed: () => void;
 }
 
 const depths = [
@@ -29,13 +35,14 @@ const profiles = [
   { label: 'Enterprise or security-sensitive', value: 'SecuritySensitiveDependency' }
 ];
 
-export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
+export function ApiScanPanel({ onReportLoaded, repositorySuggestion, onSuggestionUsed }: ApiScanPanelProps) {
   const apiBaseUrl = 'http://localhost:5000';
   const [repository, setRepository] = useState('');
-  const [depth, setDepth] = useState('Fast');
+  const [depth, setDepth] = useState('Standard');
   const [trustProfile, setTrustProfile] = useState('ProductionDependency');
   const [scanId, setScanId] = useState<string | null>(null);
   const [status, setStatus] = useState<ScanStatusResponse | null>(null);
+  const [progress, setProgress] = useState<ScanProgressResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -71,10 +78,21 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
     void refreshHealth();
   }, []);
 
+  useEffect(() => {
+    if (repositorySuggestion) {
+      setRepository(repositorySuggestion);
+      onSuggestionUsed();
+    }
+  }, [repositorySuggestion, onSuggestionUsed]);
+
   const pollScan = async (nextScanId: string) => {
     try {
-      const nextStatus = await getScanStatus(apiBaseUrl, nextScanId);
+      const [nextStatus, nextProgress] = await Promise.all([
+        getScanStatus(apiBaseUrl, nextScanId),
+        getScanProgress(apiBaseUrl, nextScanId)
+      ]);
       setStatus(nextStatus);
+      setProgress(nextProgress);
 
       if (nextStatus.state === 'Completed') {
         const report = await getScanReport(apiBaseUrl, nextScanId);
@@ -94,6 +112,7 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
     setIsSubmitting(true);
     setError(null);
     setStatus(null);
+    setProgress(null);
     setScanId(null);
 
     if (pollTimer.current !== null) {
@@ -152,20 +171,20 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
     <section className="api-scan-panel" aria-label="API scan">
       <div className="panel-heading">
         <div>
-          <h2>Scan repository</h2>
-          <span>GitHub repository scan</span>
+          <h2>Get an adoption recommendation</h2>
+          <span>Choose how you plan to use the repository; we will apply the matching policy.</span>
         </div>
         <div className="panel-heading-right">
           {health ? (
-            <span className="health-indicator connected" title={`API ${health.version} connected`}>
-              <Wifi size={14} aria-hidden="true" /> {health.version}
+            <span className="health-indicator connected" title={`${health.product} API is ready`}>
+              <Wifi size={14} aria-hidden="true" /> Local API ready
             </span>
           ) : healthError ? (
             <span className="health-indicator disconnected" title={healthError}>
               <WifiOff size={14} aria-hidden="true" /> Offline
             </span>
           ) : null}
-          {status ? <span className={`state-token ${status.state.toLowerCase()}`}>{status.state}</span> : null}
+          {status ? <span className={`state-token ${status.state.toLowerCase()}`}>{formatStatus(status.state)}</span> : null}
         </div>
       </div>
 
@@ -180,7 +199,7 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
 
       <form className="scan-form" onSubmit={(event) => void submitScan(event)}>
         <label>
-          <span>Repository</span>
+          <span>Repository to review</span>
           <div className="github-input">
             <span>github.com/</span>
             <input
@@ -193,7 +212,7 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
         </label>
         <div className="field-grid">
           <label>
-            <span>Depth</span>
+            <span>Evidence depth</span>
             <select value={depth} onChange={(event) => setDepth(event.target.value)} disabled={isSubmitting}>
               {depths.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -203,7 +222,7 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
             </select>
           </label>
           <label>
-            <span>Profile</span>
+            <span>How will you use it?</span>
             <select value={trustProfile} onChange={(event) => setTrustProfile(event.target.value)} disabled={isSubmitting}>
               {profiles.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -232,10 +251,12 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
             </button>
           )}
         </div>
+        <p className="scan-safety-note">The scanner reads repository files and safe metadata only; it does not execute repository code.</p>
       </form>
 
       {status ? (
         <>
+          {progress && !isTerminal ? <ScanProgressTimeline progress={progress} /> : null}
           <dl className="scan-status-grid">
             <div>
               <dt>Scan ID</dt>
@@ -246,8 +267,8 @@ export function ApiScanPanel({ onReportLoaded }: ApiScanPanelProps) {
               <dd>{status.overallScore ?? 'Pending'}</dd>
             </div>
             <div>
-              <dt>Decision</dt>
-              <dd>{status.decision ?? 'Pending'}</dd>
+              <dt>Recommendation</dt>
+              <dd>{status.decision ? formatDecision(status.decision) : 'Pending'}</dd>
             </div>
             <div>
               <dt>Modules</dt>
