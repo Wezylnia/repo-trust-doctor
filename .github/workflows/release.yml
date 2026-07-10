@@ -30,7 +30,7 @@ jobs:
           global-json-file: global.json
 
       - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 22
           cache: npm
@@ -104,7 +104,7 @@ jobs:
           tar -czf "repo-trust-doctor-${version}-${TARGET_RID}.tar.gz" -C "output/$TARGET_RID" .
 
       - name: Upload CLI archive
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: cli-${{ matrix.rid }}
           path: repo-trust-doctor-*.tar.gz
@@ -131,7 +131,7 @@ jobs:
         run: dotnet pack src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj --configuration Release --output output/package
 
       - name: Upload .NET tool package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: dotnet-tool
           path: output/package/*.nupkg
@@ -147,7 +147,7 @@ jobs:
 
     steps:
       - name: Download release artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
         with:
           path: artifacts
           merge-multiple: true
