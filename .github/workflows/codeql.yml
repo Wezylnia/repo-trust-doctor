@@ -50,6 +50,6 @@ jobs:
         run: dotnet build RepoTrustDoctor.slnx --configuration Release --no-restore
 
       - name: Analyze
-        uses: github/codeql-action/analyze@03e4368ac7daa2bd82b3e85262f3bf87ee112f57
+        uses: github/codeql-action/analyze@99df26d4f13ea111d4ec1a7dddef6063f76b97e9
         with:
           category: "/language:csharp"
