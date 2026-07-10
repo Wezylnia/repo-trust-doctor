@@ -15,7 +15,7 @@ Repository Trust Doctor turns scattered open-source signals—security posture, 
 
 It is a local-first, static analysis platform for engineers evaluating a library, service, image, tool, or repository before it reaches production. Findings always include a rule ID, severity, confidence, evidence, and a recommended next step. The final score never silently hides policy-blocking risks.
 
-> Current development line: **v0.9.5**. The scanner does not execute repository code by default.
+> Stable release: **v1.0.0**. The scanner does not execute repository code by default.
 
 ## What decision does it help you make?
 
@@ -26,14 +26,30 @@ It is a local-first, static analysis platform for engineers evaluating a library
 | “Can we enforce this in CI?” | JSON, Markdown, and SARIF output plus score/severity gates. |
 | “Did this repository get safer or riskier?” | Stable finding fingerprints and report diff support. |
 
-## Start in three steps
+## Install
 
-Requirements: **.NET 10 SDK** and **Git**.
+Download the self-contained archive for Windows, Linux, or macOS from the [latest GitHub release](https://github.com/Wezylnia/repo-trust-doctor/releases/latest). Extract it and run `repo-trust-doctor` (`repo-trust-doctor.exe` on Windows); no .NET runtime is required for these archives. Verification and platform-specific instructions are in the [installation guide](docs/installation.md).
+
+The release also includes `RepoTrustDoctor.Tool.1.0.0.nupkg`. After downloading it to a local folder, install it with:
+
+```text
+dotnet tool install --global RepoTrustDoctor.Tool --version 1.0.0 --add-source <download-folder>
+```
+
+Building from source requires the **.NET 10 SDK** and **Git**:
 
 ```text
 git clone https://github.com/Wezylnia/repo-trust-doctor.git
 cd repo-trust-doctor
 dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan https://github.com/owner/repo --depth standard --profile production
+```
+
+## Quick start
+
+```text
+repo-trust-doctor scan https://github.com/owner/repo --depth standard --profile production
+repo-trust-doctor scan . --format markdown --output reports/trust-review.md
+repo-trust-doctor diff reports/before.json reports/after.json --format markdown
 ```
 
 The command prints a decision and a score. Use the profile that matches the consequence of being wrong:
@@ -49,9 +65,9 @@ For a more complete code and dependency review, use `--depth deep`. Fast scans a
 ## See the answer, then the evidence
 
 ```text
-dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --depth standard --profile production --format markdown --output reports/trust-review.md
-dotnet run --project src/Apps/RepoTrustDoctor.Cli -- scan . --format sarif --output reports/trust-review.sarif
-dotnet run --project src/Apps/RepoTrustDoctor.Cli -- diff reports/before.json reports/after.json --format markdown
+repo-trust-doctor scan . --depth standard --profile production --format markdown --output reports/trust-review.md
+repo-trust-doctor scan . --format sarif --output reports/trust-review.sarif
+repo-trust-doctor diff reports/before.json reports/after.json --format markdown
 ```
 
 Each report has three layers:

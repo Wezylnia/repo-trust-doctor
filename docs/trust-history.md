@@ -1,6 +1,6 @@
 # Trust History and Diff
 
-`v0.9.5` adds the first history and comparison layer. It is intentionally file-based and source-safe: snapshots are derived from scan reports and do not store raw repository source files.
+`v1.0.0` includes a file-based, source-safe history and comparison layer: snapshots are derived from scan reports and do not store raw repository source files.
 
 ## Snapshot Model
 

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using RepoTrustDoctor.Analysis.Abstractions;
 using RepoTrustDoctor.Analysis.Engine;
 using RepoTrustDoctor.Analysis.Orchestration;
@@ -23,12 +24,15 @@ using RepoTrustDoctor.Infrastructure.LocalData;
 using RepoTrustDoctor.Infrastructure.PackageRegistries;
 using RepoTrustDoctor.Infrastructure.SecurityFeeds;
 using RepoTrustDoctor.Scoring;
+using RepoTrustDoctor.Shared;
 
 namespace RepoTrustDoctor.Infrastructure.Scanning;
 
 public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
 {
+    private static readonly TimeSpan ScanCacheTtl = TimeSpan.FromSeconds(30);
     private readonly IReadOnlyList<IRepositoryAnalyzer> analyzers;
+    private readonly ConcurrentDictionary<ScanCacheKey, CachedScan> scanCache = new();
 
     public DefaultRepositoryScanRunner()
         : this(LocalIntelligenceOptions.CreateDefault())
@@ -47,12 +51,123 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
 
     public async Task<RepositoryScan> RunAsync(ScanRequestOptions options, CancellationToken cancellationToken)
     {
+        var cacheKey = options.UseIncrementalCache
+            ? await TryCreateCacheKeyAsync(options, cancellationToken)
+            : null;
+        if (cacheKey is not null &&
+            scanCache.TryGetValue(cacheKey, out var cached) &&
+            DateTimeOffset.UtcNow - cached.StoredAt <= ScanCacheTtl)
+        {
+            var now = DateTimeOffset.UtcNow;
+            options.Progress?.Invoke(new ScanExecutionProgress(
+                RepoTrustDoctor.Contracts.ScanLifecycleState.Reporting,
+                "Reused the completed analysis for this unchanged revision.",
+                cached.Scan.Modules,
+                cached.Scan.Modules.Count));
+            return cached.Scan with
+            {
+                Id = Guid.NewGuid(),
+                StartedAt = now,
+                CompletedAt = now,
+                Artifacts = WithCacheMarker(cached.Scan.Artifacts)
+            };
+        }
+
+        options.Progress?.Invoke(new ScanExecutionProgress(
+            RepoTrustDoctor.Contracts.ScanLifecycleState.PreparingRepository,
+            "Preparing a safe repository workspace."));
         using var workspace = await PrepareWorkspaceAsync(options.Target, cancellationToken);
         var orchestrator = new ScanOrchestrator(
             analyzers,
             new AnalyzerExecutor(),
             new TrustScorer());
-        return await orchestrator.RunAsync(options.Target, workspace.Path, options.Depth, options.TrustProfile, cancellationToken);
+        var scan = await orchestrator.RunAsync(
+            options.Target,
+            workspace.Path,
+            options.Depth,
+            options.TrustProfile,
+            cancellationToken,
+            (modules, total) => options.Progress?.Invoke(new ScanExecutionProgress(
+                MapProgressState(options.Depth, modules.Count, total),
+                $"Analyzed {modules.Count} of {total} modules.",
+                modules,
+                total)));
+        if (cacheKey is not null)
+        {
+            scanCache[cacheKey] = new CachedScan(scan, DateTimeOffset.UtcNow);
+            PruneScanCache();
+        }
+
+        return scan;
+    }
+
+    private async Task<ScanCacheKey?> TryCreateCacheKeyAsync(
+        ScanRequestOptions options,
+        CancellationToken cancellationToken)
+    {
+        var isRemote = options.Target.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+        var revision = isRemote
+            ? await RepositoryWorkspace.TryResolveRemoteHeadAsync(options.Target, cancellationToken)
+            : await RepositoryWorkspace.TryResolveCleanLocalHeadAsync(options.Target, cancellationToken);
+        if (revision is null)
+        {
+            return null;
+        }
+
+        var analyzerContract = string.Join(',', analyzers.Select(analyzer => analyzer.Id));
+        return new ScanCacheKey(
+            options.Target,
+            revision,
+            options.Depth,
+            options.TrustProfile,
+            ProductInfo.Version,
+            analyzerContract);
+    }
+
+    private void PruneScanCache()
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var item in scanCache)
+        {
+            if (now - item.Value.StoredAt > ScanCacheTtl)
+            {
+                scanCache.TryRemove(item.Key, out _);
+            }
+        }
+    }
+
+    private static IReadOnlyDictionary<string, object> WithCacheMarker(
+        IReadOnlyDictionary<string, object>? artifacts)
+    {
+        var result = artifacts is null
+            ? new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, object>(artifacts, StringComparer.OrdinalIgnoreCase);
+        result["scan.cache.hit"] = true;
+        return result;
+    }
+
+    private static RepoTrustDoctor.Contracts.ScanLifecycleState MapProgressState(
+        AnalysisDepth depth,
+        int completed,
+        int total)
+    {
+        if (depth == AnalysisDepth.Fast)
+        {
+            return RepoTrustDoctor.Contracts.ScanLifecycleState.RunningFastModules;
+        }
+
+        var ratio = total == 0 ? 0 : (double)completed / total;
+        if (ratio < 0.35)
+        {
+            return RepoTrustDoctor.Contracts.ScanLifecycleState.RunningStaticAnalyzers;
+        }
+
+        if (depth == AnalysisDepth.Standard || ratio < 0.72)
+        {
+            return RepoTrustDoctor.Contracts.ScanLifecycleState.RunningDependencyAnalyzers;
+        }
+
+        return RepoTrustDoctor.Contracts.ScanLifecycleState.RunningSecurityAnalyzers;
     }
 
     public static IReadOnlyList<IRepositoryAnalyzer> CreateAnalyzers(
@@ -141,4 +256,14 @@ public sealed class DefaultRepositoryScanRunner : IRepositoryScanRunner
 
         return Task.FromResult(RepositoryWorkspace.ForLocalPath(target));
     }
+
+    private sealed record ScanCacheKey(
+        string Target,
+        string Revision,
+        AnalysisDepth Depth,
+        TrustProfile TrustProfile,
+        string ToolVersion,
+        string AnalyzerContract);
+
+    private sealed record CachedScan(RepositoryScan Scan, DateTimeOffset StoredAt);
 }

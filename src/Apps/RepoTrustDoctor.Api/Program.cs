@@ -162,3 +162,5 @@ public sealed class QueuedScanBackgroundService(IScanJobQueue queue, ScanJobProc
 }
 
 public partial class Program;
+
+public sealed class RepoTrustDoctorApiMarker;

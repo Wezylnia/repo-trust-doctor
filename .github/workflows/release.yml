@@ -1,0 +1,173 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          global-json-file: global.json
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/Apps/RepoTrustDoctor.Web/package-lock.json
+
+      - name: Restore
+        run: dotnet restore RepoTrustDoctor.slnx --locked-mode
+
+      - name: Build
+        run: dotnet build RepoTrustDoctor.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test RepoTrustDoctor.slnx --configuration Release --no-build
+
+      - name: Validate release version
+        shell: pwsh
+        run: |
+          $expected = $env:GITHUB_REF_NAME.TrimStart('v')
+          $actual = dotnet run --project src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj --configuration Release --no-build -- --version
+          if ($actual.Trim() -ne "repo-trust-doctor $expected") {
+            throw "Tag version '$expected' does not match product version '$actual'."
+          }
+
+      - name: Install web dependencies
+        working-directory: src/Apps/RepoTrustDoctor.Web
+        run: npm ci
+
+      - name: Test web workbench
+        working-directory: src/Apps/RepoTrustDoctor.Web
+        run: npm test
+
+      - name: Build web workbench
+        working-directory: src/Apps/RepoTrustDoctor.Web
+        run: npm run build
+
+  publish-cli:
+    name: publish-${{ matrix.rid }}
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [win-x64, linux-x64, linux-arm64, osx-x64, osx-arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          global-json-file: global.json
+
+      - name: Publish self-contained CLI
+        shell: bash
+        env:
+          TARGET_RID: ${{ matrix.rid }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          dotnet publish src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj \
+            --configuration Release \
+            --runtime "$TARGET_RID" \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:DebugType=None \
+            -p:DebugSymbols=false \
+            --output "output/$TARGET_RID"
+          tar -czf "repo-trust-doctor-${version}-${TARGET_RID}.tar.gz" -C "output/$TARGET_RID" .
+
+      - name: Upload CLI archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cli-${{ matrix.rid }}
+          path: repo-trust-doctor-*.tar.gz
+          if-no-files-found: error
+
+  package-tool:
+    name: package-dotnet-tool
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          global-json-file: global.json
+
+      - name: Pack .NET tool
+        run: dotnet pack src/Apps/RepoTrustDoctor.Cli/RepoTrustDoctor.Cli.csproj --configuration Release --output output/package
+
+      - name: Upload .NET tool package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dotnet-tool
+          path: output/package/*.nupkg
+          if-no-files-found: error
+
+  release:
+    name: github-release
+    needs: [publish-cli, package-tool]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create checksums
+        shell: bash
+        run: |
+          cd artifacts
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' \
+            | sort -z \
+            | xargs -0 sha256sum > SHA256SUMS
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Repository Trust Doctor $GITHUB_REF_NAME" \
+            --generate-notes \
+            --latest

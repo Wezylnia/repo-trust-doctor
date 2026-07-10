@@ -2,6 +2,13 @@
 
 Repository Trust Doctor analyzes untrusted repositories, so security reports are welcome.
 
+## Supported Versions
+
+| Version | Supported |
+| --- | --- |
+| `1.0.x` | Yes |
+| `< 1.0` | No; upgrade to the latest stable release |
+
 ## Reporting a Vulnerability
 
 Please do not open a public issue for a confirmed vulnerability. Use GitHub private vulnerability reporting at https://github.com/Wezylnia/repo-trust-doctor/security/advisories/new and include:

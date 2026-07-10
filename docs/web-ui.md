@@ -6,7 +6,9 @@ The web UI is a local-first React trust workbench. Its primary flow is to start 
 
 - starts GitHub repository scans through the local API backend,
 - polls scan status until completion,
+- shows live lifecycle and module progress while a scan is running,
 - opens the completed report automatically,
+- offers a built-in demo report without requiring the API,
 - shows plain-language scan depth and profile labels,
 - includes a side guide for choosing one of three scan profiles,
 - shows a short product introduction before the scan form,
@@ -15,7 +17,8 @@ The web UI is a local-first React trust workbench. Its primary flow is to start 
 - shows dependency metadata, vulnerability advisory, and secret-content scan coverage, including partial results and unsupported inputs,
 - surfaces analyzer timeouts, failures, and warnings instead of presenting partial scans as complete,
 - adds explanatory finding detail text alongside evidence and recommendations,
-- supports finding search, severity filtering, category filtering, and evidence inspection,
+- supports finding search, severity filtering, category filtering, repeated-finding grouping, actionable-only review, and evidence inspection,
+- keeps technical metadata and dependency inventory in a collapsible details panel,
 - does not expose raw JSON import/export in the React UI.
 
 ## Development
@@ -42,15 +45,14 @@ The React app uses `http://localhost:5000` as the local scan service. Users do n
 cd src/Apps/RepoTrustDoctor.Web
 npm run build
 npm test
+npm run test:visual
 ```
 
 ## Next React Direction
 
-After `v0.9.5`, the React/backend scan experience should keep the same primary flow and deepen it:
+After `v1.0.0`, the React/backend scan experience keeps the same primary flow and deepens it through:
 
-- richer live progress by module while scans are running,
 - API health and compatibility detection in the web app,
 - report history backed by persistence rather than browser-only state,
-- scan cancellation and retry feedback,
 - direct links from findings to report sections,
 - backend-backed comparison between two completed scans.

@@ -41,7 +41,7 @@ and automation.
 
 ## API Report Export
 
-`v0.9.5` exposes completed scan reports from the API host:
+`v1.0.0` exposes completed scan reports from the API host:
 
 ```text
 GET /api/scans/{scanId}/report?format=json
@@ -110,7 +110,7 @@ Unexpected analyzer exceptions are reported as module failures with a generic us
 
 ## Suppression And Waiver Metadata
 
-`v0.9.5` adds repository suppression support through `.repo-trust.json` at the
+`v1.0.0` includes repository suppression support through `.repo-trust.json` at the
 repository root. Suppressed findings remain visible in all report formats, are
 marked with a `Suppression` property containing the suppression reason, owner,
 and optional expiration date. Active suppressions are excluded from score
@@ -129,7 +129,7 @@ Key rules:
 
 ## Structured Evidence Artifacts
 
-`v0.9.5` parses imported SBOM and provenance files into structured artifacts
+`v1.0.0` parses imported SBOM and provenance files into structured artifacts
 under the key `release.imported-evidence`. The artifact contains:
 
 - SBOM components with name, version, and package URL (purl),
@@ -147,7 +147,7 @@ findings. Absence of imported evidence is not proof that a repository is unsafe.
 
 ## GitHub Metadata Artifact
 
-`v0.9.5` collects GitHub repository metadata under the key
+`v1.0.0` collects GitHub repository metadata under the key
 `github.repository-metadata`. The artifact contains repository identity,
 activity, popularity, release, CI, and branch protection snapshots.
 

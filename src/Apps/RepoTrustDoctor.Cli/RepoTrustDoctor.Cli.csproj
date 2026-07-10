@@ -25,13 +25,27 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <AssemblyName>repo-trust-doctor</AssemblyName>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>repo-trust-doctor</ToolCommandName>
+    <PackageId>RepoTrustDoctor.Tool</PackageId>
+    <Authors>Wezylnia</Authors>
+    <Description>Evidence-backed static repository adoption analysis for security, dependencies, CI/CD, release readiness, infrastructure, containers, and code health.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>security;repository;static-analysis;supply-chain;devsecops</PackageTags>
+    <RepositoryUrl>https://github.com/Wezylnia/repo-trust-doctor</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="RepoTrustDoctor.UnitTests" />
+    <None Include="..\..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

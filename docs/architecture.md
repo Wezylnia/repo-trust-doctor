@@ -85,7 +85,7 @@ The dependency inventory analyzer follows this rule with an orchestration class 
 - `Standard`: dependency, vulnerability, license, package metadata, workflow, and release checks.
 - `Deep`: coverage, code criticality, public API, history, and comparison checks.
 
-`v0.9.5` supports static-only local/API/worker scanning with dependency inventory across the documented package ecosystems and Spring Boot configuration signals.
+`v1.0.0` supports static-only local/API/worker scanning with dependency inventory across the documented package ecosystems and Spring Boot configuration signals.
 
 ## Application Scan Lifecycle
 

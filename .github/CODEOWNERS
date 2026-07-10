@@ -1,1 +1,12 @@
 * @Wezylnia
+/.github/ @Wezylnia
+/src/Infrastructure/ @Wezylnia
+/src/Core/ @Wezylnia
+/src/Engine/ @Wezylnia
+/Directory.Build.props @Wezylnia
+/global.json @Wezylnia
+.github/workflows/ @Wezylnia
+src/ @Wezylnia
+package.json @Wezylnia
+*.csproj @Wezylnia
+*.slnx @Wezylnia
