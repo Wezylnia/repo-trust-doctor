@@ -287,6 +287,30 @@ public sealed class GitHubActionsBasicAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_ReportsShellInjectionInMultilineRunBlock()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - run: |
+                  echo "building"
+                  echo "${{ github.event.pull_request.title }}"
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-GHA008" && finding.Confidence == Confidence.Medium);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_DoesNotReportSafeShellVariables()
     {
         using var fixture = TemporaryRepository.Create();
