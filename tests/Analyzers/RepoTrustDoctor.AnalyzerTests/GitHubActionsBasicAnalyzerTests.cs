@@ -556,6 +556,37 @@ public sealed class GitHubActionsBasicAnalyzerTests
         Assert.Equal(14, finding.Evidence[0].LineNumber);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_ReportsMatrixInjectionInFoldedRunBlock()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        permissions:
+          contents: read
+        jobs:
+          test:
+            strategy:
+              matrix:
+                version: [1, 2, 3]
+            runs-on: ubuntu-latest
+            steps:
+              - run: >
+                  echo "building"
+                  echo "version is ${{ matrix.version }}"
+        """);
+
+        var result = await new GitHubActionsBasicAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-GHA014");
+        Assert.Equal(14, finding.Evidence[0].LineNumber);
+    }
+
     // ── GHA015: pull_request_target + secrets ─────────────────────────
 
     [Fact]
