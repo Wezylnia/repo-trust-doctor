@@ -1141,6 +1141,31 @@ public sealed class GitHubActionsBasicAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_ExternalReusableWorkflowCallWithCommentsAndSpacing_ReportsGHA019()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+
+        jobs:
+          call:
+            # External reusable workflow pinned to a mutable branch.
+
+            uses: owner/repo/.github/workflows/build.yml@main
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-GHA019");
+        var finding = result.Findings.First(f => f.RuleId == "TRUST-GHA019");
+        Assert.Contains("Mutable reusable workflow reference", finding.Title);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_ReusableWorkflowCallWithCommentsAndSpacing_DoesNotReportPrTargetExposure()
     {
         using var fixture = TemporaryRepository.Create();
