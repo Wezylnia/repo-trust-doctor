@@ -774,6 +774,33 @@ public sealed class GitHubActionsBasicAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_PublishJobNeedsTestWithCommentBetweenJobs_NoGHA009()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "release.yml"), """
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps: []
+          # publish job
+          publish:
+            needs: test
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(
+            result.Findings,
+            finding => finding.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_PublishJobNeedsTestWithFourSpaceIndent_NoGHA009()
     {
         using var fixture = TemporaryRepository.Create();
