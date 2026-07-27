@@ -197,6 +197,44 @@ public sealed class ReportWriterTests
     }
 
     [Fact]
+    public void MarkdownReport_OrdersTopRecommendedActionsDeterministicallyWhenInputOrderReversed()
+    {
+        var firstFinding = CreateFinding(
+            "TRUST-TEST001",
+            Severity.High,
+            AnalysisCategory.Security,
+            filePath: "src/security.txt",
+            lineNumber: 42,
+            title: "Alpha finding",
+            recommendation: "Apply alpha remediation.") with
+        {
+            IdentityKey = "test|alpha"
+        };
+        var secondFinding = CreateFinding(
+            "TRUST-TEST001",
+            Severity.High,
+            AnalysisCategory.Security,
+            filePath: "src/security.txt",
+            lineNumber: 42,
+            title: "Beta finding",
+            recommendation: "Apply beta remediation.") with
+        {
+            IdentityKey = "test|beta"
+        };
+        var firstScan = CreateMinimalScan() with { Findings = [firstFinding, secondFinding] };
+        var reversedScan = CreateMinimalScan() with { Findings = [secondFinding, firstFinding] };
+
+        var firstActions = ExtractTopRecommendedActions(new MarkdownReportWriter().Write(firstScan));
+        var reversedActions = ExtractTopRecommendedActions(new MarkdownReportWriter().Write(reversedScan));
+
+        Assert.Contains("Apply alpha remediation.", firstActions);
+        Assert.Contains("Apply beta remediation.", firstActions);
+        Assert.Contains("Apply alpha remediation.", reversedActions);
+        Assert.Contains("Apply beta remediation.", reversedActions);
+        Assert.Equal(firstActions, reversedActions);
+    }
+
+    [Fact]
     public void MarkdownReport_LimitsRenderedFindingsWithoutDroppingJsonFindings()
     {
         var findings = Enumerable
@@ -284,6 +322,18 @@ public sealed class ReportWriterTests
         Assert.Contains("Evidence \\| value \\#\\#\\# forged evidence", markdown);
         Assert.Contains("Fix \\| now \\# forged recommendation &lt;b&gt;", markdown);
         Assert.Contains("``src/`danger`.cs``", markdown);
+    }
+
+    private static string ExtractTopRecommendedActions(string markdown)
+    {
+        const string heading = "## Top Recommended Actions";
+        var start = markdown.IndexOf(heading, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Expected to find '{heading}'.");
+
+        var nextHeading = markdown.IndexOf("\n## ", start + heading.Length, StringComparison.Ordinal);
+        return nextHeading < 0
+            ? markdown[start..]
+            : markdown[start..nextHeading];
     }
 
     private static void AssertBefore(string content, string earlier, string later)

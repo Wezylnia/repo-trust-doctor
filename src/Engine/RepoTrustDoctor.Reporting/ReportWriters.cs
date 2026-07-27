@@ -249,7 +249,10 @@ public sealed class MarkdownReportWriter
             .ThenByDescending(finding => finding.Confidence)
             .ThenBy(finding => finding.RuleId, StringComparer.OrdinalIgnoreCase)
             .ThenBy(finding => finding.Evidence.FirstOrDefault()?.FilePath, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(finding => finding.Evidence.FirstOrDefault()?.LineNumber);
+            .ThenBy(finding => finding.Evidence.FirstOrDefault()?.LineNumber)
+            .ThenBy(finding => finding.IdentityKey ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(finding => finding.Title, StringComparer.Ordinal)
+            .ThenBy(finding => finding.Recommendation.Message, StringComparer.Ordinal);
     }
 
     private static int GetRecommendedActionCategoryPriority(Finding finding)
