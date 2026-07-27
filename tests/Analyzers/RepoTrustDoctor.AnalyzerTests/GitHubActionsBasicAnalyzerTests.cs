@@ -287,6 +287,30 @@ public sealed class GitHubActionsBasicAnalyzerTests
     }
 
     [Fact]
+    public async Task AnalyzeAsync_ReportsShellInjectionInMultilineRunBlock()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - run: |
+                  echo "building"
+                  echo "${{ github.event.pull_request.title }}"
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-GHA008" && finding.Confidence == Confidence.Medium);
+    }
+
+    [Fact]
     public async Task AnalyzeAsync_DoesNotReportSafeShellVariables()
     {
         using var fixture = TemporaryRepository.Create();
@@ -556,6 +580,37 @@ public sealed class GitHubActionsBasicAnalyzerTests
         Assert.Equal(14, finding.Evidence[0].LineNumber);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_ReportsMatrixInjectionInFoldedRunBlock()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+        permissions:
+          contents: read
+        jobs:
+          test:
+            strategy:
+              matrix:
+                version: [1, 2, 3]
+            runs-on: ubuntu-latest
+            steps:
+              - run: >
+                  echo "building"
+                  echo "version is ${{ matrix.version }}"
+        """);
+
+        var result = await new GitHubActionsBasicAnalyzer().AnalyzeAsync(
+            new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast),
+            CancellationToken.None);
+
+        var finding = Assert.Single(result.Findings, f => f.RuleId == "TRUST-GHA014");
+        Assert.Equal(14, finding.Evidence[0].LineNumber);
+    }
+
     // ── GHA015: pull_request_target + secrets ─────────────────────────
 
     [Fact]
@@ -627,6 +682,30 @@ public sealed class GitHubActionsBasicAnalyzerTests
 
         Assert.Contains(result.Findings, f => f.RuleId == "TRUST-GHA016");
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA011");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_TopLevelWriteAndJobLevelReadPermissions_ReportsWorkflowWriteFinding()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "ci.yml"), """
+        permissions:
+          contents: write
+
+        jobs:
+          build:
+            permissions:
+              contents: read
+            runs-on: ubuntu-latest
+            steps: []
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-GHA016");
     }
 
     [Fact]
@@ -771,6 +850,33 @@ public sealed class GitHubActionsBasicAnalyzerTests
         var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
 
         Assert.DoesNotContain(result.Findings, f => f.RuleId == "TRUST-GHA009");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_PublishJobNeedsTestWithCommentBetweenJobs_NoGHA009()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var dir = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "release.yml"), """
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps: []
+          # publish job
+          publish:
+            needs: test
+            runs-on: ubuntu-latest
+            steps:
+              - run: npm publish
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.DoesNotContain(
+            result.Findings,
+            finding => finding.RuleId == "TRUST-GHA009");
     }
 
     [Fact]
@@ -1056,6 +1162,31 @@ public sealed class GitHubActionsBasicAnalyzerTests
             CancellationToken.None);
 
         Assert.Contains(result.Findings, finding => finding.RuleId == "TRUST-GHA018");
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ExternalReusableWorkflowCallWithCommentsAndSpacing_ReportsGHA019()
+    {
+        using var fixture = TemporaryRepository.Create();
+        var workflowDirectory = Path.Combine(fixture.Path, ".github", "workflows");
+        Directory.CreateDirectory(workflowDirectory);
+        File.WriteAllText(Path.Combine(workflowDirectory, "ci.yml"), """
+        name: ci
+        on: [push]
+
+        jobs:
+          call:
+            # External reusable workflow pinned to a mutable branch.
+
+            uses: owner/repo/.github/workflows/build.yml@main
+        """);
+
+        var analyzer = new GitHubActionsBasicAnalyzer();
+        var result = await analyzer.AnalyzeAsync(new AnalysisContext(fixture.Path, fixture.Path, AnalysisDepth.Fast), CancellationToken.None);
+
+        Assert.Contains(result.Findings, f => f.RuleId == "TRUST-GHA019");
+        var finding = result.Findings.First(f => f.RuleId == "TRUST-GHA019");
+        Assert.Contains("Mutable reusable workflow reference", finding.Title);
     }
 
     [Fact]
