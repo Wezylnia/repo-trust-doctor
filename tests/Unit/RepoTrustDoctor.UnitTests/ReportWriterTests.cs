@@ -9,6 +9,36 @@ namespace RepoTrustDoctor.UnitTests;
 public sealed class ReportWriterTests
 {
     [Fact]
+    public void JsonReport_MatchesGoldenFixture()
+    {
+        var actual = new JsonReportWriter().Write(CreateRepresentativeGoldenScan());
+
+        Assert.Equal(
+            ReadGoldenFixture("representative-report.json"),
+            NormalizeLineEndings(actual));
+    }
+
+    [Fact]
+    public void MarkdownReport_MatchesGoldenFixture()
+    {
+        var actual = new MarkdownReportWriter().Write(CreateRepresentativeGoldenScan());
+
+        Assert.Equal(
+            ReadGoldenFixture("representative-report.md"),
+            NormalizeLineEndings(actual));
+    }
+
+    [Fact]
+    public void SarifReport_MatchesGoldenFixture()
+    {
+        var actual = new SarifReportWriter().Write(CreateRepresentativeGoldenScan());
+
+        Assert.Equal(
+            ReadGoldenFixture("representative-report.sarif"),
+            NormalizeLineEndings(actual));
+    }
+
+    [Fact]
     public void JsonReport_IncludesToolVersion()
     {
         var scan = CreateMinimalScan();
@@ -737,6 +767,102 @@ public sealed class ReportWriterTests
             .GetProperty("findings")[0]
             .GetProperty("fingerprint")
             .GetString()!;
+    }
+
+    private static RepositoryScan CreateRepresentativeGoldenScan()
+    {
+        var startedAt = new DateTimeOffset(2026, 1, 15, 10, 30, 0, TimeSpan.Zero);
+        var completedAt = startedAt.AddSeconds(5);
+        var workflowFinding = new Finding(
+            "TRUST-GHA005",
+            "Workflow permissions are too broad",
+            AnalysisCategory.CiCd,
+            Severity.Medium,
+            Confidence.High,
+            "The workflow grants broader permissions than required.",
+            [new Evidence("workflow-permissions", "The workflow grants write permissions.", ".github/workflows/ci.yml", 18)],
+            new Recommendation("Reduce workflow permissions to the minimum required."),
+            Tags: ["github-actions", "permissions"]);
+        var secretFinding = new Finding(
+            "TRUST-SECRET005",
+            "Exposed connection string",
+            AnalysisCategory.Security,
+            Severity.Critical,
+            Confidence.High,
+            "A secret-like connection string was detected and redacted.",
+            [new Evidence("secret-pattern", "The connection string value was redacted before reporting.", "src/appsettings.Production.json", 12, "Server=[redacted];User Id=[redacted];Password=[redacted]")],
+            new Recommendation("Rotate the credential and move it to a secret store."),
+            IsBlocking: true,
+            Tags: ["credential", "secret"]);
+
+        return new RepositoryScan(
+            new Guid("11111111-2222-3333-4444-555555555555"),
+            "fixtures/repository",
+            AnalysisDepth.Fast,
+            TrustProfile.ProductionDependency,
+            "1.0.0",
+            ModuleStatus.Completed,
+            startedAt,
+            completedAt,
+            [
+                new ScanModule(
+                    "secrets",
+                    "Secret quick scan",
+                    AnalysisCategory.Security,
+                    ModuleStatus.Completed,
+                    startedAt,
+                    startedAt.AddSeconds(2),
+                    1),
+                new ScanModule(
+                    "github-actions",
+                    "GitHub Actions",
+                    AnalysisCategory.CiCd,
+                    ModuleStatus.Completed,
+                    startedAt.AddSeconds(2),
+                    completedAt,
+                    1)
+            ],
+            [
+                // Input order is intentionally lower-priority first; report writers must sort deterministically.
+                workflowFinding,
+                secretFinding
+            ],
+            new TrustScore(
+                42,
+                [
+                    new CategoryScore(AnalysisCategory.Security, 25),
+                    new CategoryScore(AnalysisCategory.CiCd, 70)
+                ],
+                new FinalDecision(
+                    FinalDecisionKind.NeedsManualReview,
+                    [
+                        "A blocking security finding requires manual review.",
+                        "Workflow permissions should be reduced."
+                    ])));
+    }
+
+    private static string ReadGoldenFixture(string fileName)
+    {
+        var path = Path.Combine(
+            AppContext.BaseDirectory,
+            "Fixtures",
+            "Reports",
+            fileName);
+
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException($"Golden fixture was not found: {path}", path);
+        }
+
+        return NormalizeLineEndings(File.ReadAllText(path));
+    }
+
+    private static string NormalizeLineEndings(string value)
+    {
+        return value
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .TrimEnd('\n');
     }
 
     private static RepositoryScan CreateMinimalScan()

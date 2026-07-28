@@ -1,0 +1,128 @@
+{
+  "id": "11111111-2222-3333-4444-555555555555",
+  "target": "fixtures/repository",
+  "depth": "Fast",
+  "trustProfile": "ProductionDependency",
+  "toolVersion": "1.0.0",
+  "status": "Completed",
+  "startedAt": "2026-01-15T10:30:00+00:00",
+  "completedAt": "2026-01-15T10:30:05+00:00",
+  "modules": [
+    {
+      "moduleId": "secrets",
+      "displayName": "Secret quick scan",
+      "category": "Security",
+      "status": "Completed",
+      "startedAt": "2026-01-15T10:30:00+00:00",
+      "completedAt": "2026-01-15T10:30:02+00:00",
+      "findingsCount": 1,
+      "errorMessage": null,
+      "skippedReason": null,
+      "metrics": null,
+      "warnings": null,
+      "warningDetails": null
+    },
+    {
+      "moduleId": "github-actions",
+      "displayName": "GitHub Actions",
+      "category": "CiCd",
+      "status": "Completed",
+      "startedAt": "2026-01-15T10:30:02+00:00",
+      "completedAt": "2026-01-15T10:30:05+00:00",
+      "findingsCount": 1,
+      "errorMessage": null,
+      "skippedReason": null,
+      "metrics": null,
+      "warnings": null,
+      "warningDetails": null
+    }
+  ],
+  "findings": [
+    {
+      "ruleId": "TRUST-SECRET005",
+      "title": "Exposed connection string",
+      "category": "Security",
+      "severity": "Critical",
+      "confidence": "High",
+      "message": "A secret-like connection string was detected and redacted.",
+      "evidence": [
+        {
+          "kind": "secret-pattern",
+          "message": "The connection string value was redacted before reporting.",
+          "filePath": "src/appsettings.Production.json",
+          "lineNumber": 12,
+          "value": "Server=[redacted];User Id=[redacted];Password=[redacted]"
+        }
+      ],
+      "recommendation": {
+        "message": "Rotate the credential and move it to a secret store."
+      },
+      "isBlocking": true,
+      "tags": [
+        "credential",
+        "secret"
+      ],
+      "fingerprint": "aec24d6c416a330ca32a18990fcfa367cdcba6ba5655c0e2b02b42ba432d730c",
+      "identityKey": null,
+      "suppression": null
+    },
+    {
+      "ruleId": "TRUST-GHA005",
+      "title": "Workflow permissions are too broad",
+      "category": "CiCd",
+      "severity": "Medium",
+      "confidence": "High",
+      "message": "The workflow grants broader permissions than required.",
+      "evidence": [
+        {
+          "kind": "workflow-permissions",
+          "message": "The workflow grants write permissions.",
+          "filePath": ".github/workflows/ci.yml",
+          "lineNumber": 18,
+          "value": null
+        }
+      ],
+      "recommendation": {
+        "message": "Reduce workflow permissions to the minimum required."
+      },
+      "isBlocking": false,
+      "tags": [
+        "github-actions",
+        "permissions"
+      ],
+      "fingerprint": "2df2212f6934b45d3300ca8fc1aa347a6b56b2b1de48e92a5cb1cdc50b5e1ca7",
+      "identityKey": null,
+      "suppression": null
+    }
+  ],
+  "score": {
+    "overall": 42,
+    "categories": [
+      {
+        "category": "Security",
+        "score": 25
+      },
+      {
+        "category": "CiCd",
+        "score": 70
+      }
+    ],
+    "decision": {
+      "kind": "NeedsManualReview",
+      "reasons": [
+        "A blocking security finding requires manual review.",
+        "Workflow permissions should be reduced."
+      ]
+    }
+  },
+  "artifacts": null,
+  "summary": {
+    "total": 2,
+    "critical": 1,
+    "high": 0,
+    "medium": 1,
+    "low": 0,
+    "info": 0,
+    "blocking": 1
+  }
+}

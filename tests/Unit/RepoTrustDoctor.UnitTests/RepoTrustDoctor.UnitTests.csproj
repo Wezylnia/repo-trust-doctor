@@ -38,4 +38,10 @@
     <ProjectReference Include="..\..\..\src\Apps\RepoTrustDoctor.Api\RepoTrustDoctor.Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\..\Fixtures\Reports\**\*"
+          Link="Fixtures\Reports\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

@@ -16,6 +16,9 @@ private-docs/
 # Scan workspaces and generated reports.
 .repo-trust/
 reports/
+# Keep deterministic golden report fixtures under version control.
+!/tests/Fixtures/Reports/
+!/tests/Fixtures/Reports/**
 
 # Local development plan (not for commit).
 plan.md
