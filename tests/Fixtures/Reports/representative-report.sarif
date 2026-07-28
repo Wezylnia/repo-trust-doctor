@@ -1,0 +1,116 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Repository Trust Doctor",
+          "semanticVersion": "1.0.0",
+          "rules": [
+            {
+              "id": "TRUST-GHA005",
+              "shortDescription": {
+                "text": "Workflow permissions are too broad"
+              },
+              "help": {
+                "text": "Reduce workflow permissions to the minimum required."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "category": "CiCd",
+                "defaultSeverity": "Medium"
+              },
+              "helpUri": "https://github.com/Wezylnia/repo-trust-doctor/blob/main/docs/rules/github-actions.md"
+            },
+            {
+              "id": "TRUST-SECRET005",
+              "shortDescription": {
+                "text": "Exposed connection string"
+              },
+              "help": {
+                "text": "Rotate the credential and move it to a secret store."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "category": "Security",
+                "defaultSeverity": "Critical"
+              },
+              "helpUri": "https://github.com/Wezylnia/repo-trust-doctor/blob/main/docs/rules/secrets.md"
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "TRUST-SECRET005",
+          "level": "error",
+          "message": {
+            "text": "Exposed connection string. A secret-like connection string was detected and redacted."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/appsettings.Production.json"
+                },
+                "region": {
+                  "startLine": 12
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "repoTrustDoctorFingerprint": "aec24d6c416a330ca32a18990fcfa367cdcba6ba5655c0e2b02b42ba432d730c"
+          },
+          "properties": {
+            "confidence": "High",
+            "category": "Security",
+            "evidenceKind": "secret-pattern",
+            "isBlocking": true,
+            "tags": [
+              "credential",
+              "secret"
+            ]
+          }
+        },
+        {
+          "ruleId": "TRUST-GHA005",
+          "level": "warning",
+          "message": {
+            "text": "Workflow permissions are too broad. The workflow grants broader permissions than required."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".github/workflows/ci.yml"
+                },
+                "region": {
+                  "startLine": 18
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "repoTrustDoctorFingerprint": "2df2212f6934b45d3300ca8fc1aa347a6b56b2b1de48e92a5cb1cdc50b5e1ca7"
+          },
+          "properties": {
+            "confidence": "High",
+            "category": "CiCd",
+            "evidenceKind": "workflow-permissions",
+            "isBlocking": false,
+            "tags": [
+              "github-actions",
+              "permissions"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
